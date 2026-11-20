@@ -1,5 +1,5 @@
 {
-  "name": "TenisCupy",
+  "name": "TenisPro",
   "description": "Plataforma integral para organizar múltiples torneos de tenis simultáneamente con reglas ITF, fixture inteligente, clasificación, cuadros finales, galerías por jornada y portal público en tiempo real.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
