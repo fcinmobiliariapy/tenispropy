@@ -32,6 +32,12 @@ import { formatScoreString } from '../utils/itfRules';
 import { compareMatchesByRound, formatAsuncionDate } from '../utils/tournamentEngine';
 import { PublicTab, PWAInstallButton } from './TopBarAndPWA';
 import { TournamentAd as TournamentAdCard } from './TournamentAd';
+import {
+  buildFixtureAgendaWhatsAppMessage,
+  buildMatchWhatsAppMessage,
+  buildTournamentWhatsAppMessage,
+} from '../utils/whatsappShare';
+import { WhatsAppShareButton } from './WhatsAppShareButton';
 
 interface PublicPortalProps {
   tournaments: Tournament[];
@@ -63,7 +69,7 @@ const MATCH_STATUS_LABEL: Record<string, { label: string; tone: string }> = {
   programado: { label: 'Programado', tone: 'text-slate-700' },
   en_curso: { label: 'En cancha', tone: 'text-[#C2410C] font-semibold' },
   finalizado: { label: 'Finalizado', tone: 'text-[#15803D] font-medium' },
-  wo: { label: 'Walkover (WO)', tone: 'text-amber-800 font-medium' },
+  wo: { label: 'Walkover (W.O.)', tone: 'text-amber-800 font-semibold' },
   retiro: { label: 'Retiro (RET)', tone: 'text-amber-800 font-medium' },
   descalificado: { label: 'Descalificado (DQ)', tone: 'text-red-700 font-medium' },
   reprogramado: { label: 'Reprogramado', tone: 'text-[#C2410C] font-medium' },
@@ -171,6 +177,8 @@ const EntryAvatars: React.FC<{
 interface BracketMatchCardProps {
   match: Match;
   variant?: 'standard' | 'final' | 'third_place';
+  tournamentName?: string;
+  divisionName?: string;
   getSidePlayers: (playerIds: string[], entryId?: string | null) => PlayerPublic[];
   getSideSeed: (entryId?: string | null) => number | null;
 }
@@ -178,6 +186,8 @@ interface BracketMatchCardProps {
 const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
   match,
   variant = 'standard',
+  tournamentName,
+  divisionName,
   getSidePlayers,
   getSideSeed,
 }) => {
@@ -250,7 +260,7 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
     const outcomeOnlyLabel =
       match.sets.length === 0 && isWinner
         ? match.status === 'wo'
-          ? 'WO'
+          ? 'W.O.'
           : match.status === 'retiro'
           ? 'RET'
           : match.status === 'descalificado'
@@ -400,11 +410,43 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
             {scheduleText}
             {match.courtName ? ` · ${match.courtName}` : ''}
           </span>
-          {match.outcomeNote && (
-            <span className="truncate max-w-full font-medium text-[#0A1633]">
-              {match.outcomeNote}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {match.outcomeNote && (
+              <span className="truncate max-w-full font-medium text-[#0A1633]">
+                {match.outcomeNote}
+              </span>
+            )}
+            {!match.isBye && (match.entryAId || match.entryBId) && (
+              <WhatsAppShareButton
+                compact
+                label="Compartir"
+                message={buildMatchWhatsAppMessage({
+                  match,
+                  tournamentName,
+                  divisionName,
+                })}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {!isFinal && !isThird && !match.isBye && (match.entryAId || match.entryBId) && (
+        <div className="mt-2 pt-2 border-t border-[#E2E8F0]/70 flex items-center justify-between gap-2">
+          <span className={`text-[10px] truncate ${statusInfo?.tone || 'text-[#475569]'}`}>
+            {match.status === 'wo' && match.winnerName
+              ? `W.O. · Gana ${match.winnerName}`
+              : statusInfo?.label || ''}
+          </span>
+          <WhatsAppShareButton
+            compact
+            label="WhatsApp"
+            message={buildMatchWhatsAppMessage({
+              match,
+              tournamentName,
+              divisionName,
+            })}
+          />
         </div>
       )}
     </div>
@@ -868,6 +910,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     Reglas ITF
                   </button>
 
+                  {activeTournament && (
+                    <WhatsAppShareButton
+                      message={buildTournamentWhatsAppMessage({
+                        tournament: activeTournament,
+                        division: activeDivision,
+                      })}
+                      label="Compartir torneo"
+                      className="min-h-[40px]"
+                    />
+                  )}
+
                   <PWAInstallButton />
                 </div>
               </div>
@@ -1093,15 +1146,26 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                             {m.entryAName} <span className="text-[#475569] font-normal">vs</span> {m.entryBName}
                           </p>
                         </div>
-                        <div className="text-left sm:text-right shrink-0">
-                          <p className="text-xs font-mono tabular-nums font-medium text-[#0A1633]">
-                            {m.scheduledDate
-                              ? `${formatAsuncionDate(m.scheduledDate)}${m.scheduledTime ? ` · ${m.scheduledTime} hs` : ''}`
-                              : 'Fecha por definir'}
-                          </p>
-                          <p className={`text-xs mt-0.5 ${MATCH_STATUS_LABEL[m.status]?.tone || 'text-[#475569]'}`}>
-                            {MATCH_STATUS_LABEL[m.status]?.label || m.status}
-                          </p>
+                        <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
+                          <div className="text-left sm:text-right">
+                            <p className="text-xs font-mono tabular-nums font-medium text-[#0A1633]">
+                              {m.scheduledDate
+                                ? `${formatAsuncionDate(m.scheduledDate)}${m.scheduledTime ? ` · ${m.scheduledTime} hs` : ''}`
+                                : 'Fecha por definir'}
+                            </p>
+                            <p className={`text-xs mt-0.5 ${MATCH_STATUS_LABEL[m.status]?.tone || 'text-[#475569]'}`}>
+                              {MATCH_STATUS_LABEL[m.status]?.label || m.status}
+                            </p>
+                          </div>
+                          <WhatsAppShareButton
+                            compact
+                            label="WhatsApp"
+                            message={buildMatchWhatsAppMessage({
+                              match: m,
+                              tournament: activeTournament,
+                              division: activeDivision,
+                            })}
+                          />
                         </div>
                       </div>
                     ))}
@@ -1122,25 +1186,39 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   ) : (
                     <div className="divide-y divide-[#E2E8F0]">
                       {recentResults.slice(0, 5).map((m) => (
-                        <div key={m.id} className="p-4">
+                        <div key={m.id} className="p-4 space-y-2">
                           <div className="flex items-center justify-between gap-2 text-xs text-[#475569]">
                             <span>{m.roundName}</span>
                             <span className={MATCH_STATUS_LABEL[m.status]?.tone}>
                               {MATCH_STATUS_LABEL[m.status]?.label}
                             </span>
                           </div>
-                          <div className="mt-1.5 flex items-center justify-between gap-3">
-                            <div className="text-sm">
-                              <p className={m.winnerEntryId === m.entryAId ? 'font-semibold text-[#0A1633]' : 'text-[#475569]'}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm min-w-0">
+                              <p className={`truncate ${m.winnerEntryId === m.entryAId ? 'font-semibold text-[#0A1633]' : 'text-[#475569]'}`}>
                                 {m.entryAName}
                               </p>
-                              <p className={m.winnerEntryId === m.entryBId ? 'font-semibold text-[#0A1633]' : 'text-[#475569]'}>
+                              <p className={`truncate ${m.winnerEntryId === m.entryBId ? 'font-semibold text-[#0A1633]' : 'text-[#475569]'}`}>
                                 {m.entryBName}
                               </p>
                             </div>
-                            <div className="font-mono tabular-nums text-sm font-semibold text-[#7C1FA2] text-right">
+                            <div className="font-mono tabular-nums text-sm font-semibold text-[#7C1FA2] text-right shrink-0">
                               {formatScoreString(m.sets, m.status)}
                             </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 pt-1">
+                            <span className="text-[11px] text-[#475569] truncate">
+                              {m.winnerName ? `Ganador: ${m.winnerName}` : ''}
+                            </span>
+                            <WhatsAppShareButton
+                              compact
+                              label="Compartir"
+                              message={buildMatchWhatsAppMessage({
+                                match: m,
+                                tournament: activeTournament,
+                                division: activeDivision,
+                              })}
+                            />
                           </div>
                         </div>
                       ))}
@@ -1571,6 +1649,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                 key={m.id}
                                 match={m}
                                 variant={isFinalCard ? 'final' : 'standard'}
+                                tournamentName={activeTournament?.name}
+                                divisionName={activeDivision?.name}
                                 getSidePlayers={getMatchSidePlayers}
                                 getSideSeed={getMatchSideSeed}
                               />
@@ -1582,6 +1662,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           <BracketMatchCard
                             match={thirdPlaceMatch}
                             variant="third_place"
+                            tournamentName={activeTournament?.name}
+                            divisionName={activeDivision?.name}
                             getSidePlayers={getMatchSidePlayers}
                             getSideSeed={getMatchSideSeed}
                           />
@@ -1617,6 +1699,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                   key={m.id}
                                   match={m}
                                   variant="final"
+                                  tournamentName={activeTournament?.name}
+                                  divisionName={activeDivision?.name}
                                   getSidePlayers={getMatchSidePlayers}
                                   getSideSeed={getMatchSideSeed}
                                 />
@@ -1625,6 +1709,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                 <BracketMatchCard
                                   match={thirdPlaceMatch}
                                   variant="third_place"
+                                  tournamentName={activeTournament?.name}
+                                  divisionName={activeDivision?.name}
                                   getSidePlayers={getMatchSidePlayers}
                                   getSideSeed={getMatchSideSeed}
                                 />
@@ -1692,6 +1778,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                                 <BracketMatchCard
                                                   match={mTop}
                                                   variant="standard"
+                                                  tournamentName={activeTournament?.name}
+                                                  divisionName={activeDivision?.name}
                                                   getSidePlayers={getMatchSidePlayers}
                                                   getSideSeed={getMatchSideSeed}
                                                 />
@@ -1706,6 +1794,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                                 <BracketMatchCard
                                                   match={mBot}
                                                   variant="standard"
+                                                  tournamentName={activeTournament?.name}
+                                                  divisionName={activeDivision?.name}
                                                   getSidePlayers={getMatchSidePlayers}
                                                   getSideSeed={getMatchSideSeed}
                                                 />
@@ -1738,6 +1828,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                           key={m.id}
                                           match={m}
                                           variant="standard"
+                                          tournamentName={activeTournament?.name}
+                                          divisionName={activeDivision?.name}
                                           getSidePlayers={getMatchSidePlayers}
                                           getSideSeed={getMatchSideSeed}
                                         />
@@ -1768,6 +1860,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                         key={m.id}
                                         match={m}
                                         variant="final"
+                                        tournamentName={activeTournament?.name}
+                                        divisionName={activeDivision?.name}
                                         getSidePlayers={getMatchSidePlayers}
                                         getSideSeed={getMatchSideSeed}
                                       />
@@ -1777,6 +1871,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                       <BracketMatchCard
                                         match={thirdPlaceMatch}
                                         variant="third_place"
+                                        tournamentName={activeTournament?.name}
+                                        divisionName={activeDivision?.name}
                                         getSidePlayers={getMatchSidePlayers}
                                         getSideSeed={getMatchSideSeed}
                                       />
@@ -1875,6 +1971,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                  {filteredFixtureMatches.length > 0 && (
+                    <WhatsAppShareButton
+                      label="Compartir fixture"
+                      showCopy
+                      message={buildFixtureAgendaWhatsAppMessage({
+                        matches: filteredFixtureMatches,
+                        tournamentName: activeTournament?.name || 'Torneo PlayPy',
+                        divisionName: activeDivision?.name,
+                      })}
+                    />
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setShowMobileFilters((v) => !v)}
@@ -2058,15 +2166,24 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           <span className="text-[#475569] truncate">
                             {m.courtName || 'Cancha por definir'} · {t?.name}
                           </span>
-                          <div className="shrink-0 text-right">
+                          <div className="shrink-0 flex items-center gap-2 text-right">
                             <span className={MATCH_STATUS_LABEL[m.status]?.tone}>
                               {MATCH_STATUS_LABEL[m.status]?.label}
                             </span>
-                            {m.sets.length > 0 && (
-                              <span className="ml-2 font-mono tabular-nums font-semibold text-[#7C1FA2]">
+                            {(m.sets.length > 0 || m.status === 'wo' || m.status === 'retiro' || m.status === 'descalificado') && (
+                              <span className="font-mono tabular-nums font-semibold text-[#7C1FA2]">
                                 {formatScoreString(m.sets, m.status)}
                               </span>
                             )}
+                            <WhatsAppShareButton
+                              compact
+                              label="WhatsApp"
+                              message={buildMatchWhatsAppMessage({
+                                match: m,
+                                tournament: t,
+                                division: d,
+                              })}
+                            />
                           </div>
                         </div>
                       </div>
@@ -2076,7 +2193,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
                 {/* Tabla escritorio para Fixture (md+) */}
                 <div className="hidden md:block bg-white border border-[#E2E8F0] rounded-2xl overflow-x-auto clean-scroll">
-                  <table className="w-full text-left border-collapse min-w-[760px]">
+                  <table className="w-full text-left border-collapse min-w-[820px]">
                     <thead>
                       <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#475569]">
                         <th className="py-3 px-4">Fecha / Hora</th>
@@ -2085,12 +2202,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         <th className="py-3 px-4">Participantes</th>
                         <th className="py-3 px-4">Cancha</th>
                         <th className="py-3 px-4">Estado / Marcador</th>
+                        <th className="py-3 px-4 text-right">Compartir</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E2E8F0] text-sm">
                       {filteredFixtureMatches.map((m) => {
                         const t = tournaments.find((x) => x.id === m.tournamentId);
                         const d = divisions.find((x) => x.id === m.divisionId);
+                        const hasOutcomeScore =
+                          m.sets.length > 0 ||
+                          m.status === 'wo' ||
+                          m.status === 'retiro' ||
+                          m.status === 'descalificado';
                         return (
                           <tr key={m.id} className="hover:bg-[#F8FAFC] transition-colors">
                             <td className="py-3 px-4 font-mono tabular-nums text-xs">
@@ -2124,11 +2247,22 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                               <span className={MATCH_STATUS_LABEL[m.status]?.tone}>
                                 {MATCH_STATUS_LABEL[m.status]?.label}
                               </span>
-                              {m.sets.length > 0 && (
+                              {hasOutcomeScore && (
                                 <span className="ml-2 font-mono tabular-nums font-semibold text-[#7C1FA2]">
                                   {formatScoreString(m.sets, m.status)}
                                 </span>
                               )}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <WhatsAppShareButton
+                                compact
+                                label="WhatsApp"
+                                message={buildMatchWhatsAppMessage({
+                                  match: m,
+                                  tournament: t,
+                                  division: d,
+                                })}
+                              />
                             </td>
                           </tr>
                         );
@@ -2158,30 +2292,47 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[#E2E8F0]">
                       {dayMatches.map((m) => {
+                        const t = tournaments.find((x) => x.id === m.tournamentId);
                         const d = divisions.find((x) => x.id === m.divisionId);
+                        const hasOutcomeScore =
+                          m.sets.length > 0 ||
+                          m.status === 'wo' ||
+                          m.status === 'retiro' ||
+                          m.status === 'descalificado';
                         return (
-                          <div key={m.id} className="bg-white p-4">
+                          <div key={m.id} className="bg-white p-4 space-y-2">
                             <div className="flex items-center justify-between text-xs text-[#475569]">
                               <span className="font-mono tabular-nums font-semibold text-[#0A1633]">
                                 {m.scheduledTime ? `${m.scheduledTime} hs` : 'TBC'}
                               </span>
                               <span>{m.courtName || 'Sin cancha'}</span>
                             </div>
-                            <p className="text-xs text-[#7C1FA2] mt-1 font-medium">
+                            <p className="text-xs text-[#7C1FA2] font-medium">
                               {d?.name} · {m.roundName}
                             </p>
-                            <p className="text-sm font-semibold text-[#0A1633] mt-1.5">
+                            <p className="text-sm font-semibold text-[#0A1633]">
                               {m.entryAName} vs {m.entryBName}
                             </p>
-                            <div className="mt-2 flex items-center justify-between text-xs">
-                              <span className={MATCH_STATUS_LABEL[m.status]?.tone}>
-                                {MATCH_STATUS_LABEL[m.status]?.label}
-                              </span>
-                              {m.sets.length > 0 && (
-                                <span className="font-mono tabular-nums font-semibold text-[#7C1FA2]">
-                                  {formatScoreString(m.sets, m.status)}
+                            <div className="flex items-center justify-between gap-2 text-xs pt-1">
+                              <div>
+                                <span className={MATCH_STATUS_LABEL[m.status]?.tone}>
+                                  {MATCH_STATUS_LABEL[m.status]?.label}
                                 </span>
-                              )}
+                                {hasOutcomeScore && (
+                                  <span className="ml-2 font-mono tabular-nums font-semibold text-[#7C1FA2]">
+                                    {formatScoreString(m.sets, m.status)}
+                                  </span>
+                                )}
+                              </div>
+                              <WhatsAppShareButton
+                                compact
+                                label="WhatsApp"
+                                message={buildMatchWhatsAppMessage({
+                                  match: m,
+                                  tournament: t,
+                                  division: d,
+                                })}
+                              />
                             </div>
                           </div>
                         );
@@ -2252,16 +2403,27 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                     {m.entryAName} vs {m.entryBName}
                                   </p>
                                 </div>
-                                <div className="text-right shrink-0">
-                                  {m.sets.length > 0 ? (
-                                    <span className="font-mono tabular-nums text-xs font-semibold text-[#7C1FA2]">
-                                      {formatScoreString(m.sets, m.status)}
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-[#475569]">
-                                      {MATCH_STATUS_LABEL[m.status]?.label}
-                                    </span>
-                                  )}
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <div className="text-right">
+                                    {m.sets.length > 0 || m.status === 'wo' || m.status === 'retiro' || m.status === 'descalificado' ? (
+                                      <span className="font-mono tabular-nums text-xs font-semibold text-[#7C1FA2]">
+                                        {formatScoreString(m.sets, m.status)}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-[#475569]">
+                                        {MATCH_STATUS_LABEL[m.status]?.label}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <WhatsAppShareButton
+                                    compact
+                                    label="WA"
+                                    message={buildMatchWhatsAppMessage({
+                                      match: m,
+                                      tournament: activeTournament,
+                                      division: activeDivision,
+                                    })}
+                                  />
                                 </div>
                               </div>
                             ))}

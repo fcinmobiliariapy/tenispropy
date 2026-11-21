@@ -22,6 +22,8 @@ import {
   makeId,
 } from '../../utils/tournamentEngine';
 import { publishNotificationAndBroadcast, saveEntity, saveStaffRole } from '../../services/firestoreService';
+import { buildMatchWhatsAppMessage } from '../../utils/whatsappShare';
+import { WhatsAppShareButton } from '../WhatsAppShareButton';
 
 interface Props {
   tournament: Tournament;
@@ -433,30 +435,127 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
             <p className="text-sm text-[#475569]">Seleccioná un partido para cargar el resultado.</p>
           ) : (
             <>
-              <div className="pb-4 border-b border-[#E2E8F0]">
-                <p className="text-xs text-[#475569]">{activeMatch.roundName}</p>
-                <h3 className="text-base font-bold text-[#0A1633] mt-0.5">
-                  {activeMatch.entryAName} vs {activeMatch.entryBName}
-                </h3>
+              <div className="pb-4 border-b border-[#E2E8F0] flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-[#475569]">{activeMatch.roundName}</p>
+                  <h3 className="text-base font-bold text-[#0A1633] mt-0.5">
+                    {activeMatch.entryAName} vs {activeMatch.entryBName}
+                  </h3>
+                </div>
+                <WhatsAppShareButton
+                  message={buildMatchWhatsAppMessage({
+                    match: {
+                      ...activeMatch,
+                      status,
+                      sets: status === 'wo' ? [] : effectiveSets,
+                      winnerEntryId: liveValidation?.winnerEntryId || activeMatch.winnerEntryId,
+                      winnerName: liveValidation?.winnerName || activeMatch.winnerName,
+                      outcomeNote: outcomeNote.trim() || activeMatch.outcomeNote,
+                    },
+                    tournament,
+                    division,
+                  })}
+                  label="Compartir por WhatsApp"
+                  showCopy
+                />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-[#475569] mb-1">Estado / Incidencia</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as MatchStatus)}
-                    className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
-                  >
-                    <option value="finalizado">Finalizado normal</option>
-                    <option value="wo">Walkover (WO)</option>
-                    <option value="retiro">Retiro (RET)</option>
-                    <option value="descalificado">Descalificación (DQ)</option>
-                  </select>
+                  <label className="block text-xs font-medium text-[#475569] mb-1.5">
+                    Modo de marcador oficial
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(
+                      [
+                        { id: 'finalizado', label: 'Normal / Por sets' },
+                        { id: 'wo', label: 'W.O. (Walk Over)' },
+                        { id: 'retiro', label: 'Retiro (RET)' },
+                        { id: 'descalificado', label: 'Descalif. (DQ)' },
+                      ] as Array<{ id: MatchStatus; label: string }>
+                    ).map((opt) => {
+                      const active = status === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setStatus(opt.id)}
+                          className={`px-3 py-2.5 rounded-xl border text-xs font-semibold transition-colors text-center ${
+                            active
+                              ? opt.id === 'wo'
+                                ? 'bg-amber-600 text-white border-amber-600'
+                                : 'bg-[#7C1FA2] text-white border-[#7C1FA2]'
+                              : 'bg-[#F8FAFC] text-[#0A1633] border-[#E2E8F0] hover:bg-slate-100'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {(status === 'wo' ||
-                  status === 'retiro' ||
+                {status === 'wo' && (
+                  <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold text-amber-950">
+                          Marcador oficial: W.O. (Walk Over)
+                        </p>
+                        <p className="text-[11px] text-amber-900 mt-0.5">
+                          Seleccioná quién gana el partido por ausencia o incomparecencia del rival.
+                        </p>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-lg bg-amber-600 text-white font-mono text-xs font-bold shrink-0">
+                        W.O.
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setIncidentWinnerSide('A')}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          incidentWinnerSide === 'A'
+                            ? 'bg-white border-amber-600 ring-2 ring-amber-500/30'
+                            : 'bg-white/80 border-amber-200 hover:bg-white'
+                        }`}
+                      >
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                          Gana por W.O.
+                        </p>
+                        <p className="text-xs font-bold text-[#0A1633] mt-0.5 truncate">
+                          {activeMatch.entryAName}
+                        </p>
+                        <p className="text-[11px] text-[#475569] truncate mt-0.5">
+                          Rival ausente: {activeMatch.entryBName}
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIncidentWinnerSide('B')}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          incidentWinnerSide === 'B'
+                            ? 'bg-white border-amber-600 ring-2 ring-amber-500/30'
+                            : 'bg-white/80 border-amber-200 hover:bg-white'
+                        }`}
+                      >
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                          Gana por W.O.
+                        </p>
+                        <p className="text-xs font-bold text-[#0A1633] mt-0.5 truncate">
+                          {activeMatch.entryBName}
+                        </p>
+                        <p className="text-[11px] text-[#475569] truncate mt-0.5">
+                          Rival ausente: {activeMatch.entryAName}
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(status === 'retiro' ||
                   status === 'descalificado' ||
                   (status === 'finalizado' && !includeSetScores)) && (
                   <div>

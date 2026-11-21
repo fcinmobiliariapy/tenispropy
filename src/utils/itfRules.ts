@@ -106,7 +106,7 @@ function isValidTiebreakPoints(
 
 export function formatScoreString(sets: SetScore[], status: MatchStatus): string {
   const scoreTxt = sets.map(formatSetScore).join(' ');
-  if (status === 'wo') return scoreTxt ? `WO (${scoreTxt})` : 'WO';
+  if (status === 'wo') return scoreTxt ? `W.O. (${scoreTxt})` : 'W.O.';
   if (status === 'retiro') return scoreTxt ? `${scoreTxt} RET` : 'RET';
   if (status === 'descalificado') return scoreTxt ? `${scoreTxt} DQ` : 'DQ';
   if (status === 'finalizado' && !scoreTxt) return 'Finalizado (sin sets)';
