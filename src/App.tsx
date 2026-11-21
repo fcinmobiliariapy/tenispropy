@@ -20,6 +20,7 @@ import {
   SiteLandingConfig,
   Tournament,
   TournamentAd,
+  TournamentTrophy,
 } from './types/tennis';
 import { useRealtimePush } from './hooks/usePWA';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -55,6 +56,7 @@ export default function App() {
   const [fsPhotos, setFsPhotos] = useState<MatchdayPhoto[]>([]);
   const [fsNotifications, setFsNotifications] = useState<NotificationAlert[]>([]);
   const [fsTournamentAds, setFsTournamentAds] = useState<TournamentAd[]>([]);
+  const [fsTournamentTrophies, setFsTournamentTrophies] = useState<TournamentTrophy[]>([]);
   const [fsSiteSettings, setFsSiteSettings] = useState<SiteLandingConfig[]>([]);
   const [firestoreLoaded, setFirestoreLoaded] = useState(false);
 
@@ -91,6 +93,7 @@ export default function App() {
       subscribeCollection<MatchdayPhoto>('photos', setFsPhotos, true),
       subscribeCollection<NotificationAlert>('notifications', setFsNotifications),
       subscribeCollection<TournamentAd>('tournament_ads', setFsTournamentAds),
+      subscribeCollection<TournamentTrophy>('tournament_trophies', setFsTournamentTrophies),
       subscribeCollection<SiteLandingConfig>('site_settings', setFsSiteSettings),
     ];
 
@@ -114,6 +117,9 @@ export default function App() {
     ? demoFallback.notifications
     : [...fsNotifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const tournamentAds = useSeededFallback ? demoFallback.tournamentAds : fsTournamentAds;
+  const tournamentTrophies = useSeededFallback
+    ? demoFallback.tournamentTrophies
+    : fsTournamentTrophies;
   const siteConfig = useMemo(
     () =>
       mergeSiteLandingConfig(
@@ -214,6 +220,7 @@ export default function App() {
               photos={photos}
               notifications={notifications}
               tournamentAds={tournamentAds}
+              tournamentTrophies={tournamentTrophies}
               activeTab={activePublicTab}
               onSelectTab={setActivePublicTab}
               onGoLanding={() => {
@@ -246,6 +253,7 @@ export default function App() {
               publishedPhotos={photos}
               notifications={notifications}
               tournamentAds={tournamentAds}
+              tournamentTrophies={tournamentTrophies}
               siteConfig={siteConfig}
               selectedTournamentId={effectiveTournamentId}
               onSelectTournament={handleSelectTournament}

@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   Calendar,
+  CheckCircle2,
   ClipboardCheck,
   Database,
   LayoutTemplate,
@@ -8,6 +10,7 @@ import {
   LogOut,
   Shield,
   Shuffle,
+  Trash2,
   Trophy,
   Users,
 } from 'lucide-react';
@@ -28,9 +31,12 @@ import {
   StaffRole,
   Tournament,
   TournamentAd,
+  TournamentTrophy,
   UserRole,
 } from '../types/tennis';
+import { analyzeDuplicateMatches } from '../utils/tournamentEngine';
 import {
+  deleteMatchesBatch,
   fetchAllPlayersPrivate,
   fetchDraftPhotosForAdmin,
   fetchStaffRole,
@@ -63,6 +69,7 @@ interface AdminDashboardProps {
   publishedPhotos: MatchdayPhoto[];
   notifications: NotificationAlert[];
   tournamentAds: TournamentAd[];
+  tournamentTrophies: TournamentTrophy[];
   siteConfig: SiteLandingConfig;
   selectedTournamentId: string;
   onSelectTournament: (id: string) => void;
@@ -83,6 +90,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   publishedPhotos,
   notifications,
   tournamentAds,
+  tournamentTrophies,
   siteConfig,
   selectedTournamentId,
   onSelectTournament,
@@ -97,6 +105,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [playersPrivate, setPlayersPrivate] = useState<Record<string, PlayerPrivate>>({});
   const [draftPhotos, setDraftPhotos] = useState<MatchdayPhoto[]>([]);
   const [seeding, setSeeding] = useState(false);
+  const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
+  const [duplicateCleanupFeedback, setDuplicateCleanupFeedback] = useState<string | null>(null);
+  const [duplicateCleanupError, setDuplicateCleanupError] = useState<string | null>(null);
 
   const isBootstrappedSuperAdmin =
     Boolean(user?.emailVerified) && user?.email === 'elpatriota62@gmail.com';
@@ -249,6 +260,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     .filter((md) => md.divisionId === activeDivision?.id)
     .sort((a, b) => a.order - b.order);
   const divisionMatches = matches.filter((m) => m.divisionId === activeDivision?.id);
+
+  const duplicateAnalysis = useMemo(() => analyzeDuplicateMatches(matches), [matches]);
+
+  const handleCleanupDuplicateMatches = async () => {
+    if (!isSuperAdmin || duplicateAnalysis.duplicateMatches.length === 0) return;
+    setCleaningDuplicates(true);
+    setDuplicateCleanupError(null);
+    setDuplicateCleanupFeedback(null);
+    try {
+      const targetIds = duplicateAnalysis.duplicateMatches.map((m) => m.id);
+      await deleteMatchesBatch(targetIds);
+      setDuplicateCleanupFeedback(
+        `Se eliminaron ${targetIds.length} ${
+          targetIds.length === 1 ? 'partido duplicado' : 'partidos duplicados'
+        } conservando los resultados y programaciones válidas.`
+      );
+    } catch (err) {
+      setDuplicateCleanupError(
+        err instanceof Error
+          ? err.message
+          : 'No se pudieron eliminar los partidos duplicados en Firestore.'
+      );
+    } finally {
+      setCleaningDuplicates(false);
+    }
+  };
 
   const navItems: Array<{ id: AdminTab; label: string; icon: React.ReactNode; show: boolean }> = [
     { id: 'torneos', label: 'Torneos y divisiones', icon: <Trophy className="w-4 h-4" />, show: isOrganizerOrAbove },
@@ -443,7 +480,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </aside>
 
         {/* Área de Trabajo Principal */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 space-y-5">
+          {duplicateCleanupFeedback && duplicateAnalysis.duplicateMatches.length === 0 && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-3 text-xs font-medium text-emerald-900">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                <span>{duplicateCleanupFeedback}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDuplicateCleanupFeedback(null)}
+                className="text-[11px] font-semibold underline shrink-0"
+              >
+                Ocultar
+              </button>
+            </div>
+          )}
+
+          {duplicateAnalysis.duplicateMatches.length > 0 && (
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 space-y-2.5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="text-sm font-bold text-amber-950">
+                      Se detectaron {duplicateAnalysis.duplicateMatches.length}{' '}
+                      {duplicateAnalysis.duplicateMatches.length === 1
+                        ? 'partido duplicado'
+                        : 'partidos duplicados'}{' '}
+                      en {duplicateAnalysis.groups.length}{' '}
+                      {duplicateAnalysis.groups.length === 1 ? 'cruce' : 'cruces'}
+                    </h3>
+                    <p className="text-xs text-amber-900 mt-0.5">
+                      Al limpiar, se conservarán automáticamente los partidos con resultados, sets
+                      cargados o programación asignada y se borrarán las copias redundantes.
+                    </p>
+                  </div>
+                </div>
+                {isSuperAdmin ? (
+                  <button
+                    type="button"
+                    onClick={handleCleanupDuplicateMatches}
+                    disabled={cleaningDuplicates}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-700 text-white text-xs font-semibold hover:bg-red-800 disabled:opacity-60 transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {cleaningDuplicates
+                      ? 'Eliminando duplicados...'
+                      : `Eliminar ${duplicateAnalysis.duplicateMatches.length} duplicados`}
+                  </button>
+                ) : (
+                  <span className="text-[11px] font-medium text-amber-900 bg-white/80 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                    Solicitá al superadministrador ejecutar la limpieza de duplicados.
+                  </span>
+                )}
+              </div>
+              {duplicateCleanupError && (
+                <p className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {duplicateCleanupError}
+                </p>
+              )}
+            </div>
+          )}
+
           {currentTab === 'torneos' && (
             <AdminTournamentsSection
               tournaments={tournaments}
@@ -457,6 +556,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               draftPhotos={draftPhotos}
               notifications={notifications}
               tournamentAds={tournamentAds}
+              tournamentTrophies={tournamentTrophies}
               selectedTournamentId={activeTournament?.id || ''}
               onSelectTournament={onSelectTournament}
               selectedDivisionId={activeDivision?.id || ''}

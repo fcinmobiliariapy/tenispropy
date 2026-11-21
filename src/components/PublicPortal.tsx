@@ -27,11 +27,13 @@ import {
   Registration,
   Tournament,
   TournamentAd,
+  TournamentTrophy,
 } from '../types/tennis';
 import { formatScoreString } from '../utils/itfRules';
-import { compareMatchesByRound, formatAsuncionDate } from '../utils/tournamentEngine';
+import { compareMatchesByRound, dedupeMatches, formatAsuncionDate } from '../utils/tournamentEngine';
 import { PublicTab, PWAInstallButton } from './TopBarAndPWA';
 import { TournamentAd as TournamentAdCard } from './TournamentAd';
+import { TournamentTrophiesViewer } from './TournamentTrophiesViewer';
 import {
   buildFixtureAgendaWhatsAppMessage,
   buildMatchWhatsAppMessage,
@@ -50,6 +52,7 @@ interface PublicPortalProps {
   photos: MatchdayPhoto[];
   notifications: NotificationAlert[];
   tournamentAds: TournamentAd[];
+  tournamentTrophies: TournamentTrophy[];
   activeTab: PublicTab;
   onSelectTab: (tab: PublicTab) => void;
   onGoLanding?: () => void;
@@ -464,6 +467,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   photos,
   notifications,
   tournamentAds,
+  tournamentTrophies,
   activeTab,
   onSelectTab,
   onGoLanding,
@@ -572,9 +576,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
   const divisionMatches = useMemo(
     () =>
-      matches
-        .filter((m) => m.divisionId === activeDivision?.id && m.published)
-        .sort(compareMatchesByRound),
+      dedupeMatches(
+        matches.filter((m) => m.divisionId === activeDivision?.id && m.published)
+      ).sort(compareMatchesByRound),
     [matches, activeDivision]
   );
 
@@ -605,8 +609,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   // Fixture filtered list across tournaments/divisions
   const filteredFixtureMatches = useMemo(() => {
     const q = filterPlayerQuery.trim().toLowerCase();
-    return matches
-      .filter((m) => m.published && !m.isBye)
+    return dedupeMatches(matches.filter((m) => m.published && !m.isBye))
       .filter((m) => (filterTournamentId === 'ALL' ? true : m.tournamentId === filterTournamentId))
       .filter((m) => (filterDivisionId === 'ALL' ? true : m.divisionId === filterDivisionId))
       .filter((m) => (filterMatchdayId === 'ALL' ? true : m.matchdayId === filterMatchdayId))
@@ -1904,6 +1907,16 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               </div>
             </section>
           </div>
+        )}
+
+        {/* Premios del Torneo (Trofeos por Categoría) */}
+        {activeTab === 'resumen' && (
+          <TournamentTrophiesViewer
+            trophies={tournamentTrophies}
+            divisions={tournamentDivisions}
+            tournament={activeTournament || null}
+            activeDivisionId={activeDivision?.id}
+          />
         )}
 
         {/* Publicidades personalizadas del torneo en portada (Resumen) */}

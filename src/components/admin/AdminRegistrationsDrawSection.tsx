@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   CheckCircle2,
   Edit3,
   Plus,
@@ -18,6 +19,7 @@ import {
   RegistrationStatus,
 } from '../../types/tennis';
 import {
+  analyzeDuplicateMatches,
   generateGroupsDrawPreview,
   generateKnockoutBracket,
   generateKnockoutBracketFromSlotPairs,
@@ -25,6 +27,8 @@ import {
   makeId,
 } from '../../utils/tournamentEngine';
 import {
+  deleteGroupsBatch,
+  deleteMatchesBatch,
   publishNotificationAndBroadcast,
   removeEntity,
   saveEntity,
@@ -60,6 +64,13 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
   const [regStatus, setRegStatus] = useState<RegistrationStatus>('confirmada');
   const [regError, setRegError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [publishingDraw, setPublishingDraw] = useState(false);
+  const [cleaningDivDuplicates, setCleaningDivDuplicates] = useState(false);
+
+  const divisionDuplicateAnalysis = useMemo(
+    () => analyzeDuplicateMatches(matches),
+    [matches]
+  );
 
   // Modo de sorteo y cruces (Automático o Manual)
   const [drawMode, setDrawMode] = useState<DrawMode>('automatico');
@@ -467,52 +478,130 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
     setPreviewTitle(`Borrador automático de fase final (${groupQualifiers.length} clasificados)`);
   };
 
+  const handleCleanupDivisionDuplicates = async () => {
+    if (!isSuperAdmin || divisionDuplicateAnalysis.duplicateMatches.length === 0) return;
+    setCleaningDivDuplicates(true);
+    setRegError(null);
+    setFeedback(null);
+    try {
+      const ids = divisionDuplicateAnalysis.duplicateMatches.map((m) => m.id);
+      await deleteMatchesBatch(ids);
+      setFeedback(
+        `Se eliminaron ${ids.length} ${
+          ids.length === 1 ? 'partido duplicado' : 'partidos duplicados'
+        } de ${division.name}.`
+      );
+    } catch (err) {
+      setRegError(
+        err instanceof Error ? err.message : 'No se pudieron eliminar los partidos duplicados.'
+      );
+    } finally {
+      setCleaningDivDuplicates(false);
+    }
+  };
+
   const handlePublishDraw = async () => {
-    if (!previewMatches) return;
+    if (!previewMatches || publishingDraw) return;
     if (previewMatches.length === 0) {
       setRegError('Agregá al menos un cruce antes de publicar.');
       return;
     }
-    const now = new Date().toISOString();
 
-    if (previewGroups) {
-      for (const g of previewGroups) {
-        await saveEntity('groups', { ...g, published: true, updatedAt: now });
-        for (const entryId of g.entryIds) {
-          const reg = registrations.find((r) => r.id === entryId);
-          if (reg) {
-            await saveEntity('registrations', { ...reg, groupId: g.id, updatedAt: now });
+    setPublishingDraw(true);
+    setRegError(null);
+    try {
+      const now = new Date().toISOString();
+      const existingPhaseMatches = previewGroups
+        ? matches
+        : matches.filter((m) => m.phase === 'eliminacion');
+      let matchesToSave = previewMatches;
+
+      if (isSuperAdmin) {
+        if (existingPhaseMatches.length > 0) {
+          await deleteMatchesBatch(existingPhaseMatches.map((m) => m.id));
+        }
+        if (previewGroups && groups.length > 0) {
+          await deleteGroupsBatch(groups.map((g) => g.id));
+        }
+      } else if (existingPhaseMatches.length > 0) {
+        const usedIds = new Set<string>();
+        const idRemap = new Map<string, string>();
+        const unplayedPool = existingPhaseMatches.filter(
+          (m) => !m.winnerEntryId && m.sets.length === 0
+        );
+        for (const pm of previewMatches) {
+          const candidate = unplayedPool.find(
+            (em) =>
+              !usedIds.has(em.id) &&
+              em.phase === pm.phase &&
+              (pm.phase === 'eliminacion'
+                ? em.roundOrder === pm.roundOrder &&
+                  em.bracketPosition === pm.bracketPosition &&
+                  Boolean(em.isThirdPlace) === Boolean(pm.isThirdPlace)
+                : em.roundName === pm.roundName)
+          );
+          if (candidate) {
+            usedIds.add(candidate.id);
+            idRemap.set(pm.id, candidate.id);
+          }
+        }
+        if (idRemap.size > 0) {
+          matchesToSave = previewMatches.map((pm) => {
+            const targetId = idRemap.get(pm.id) || pm.id;
+            const prevDoc = existingPhaseMatches.find((em) => em.id === targetId);
+            return {
+              ...pm,
+              id: targetId,
+              nextMatchId: pm.nextMatchId ? idRemap.get(pm.nextMatchId) || pm.nextMatchId : null,
+              createdAt: prevDoc?.createdAt || pm.createdAt,
+            };
+          });
+        }
+      }
+
+      if (previewGroups) {
+        for (const g of previewGroups) {
+          await saveEntity('groups', { ...g, published: true, updatedAt: now });
+          for (const entryId of g.entryIds) {
+            const reg = registrations.find((r) => r.id === entryId);
+            if (reg) {
+              await saveEntity('registrations', { ...reg, groupId: g.id, updatedAt: now });
+            }
           }
         }
       }
+
+      for (const m of matchesToSave) {
+        await saveEntity('matches', { ...m, published: true, updatedAt: now });
+      }
+
+      await saveEntity('divisions', {
+        ...division,
+        drawStatus: 'publicado',
+        updatedAt: now,
+      });
+
+      await publishNotificationAndBroadcast(
+        {
+          id: makeId('notif'),
+          tournamentId: division.tournamentId,
+          divisionId: division.id,
+          title: `Sorteo y cruces publicados · ${division.name}`,
+          body: `Ya podés consultar los cruces oficiales de ${division.name}.`,
+          targetPlayerIds: confirmedEntries.flatMap((e) => e.playerIds),
+          createdAt: now,
+        },
+        'draw:published'
+      );
+
+      setPreviewGroups(null);
+      setPreviewMatches(null);
+      setFeedback(`Sorteo y cruces de ${division.name} publicados en el portal público.`);
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : 'Error al publicar el sorteo.');
+    } finally {
+      setPublishingDraw(false);
     }
-
-    for (const m of previewMatches) {
-      await saveEntity('matches', { ...m, published: true, updatedAt: now });
-    }
-
-    await saveEntity('divisions', {
-      ...division,
-      drawStatus: 'publicado',
-      updatedAt: now,
-    });
-
-    await publishNotificationAndBroadcast(
-      {
-        id: makeId('notif'),
-        tournamentId: division.tournamentId,
-        divisionId: division.id,
-        title: `Sorteo y cruces publicados · ${division.name}`,
-        body: `Ya podés consultar los cruces oficiales de ${division.name}.`,
-        targetPlayerIds: confirmedEntries.flatMap((e) => e.playerIds),
-        createdAt: now,
-      },
-      'draw:published'
-    );
-
-    setPreviewGroups(null);
-    setPreviewMatches(null);
-    setFeedback(`Sorteo y cruces de ${division.name} publicados en el portal público.`);
   };
 
   const handleCrownChampionRoundRobin = async () => {
@@ -614,6 +703,30 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
           Inscripciones y Sorteo — {division.name}
         </h2>
       </div>
+
+      {divisionDuplicateAnalysis.duplicateMatches.length > 0 && (
+        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-start gap-2 text-amber-950">
+            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+            <span>
+              Esta división tiene{' '}
+              <strong>{divisionDuplicateAnalysis.duplicateMatches.length} partidos duplicados</strong>.
+              Se conservarán los partidos con resultado o programación.
+            </span>
+          </div>
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={handleCleanupDivisionDuplicates}
+              disabled={cleaningDivDuplicates}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-700 text-white font-semibold hover:bg-red-800 disabled:opacity-60"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {cleaningDivDuplicates ? 'Limpiando...' : 'Eliminar duplicados'}
+            </button>
+          )}
+        </div>
+      )}
 
       {regError && (
         <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-medium text-red-800">
@@ -1268,10 +1381,11 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                 </button>
                 <button
                   onClick={handlePublishDraw}
-                  className="inline-flex items-center gap-1.5 px-4 min-h-[40px] sm:min-h-[34px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium"
+                  disabled={publishingDraw}
+                  className="inline-flex items-center gap-1.5 px-4 min-h-[40px] sm:min-h-[34px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium disabled:opacity-60"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  Publicar sorteo
+                  {publishingDraw ? 'Publicando...' : 'Publicar sorteo'}
                 </button>
               </div>
             </div>

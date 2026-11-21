@@ -10,6 +10,7 @@ import {
   Registration,
   Tournament,
   TournamentAd,
+  TournamentTrophy,
 } from '../types/tennis';
 import { computeGroupStandings, computePlayerStatsFromMatches } from '../utils/tournamentEngine';
 
@@ -25,6 +26,7 @@ export interface DemoBundle {
   photos: MatchdayPhoto[];
   notifications: NotificationAlert[];
   tournamentAds: TournamentAd[];
+  tournamentTrophies: TournamentTrophy[];
 }
 
 export function buildDemoBundle(adminUid = 'system_demo_admin'): DemoBundle {
@@ -1345,6 +1347,89 @@ export function buildDemoBundle(adminUid = 'system_demo_admin'): DemoBundle {
     },
   ];
 
+  const tournamentTrophies: TournamentTrophy[] = [
+    {
+      id: 'trophy_cit_5ta_campeon',
+      tournamentId: 'torneo_copa_asuncion_2026',
+      divisionId: 'div_5ta_singles_masc',
+      divisionName: '5ta Singles Masculino',
+      category: '5ta',
+      place: 'campeon',
+      title: 'Copa Oro del Certamen · 5ta Singles',
+      recipientName: null,
+      cupStyle: 'classic_chalice',
+      finish: 'gold',
+      engravingText: '5ta Singles Masculino · Copa Asunción Apertura 2026',
+      customPrompt: null,
+      aiMotifNote: 'Cáliz dorado clásico con emblema de tenis y placa grabada CIT.',
+      imageUrl: '/assets/trophies/copa_campeon_oro.svg',
+      active: true,
+      order: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'trophy_cit_5ta_vice',
+      tournamentId: 'torneo_copa_asuncion_2026',
+      divisionId: 'div_5ta_singles_masc',
+      divisionName: '5ta Singles Masculino',
+      category: '5ta',
+      place: 'vicecampeon',
+      title: 'Cristal Plata Finalista · 5ta Singles',
+      recipientName: null,
+      cupStyle: 'modern_crystal',
+      finish: 'silver',
+      engravingText: 'Subcampeón 5ta Singles · Copa Asunción Apertura 2026',
+      customPrompt: null,
+      aiMotifNote: 'Prisma de cristal facetado con esfera de tenis suspendida.',
+      imageUrl: '/assets/trophies/copa_vicecampeon_plata.svg',
+      active: true,
+      order: 2,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'trophy_cit_4ta_dobles_campeon',
+      tournamentId: 'torneo_copa_asuncion_2026',
+      divisionId: 'div_4ta_dobles_fem',
+      divisionName: '4ta Dobles Femenino',
+      category: '4ta',
+      place: 'campeon',
+      title: 'Corona Cristal PlayPy · 4ta Dobles',
+      recipientName: null,
+      cupStyle: 'tennis_crown',
+      finish: 'playpy_crystal',
+      engravingText: 'Campeonas 4ta Dobles Femenino · Copa Asunción 2026',
+      customPrompt: null,
+      aiMotifNote: 'Corona PlayPy en azul eléctrico y violeta para campeonas de dobles.',
+      imageUrl: '/assets/trophies/corona_dobles_playpy.svg',
+      active: true,
+      order: 3,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'trophy_yacht_libre_campeon',
+      tournamentId: 'torneo_yacht_abierto_2026',
+      divisionId: 'div_yacht_libre_masc',
+      divisionName: 'Libre Singles Masculino',
+      category: 'Libre',
+      place: 'campeon',
+      title: 'Gran Copa Abierto del Yacht · Libre',
+      recipientName: null,
+      cupStyle: 'classic_chalice',
+      finish: 'gold',
+      engravingText: 'Campeón Libre Singles · Abierto del Yacht Club 2026',
+      customPrompt: null,
+      aiMotifNote: 'Trofeo mayor dorado para el campeón de Primera / Libre.',
+      imageUrl: '/assets/trophies/copa_campeon_oro.svg',
+      active: true,
+      order: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
   return {
     tournaments,
     divisions,
@@ -1357,5 +1442,6 @@ export function buildDemoBundle(adminUid = 'system_demo_admin'): DemoBundle {
     photos,
     notifications,
     tournamentAds,
+    tournamentTrophies,
   };
 }

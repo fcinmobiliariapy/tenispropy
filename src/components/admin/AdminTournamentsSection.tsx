@@ -32,6 +32,7 @@ import {
   Tournament,
   TournamentAd,
   TournamentStatus,
+  TournamentTrophy,
 } from '../../types/tennis';
 import { ITF_EDITION_LABEL } from '../../utils/itfRules';
 import { compressImageDataUrl, optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
@@ -43,6 +44,7 @@ import {
   saveEntity,
 } from '../../services/firestoreService';
 import { generateAdaptiveTournamentAdBanners } from '../TournamentAd';
+import { AdminTrophiesPanel } from './AdminTrophiesPanel';
 
 interface Props {
   tournaments: Tournament[];
@@ -56,6 +58,7 @@ interface Props {
   draftPhotos: MatchdayPhoto[];
   notifications: NotificationAlert[];
   tournamentAds: TournamentAd[];
+  tournamentTrophies: TournamentTrophy[];
   selectedTournamentId: string;
   onSelectTournament: (id: string) => void;
   selectedDivisionId: string;
@@ -148,6 +151,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
   draftPhotos,
   notifications,
   tournamentAds,
+  tournamentTrophies,
   selectedTournamentId,
   onSelectTournament,
   selectedDivisionId,
@@ -508,6 +512,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         draftPhotos,
         notifications,
         tournamentAds,
+        tournamentTrophies,
       });
       setConfirmDeleteTournamentId(null);
       const nextT = tournaments.find((t) => t.id !== tid);
@@ -690,6 +695,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         matches,
         publishedPhotos,
         draftPhotos,
+        tournamentTrophies,
       });
       setConfirmDeleteDivisionId(null);
       const nextDiv = tournamentDivisions.find((d) => d.id !== divId);
@@ -2486,6 +2492,14 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               </div>
             )}
           </div>
+
+          <AdminTrophiesPanel
+            tournament={activeTournament}
+            divisions={tournamentDivisions}
+            trophies={tournamentTrophies}
+            selectedDivisionId={selectedDivisionId}
+            isSuperAdmin={isSuperAdmin}
+          />
         </div>
       )}
     </div>

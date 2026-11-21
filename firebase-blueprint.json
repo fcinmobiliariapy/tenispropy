@@ -265,6 +265,32 @@
       },
       "required": ["id", "tournamentId", "sponsorName", "title", "imageUrl", "placement", "order", "active", "createdAt", "updatedAt"]
     },
+    "TournamentTrophy": {
+      "title": "TournamentTrophy",
+      "description": "Trofeo personalizable generado por IA para los ganadores y podio de cada categoría del torneo.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tournamentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "divisionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "divisionName": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "place": { "type": "string", "enum": ["campeon", "vicecampeon", "tercer_puesto", "especial"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "recipientName": { "type": "string", "maxLength": 180 },
+        "cupStyle": { "type": "string", "enum": ["classic_chalice", "modern_crystal", "laurel_shield", "tennis_crown"] },
+        "finish": { "type": "string", "enum": ["gold", "silver", "bronze", "playpy_crystal"] },
+        "engravingText": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "customPrompt": { "type": "string", "maxLength": 500 },
+        "aiMotifNote": { "type": "string", "maxLength": 300 },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 250000 },
+        "active": { "type": "boolean" },
+        "order": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "tournamentId", "divisionId", "divisionName", "category", "place", "title", "cupStyle", "finish", "engravingText", "imageUrl", "active", "order", "createdAt", "updatedAt"]
+    },
     "SiteLandingConfig": {
       "title": "SiteLandingConfig",
       "description": "Configuración editable de la página principal de PlayPy (identidad, imágenes, banner y textos).",
@@ -368,6 +394,10 @@
     "/tournament_ads/{adId}": {
       "schema": { "$ref": "#/entities/TournamentAd" },
       "description": "Publicidades y auspiciantes personalizados por torneo."
+    },
+    "/tournament_trophies/{trophyId}": {
+      "schema": { "$ref": "#/entities/TournamentTrophy" },
+      "description": "Trofeos personalizables generados con IA por categoría y puesto."
     },
     "/site_settings/{settingId}": {
       "schema": { "$ref": "#/entities/SiteLandingConfig" },

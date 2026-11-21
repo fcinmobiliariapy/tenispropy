@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -397,16 +397,25 @@ Colores de referencia PlayPy: Navy #0A1633, Violeta #7C1FA2, Azul Eléctrico #00
 
     for (const modelName of candidateModels) {
       try {
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents: promptText,
-          config: generateConfig,
-        });
+        const modelConfig =
+          modelName === 'gemini-4-hydrogen'
+            ? { ...generateConfig, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+            : generateConfig;
+        response = await Promise.race([
+          ai.models.generateContent({
+            model: modelName,
+            contents: promptText,
+            config: modelConfig,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(Object.assign(new Error(`Timeout en modelo ${modelName}`), { status: 504 })), 12000)
+          ),
+        ]);
         break;
       } catch (modelErr: unknown) {
         lastErr = modelErr;
         const errStatus = (modelErr as { status?: number })?.status;
-        if (errStatus !== 503 && errStatus !== 429) {
+        if (errStatus !== 503 && errStatus !== 429 && errStatus !== 504) {
           throw modelErr;
         }
       }
@@ -477,6 +486,496 @@ Colores de referencia PlayPy: Navy #0A1633, Violeta #7C1FA2, Azul Eléctrico #00
       }
     } catch {
       // keep raw message
+    }
+    res.status(status).json({ error: message });
+  }
+});
+
+interface TrophyDesignSpec {
+  headline: string;
+  plaqueTitle: string;
+  engravingLine1: string;
+  engravingLine2: string;
+  motifNote: string;
+  bgStart: string;
+  bgEnd: string;
+  metalLight: string;
+  metalMid: string;
+  metalDark: string;
+  accentColor: string;
+  ribbonColor: string;
+  emblemPattern: 'stars' | 'laurel' | 'court_arcs' | 'prism_grid';
+}
+
+const TROPHY_FINISH_PALETTES: Record<
+  string,
+  { metalLight: string; metalMid: string; metalDark: string; accentColor: string; label: string }
+> = {
+  gold: {
+    metalLight: '#FEF3C7',
+    metalMid: '#F59E0B',
+    metalDark: '#92400E',
+    accentColor: '#FBBF24',
+    label: 'ORO CAMPEÓN',
+  },
+  silver: {
+    metalLight: '#F8FAFC',
+    metalMid: '#CBD5E1',
+    metalDark: '#475569',
+    accentColor: '#38BDF8',
+    label: 'PLATA OFICIAL',
+  },
+  bronze: {
+    metalLight: '#FFEDD5',
+    metalMid: '#EA580C',
+    metalDark: '#7C2D12',
+    accentColor: '#FB923C',
+    label: 'BRONCE PODIO',
+  },
+  playpy_crystal: {
+    metalLight: '#E0F2FE',
+    metalMid: '#0095FF',
+    metalDark: '#7C1FA2',
+    accentColor: '#38BDF8',
+    label: 'CRISTAL PLAYPY',
+  },
+};
+
+function buildTrophyShowcaseSvg(params: {
+  spec: TrophyDesignSpec;
+  cupStyle: 'classic_chalice' | 'modern_crystal' | 'laurel_shield' | 'tennis_crown';
+  finish: 'gold' | 'silver' | 'bronze' | 'playpy_crystal';
+  tournamentName: string;
+  divisionName: string;
+  placeLabel: string;
+  venue: string;
+  city: string;
+  recipientName?: string;
+}): string {
+  const {
+    spec,
+    cupStyle,
+    finish,
+    tournamentName,
+    divisionName,
+    placeLabel,
+    venue,
+    city,
+    recipientName,
+  } = params;
+
+  const fallbackPalette = TROPHY_FINISH_PALETTES[finish] || TROPHY_FINISH_PALETTES.gold;
+  const bgStart = safeHex(spec.bgStart, '#0A1633');
+  const bgEnd = safeHex(spec.bgEnd, '#151E45');
+  const metalLight = safeHex(spec.metalLight, fallbackPalette.metalLight);
+  const metalMid = safeHex(spec.metalMid, fallbackPalette.metalMid);
+  const metalDark = safeHex(spec.metalDark, fallbackPalette.metalDark);
+  const accentColor = safeHex(spec.accentColor, fallbackPalette.accentColor);
+  const ribbonColor = safeHex(spec.ribbonColor, '#7C1FA2');
+
+  const headline = (spec.headline || `${placeLabel} · ${divisionName}`).slice(0, 38);
+  const plaqueTitle = (spec.plaqueTitle || placeLabel).toUpperCase().slice(0, 26);
+  const eng1 = (recipientName?.trim() || spec.engravingLine1 || divisionName).slice(0, 30);
+  const eng2 = (spec.engravingLine2 || tournamentName).slice(0, 34);
+  const locText = [venue, city].filter(Boolean).join(' · ') || 'Circuito PlayPy';
+
+  const bgPatternLayer =
+    spec.emblemPattern === 'court_arcs'
+      ? `
+        <g opacity="0.18" fill="none" stroke="${accentColor}" stroke-width="2.5">
+          <rect x="90" y="90" width="820" height="920" rx="44" stroke="#FFFFFF" stroke-opacity="0.22" />
+          <circle cx="500" cy="440" r="290" />
+          <circle cx="500" cy="440" r="215" stroke="${ribbonColor}" stroke-width="3" />
+          <path d="M120 740 C300 620 700 620 880 740" stroke-dasharray="10 8" />
+        </g>`
+      : spec.emblemPattern === 'prism_grid'
+      ? `
+        <g opacity="0.16" fill="none" stroke="${accentColor}" stroke-width="2">
+          <polygon points="500,130 820,440 500,750 180,440" />
+          <polygon points="500,190 760,440 500,690 240,440" stroke="${ribbonColor}" />
+          <line x1="500" y1="100" x2="500" y2="780" stroke="#FFFFFF" stroke-opacity="0.25" />
+        </g>`
+      : `
+        <g opacity="0.22" fill="none">
+          <circle cx="500" cy="440" r="300" stroke="${metalMid}" stroke-width="2" stroke-dasharray="6 10" />
+          <circle cx="500" cy="440" r="245" stroke="${accentColor}" stroke-width="2.5" />
+          <circle cx="220" cy="240" r="4" fill="${metalLight}" />
+          <circle cx="780" cy="240" r="4" fill="${metalLight}" />
+          <circle cx="190" cy="540" r="3" fill="${accentColor}" />
+          <circle cx="810" cy="540" r="3" fill="${accentColor}" />
+        </g>`;
+
+  let silhouetteMarkup = '';
+  if (cupStyle === 'modern_crystal') {
+    silhouetteMarkup = `
+      <!-- Trofeo Cristal Moderno -->
+      <g transform="translate(500, 445)">
+        <!-- Destello posterior -->
+        <polygon points="0,-275 135,-80 95,125 -95,125 -135,-80" fill="url(#metalBody)" opacity="0.96" stroke="${metalLight}" stroke-width="3" />
+        <polygon points="0,-275 135,-80 0,20" fill="${metalLight}" opacity="0.45" />
+        <polygon points="0,-275 -135,-80 0,20" fill="${metalDark}" opacity="0.28" />
+        <polygon points="0,20 135,-80 95,125 0,125" fill="${ribbonColor}" opacity="0.35" />
+        <polygon points="0,20 -135,-80 -95,125 0,125" fill="${accentColor}" opacity="0.25" />
+        <!-- Esfera de tenis suspendida en cristal -->
+        <circle cx="0" cy="-95" r="48" fill="#D9F99D" stroke="#FFFFFF" stroke-width="3" />
+        <path d="M-36 -125 C-12 -102 -12 -88 -36 -65 M36 -125 C12 -102 12 -88 36 -65" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
+        <!-- Cuello metálico -->
+        <rect x="-52" y="125" width="104" height="22" rx="6" fill="url(#metalTrim)" />
+      </g>`;
+  } else if (cupStyle === 'laurel_shield') {
+    silhouetteMarkup = `
+      <!-- Trofeo Escudo con Laureles -->
+      <g transform="translate(500, 445)">
+        <!-- Corona de laureles izquierda y derecha -->
+        <path d="M-155 110 C-235 45 -245 -105 -150 -195 C-180 -105 -170 25 -105 95 Z" fill="url(#metalTrim)" opacity="0.92" />
+        <path d="M155 110 C235 45 245 -105 150 -195 C180 -105 170 25 105 95 Z" fill="url(#metalTrim)" opacity="0.92" />
+        <!-- Escudo central -->
+        <path d="M-135 -205 L135 -205 L135 -35 C135 65 0 135 0 135 C0 135 -135 65 -135 -35 Z" fill="url(#metalBody)" stroke="${metalLight}" stroke-width="5" />
+        <path d="M-105 -175 L105 -175 L105 -42 C105 38 0 98 0 98 C0 98 -105 38 -105 -42 Z" fill="${bgStart}" fill-opacity="0.72" stroke="${accentColor}" stroke-width="2.5" />
+        <!-- Raquetas cruzadas + PlayPy -->
+        <ellipse cx="-24" cy="-78" rx="34" ry="44" transform="rotate(-25 -24 -78)" fill="none" stroke="${metalLight}" stroke-width="6" />
+        <line x1="-2" y1="-36" x2="48" y2="28" stroke="${metalLight}" stroke-width="7" stroke-linecap="round" />
+        <ellipse cx="24" cy="-78" rx="34" ry="44" transform="rotate(25 24 -78)" fill="none" stroke="${metalLight}" stroke-width="6" />
+        <line x1="2" y1="-36" x2="-48" y2="28" stroke="${metalLight}" stroke-width="7" stroke-linecap="round" />
+        <circle cx="0" cy="-72" r="22" fill="#D9F99D" stroke="#FFFFFF" stroke-width="2.5" />
+      </g>`;
+  } else if (cupStyle === 'tennis_crown') {
+    silhouetteMarkup = `
+      <!-- Trofeo Corona del Circuito -->
+      <g transform="translate(500, 445)">
+        <!-- Corona superior -->
+        <path d="M-165 -20 L-190 -175 L-85 -95 L0 -230 L85 -95 L190 -175 L165 -20 Z" fill="url(#metalBody)" stroke="${metalLight}" stroke-width="4" stroke-linejoin="round" />
+        <circle cx="-190" cy="-185" r="14" fill="${metalLight}" />
+        <circle cx="0" cy="-242" r="18" fill="#D9F99D" stroke="#FFFFFF" stroke-width="3" />
+        <circle cx="190" cy="-185" r="14" fill="${metalLight}" />
+        <!-- Banda de corona con emblema -->
+        <rect x="-165" y="-22" width="330" height="44" rx="12" fill="url(#metalTrim)" stroke="${metalLight}" stroke-width="2.5" />
+        <circle cx="0" cy="0" r="14" fill="${ribbonColor}" stroke="${metalLight}" stroke-width="2" />
+        <!-- Columna estriada -->
+        <path d="M-85 22 L85 22 L62 135 L-62 135 Z" fill="url(#metalBody)" stroke="${metalLight}" stroke-width="2.5" />
+        <line x1="-32" y1="30" x2="-24" y2="128" stroke="${metalDark}" stroke-width="4" opacity="0.45" />
+        <line x1="0" y1="30" x2="0" y2="128" stroke="${metalLight}" stroke-width="4" opacity="0.55" />
+        <line x1="32" y1="30" x2="24" y2="128" stroke="${metalDark}" stroke-width="4" opacity="0.45" />
+      </g>`;
+  } else {
+    silhouetteMarkup = `
+      <!-- Copa Clásica de Campeonato -->
+      <g transform="translate(500, 445)">
+        <!-- Asas laterales -->
+        <path d="M-135 -180 C-230 -180 -235 -35 -120 -10" fill="none" stroke="url(#metalTrim)" stroke-width="18" stroke-linecap="round" />
+        <path d="M135 -180 C230 -180 235 -35 120 -10" fill="none" stroke="url(#metalTrim)" stroke-width="18" stroke-linecap="round" />
+        <!-- Cáliz principal -->
+        <path d="M-150 -220 L150 -220 C145 -65 82 22 0 42 C-82 22 -145 -65 -150 -220 Z" fill="url(#metalBody)" stroke="${metalLight}" stroke-width="4" />
+        <ellipse cx="0" cy="-220" rx="150" ry="22" fill="${metalDark}" stroke="${metalLight}" stroke-width="3" />
+        <!-- Reflejo vertical del cáliz -->
+        <path d="M-92 -192 C-82 -82 -44 -20 -18 14" fill="none" stroke="${metalLight}" stroke-width="12" stroke-linecap="round" opacity="0.48" />
+        <!-- Emblema pelota en el centro de la copa -->
+        <circle cx="0" cy="-102" r="36" fill="${bgStart}" fill-opacity="0.28" stroke="${metalLight}" stroke-width="2.5" />
+        <circle cx="0" cy="-102" r="24" fill="#D9F99D" stroke="#FFFFFF" stroke-width="2" />
+        <path d="M-18 -116 C-6 -105 -6 -99 -18 -88 M18 -116 C6 -105 6 -99 18 -88" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" />
+        <!-- Tallo y nudo -->
+        <rect x="-24" y="38" width="48" height="72" rx="10" fill="url(#metalBody)" />
+        <ellipse cx="0" cy="76" rx="44" ry="15" fill="url(#metalTrim)" stroke="${metalLight}" stroke-width="2" />
+        <path d="M-76 110 L76 110 L96 142 L-96 142 Z" fill="url(#metalTrim)" />
+      </g>`;
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1100" width="1000" height="1100">
+  <defs>
+    <linearGradient id="trophyBg" x1="0" y1="0" x2="1000" y2="1100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="${bgStart}" />
+      <stop offset="55%" stop-color="${bgEnd}" />
+      <stop offset="100%" stop-color="#050B1C" />
+    </linearGradient>
+    <radialGradient id="trophyGlow" cx="50%" cy="40%" r="46%">
+      <stop offset="0%" stop-color="${accentColor}" stop-opacity="0.42" />
+      <stop offset="55%" stop-color="${ribbonColor}" stop-opacity="0.20" />
+      <stop offset="100%" stop-color="${bgStart}" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="metalBody" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${metalLight}" />
+      <stop offset="48%" stop-color="${metalMid}" />
+      <stop offset="100%" stop-color="${metalDark}" />
+    </linearGradient>
+    <linearGradient id="metalTrim" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="${metalDark}" />
+      <stop offset="50%" stop-color="${metalLight}" />
+      <stop offset="100%" stop-color="${metalDark}" />
+    </linearGradient>
+    <linearGradient id="playpyBadge" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C1FA2" />
+      <stop offset="100%" stop-color="#0095FF" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1000" height="1100" fill="url(#trophyBg)" />
+  <rect width="1000" height="1100" fill="url(#trophyGlow)" />
+  ${bgPatternLayer}
+
+  <!-- Cabecera del Premio -->
+  <g transform="translate(500, 72)">
+    <rect x="-190" y="0" width="380" height="44" rx="22" fill="url(#playpyBadge)" fill-opacity="0.28" stroke="${accentColor}" stroke-opacity="0.65" stroke-width="1.5" />
+    <text x="0" y="29" text-anchor="middle" fill="#FFFFFF" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="18" font-weight="700" letter-spacing="2">${escapeXml(plaqueTitle)}</text>
+    <text x="0" y="92" text-anchor="middle" fill="#FFFFFF" font-family="Bricolage Grotesque, Plus Jakarta Sans, system-ui, sans-serif" font-size="38" font-weight="700">${escapeXml(headline)}</text>
+  </g>
+
+  ${silhouetteMarkup}
+
+  <!-- Pedestal y Placa Grabada -->
+  <g transform="translate(500, 595)">
+    <path d="M-158 0 L158 0 L190 36 L-190 36 Z" fill="#1E293B" stroke="${metalMid}" stroke-width="2" />
+    <rect x="-195" y="36" width="390" height="132" rx="14" fill="#0F172A" stroke="${metalDark}" stroke-width="3" />
+    <!-- Placa metálica grabada -->
+    <rect x="-162" y="54" width="324" height="96" rx="10" fill="url(#metalBody)" stroke="${metalLight}" stroke-width="2" />
+    <text x="0" y="92" text-anchor="middle" fill="#0A1633" font-family="Bricolage Grotesque, Plus Jakarta Sans, system-ui, sans-serif" font-size="24" font-weight="800">${escapeXml(eng1)}</text>
+    <text x="0" y="124" text-anchor="middle" fill="#1E293B" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="16" font-weight="700">${escapeXml(eng2)}</text>
+  </g>
+
+  <!-- Cinta y Sello PlayPy inferior -->
+  <g transform="translate(500, 845)">
+    <rect x="-320" y="0" width="640" height="140" rx="26" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="1.5" />
+    <text x="0" y="48" text-anchor="middle" fill="${metalLight}" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="22" font-weight="700">${escapeXml(divisionName.slice(0, 36))}</text>
+    <text x="0" y="84" text-anchor="middle" fill="#CBD5E1" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="18" font-weight="600">${escapeXml(tournamentName.slice(0, 44))}</text>
+    <text x="0" y="114" text-anchor="middle" fill="#94A3B8" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="15">${escapeXml(locText.slice(0, 52))} · PlayPy Oficial</text>
+  </g>
+</svg>`;
+}
+
+// Endpoint IA para generar imágenes de trofeos personalizables por categoría
+app.post('/api/ai/generate-trophy', async (req, res) => {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      res.status(400).json({
+        error:
+          'No se encontró una clave de Gemini configurada en el servidor (Settings > Secrets → GEMINI_API_KEY).',
+      });
+      return;
+    }
+
+    const {
+      tournamentName,
+      venue,
+      city,
+      divisionName,
+      category,
+      place,
+      title,
+      recipientName,
+      cupStyle,
+      finish,
+      engravingText,
+      customPrompt,
+    } = req.body as {
+      tournamentName?: string;
+      venue?: string;
+      city?: string;
+      divisionName?: string;
+      category?: string;
+      place?: 'campeon' | 'vicecampeon' | 'tercer_puesto' | 'especial';
+      title?: string;
+      recipientName?: string;
+      cupStyle?: 'classic_chalice' | 'modern_crystal' | 'laurel_shield' | 'tennis_crown';
+      finish?: 'gold' | 'silver' | 'bronze' | 'playpy_crystal';
+      engravingText?: string;
+      customPrompt?: string;
+    };
+
+    if (!tournamentName || !divisionName) {
+      res.status(400).json({
+        error: 'Indicá el torneo y la categoría o división para generar la imagen del trofeo.',
+      });
+      return;
+    }
+
+    const safeCupStyle =
+      cupStyle && ['classic_chalice', 'modern_crystal', 'laurel_shield', 'tennis_crown'].includes(cupStyle)
+        ? cupStyle
+        : 'classic_chalice';
+    const safeFinish =
+      finish && ['gold', 'silver', 'bronze', 'playpy_crystal'].includes(finish)
+        ? finish
+        : place === 'vicecampeon'
+        ? 'silver'
+        : place === 'tercer_puesto'
+        ? 'bronze'
+        : 'gold';
+
+    const placeMap: Record<string, string> = {
+      campeon: 'Campeón 1° Puesto',
+      vicecampeon: 'Vicecampeón 2° Puesto',
+      tercer_puesto: 'Tercer Puesto 3°',
+      especial: 'Distinción Especial',
+    };
+    const placeLabel = placeMap[place || 'campeon'] || 'Campeón 1° Puesto';
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+
+    const promptText = `Sos diseñador de trofeos y premiaciones deportivas de prestigio para PlayPy ("Tu App de Torneos y Competencias").
+Diseñá la dirección artística y el grabado personalizado de la placa para el siguiente trofeo oficial de tenis:
+- Torneo: ${tournamentName}
+- Sede / Ciudad: ${venue || 'Sede oficial'}, ${city || 'Paraguay'}
+- Categoría / División: ${divisionName} (${category || divisionName})
+- Puesto / Premio: ${placeLabel}
+- Título sugerido: ${title || `${placeLabel} ${divisionName}`}
+- Estilo de copa elegido: ${safeCupStyle}
+- Acabado elegido: ${safeFinish}
+- Texto de grabado sugerido: ${engravingText || divisionName}
+${recipientName ? `- Ganador ya coronado (grabar en placa): ${recipientName}` : '- Ganador aún por definir en cancha (grabar categoría y puesto)'}
+${customPrompt ? `- Indicaciones personalizadas del organizador: ${customPrompt}` : ''}
+
+Asegurate que los colores metalLight, metalMid, metalDark y bgStart/bgEnd combinen con elegancia deportiva PlayPy (#0A1633 navy, #7C1FA2 violeta, #0095FF azul eléctrico) y alto contraste para la placa grabada.`;
+
+    const generateConfig = {
+      systemInstruction:
+        'Devolvé únicamente JSON válido según el esquema. Copy elegante de premiación deportiva en español.',
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          headline: {
+            type: Type.STRING,
+            description: 'Título elegante para la parte superior de la tarjeta del trofeo (máximo 5 palabras).',
+          },
+          plaqueTitle: {
+            type: Type.STRING,
+            description: 'Etiqueta corta superior en mayúsculas (ej. CAMPEÓN 2026, FINALISTA).',
+          },
+          engravingLine1: {
+            type: Type.STRING,
+            description: 'Línea principal grabada en la placa del pedestal (nombre del ganador o división).',
+          },
+          engravingLine2: {
+            type: Type.STRING,
+            description: 'Segunda línea grabada en la placa (nombre del torneo y año).',
+          },
+          motifNote: {
+            type: Type.STRING,
+            description: 'Breve descripción de 1 oración del concepto estético del trofeo.',
+          },
+          bgStart: { type: Type.STRING },
+          bgEnd: { type: Type.STRING },
+          metalLight: { type: Type.STRING },
+          metalMid: { type: Type.STRING },
+          metalDark: { type: Type.STRING },
+          accentColor: { type: Type.STRING },
+          ribbonColor: { type: Type.STRING },
+          emblemPattern: {
+            type: Type.STRING,
+            enum: ['stars', 'laurel', 'court_arcs', 'prism_grid'],
+          },
+        },
+        required: [
+          'headline',
+          'plaqueTitle',
+          'engravingLine1',
+          'engravingLine2',
+          'motifNote',
+          'bgStart',
+          'bgEnd',
+          'metalLight',
+          'metalMid',
+          'metalDark',
+          'accentColor',
+          'ribbonColor',
+          'emblemPattern',
+        ],
+      },
+    };
+
+    const candidateModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'] as const;
+    let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
+    let lastErr: unknown = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        const modelConfig =
+          modelName === 'gemini-4-hydrogen'
+            ? { ...generateConfig, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+            : generateConfig;
+        response = await Promise.race([
+          ai.models.generateContent({
+            model: modelName,
+            contents: promptText,
+            config: modelConfig,
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(Object.assign(new Error(`Timeout en modelo ${modelName}`), { status: 504 })), 12000)
+          ),
+        ]);
+        break;
+      } catch (modelErr: unknown) {
+        lastErr = modelErr;
+        const errStatus = (modelErr as { status?: number })?.status;
+        if (errStatus !== 503 && errStatus !== 429 && errStatus !== 504) {
+          throw modelErr;
+        }
+      }
+    }
+
+    if (!response) {
+      throw lastErr || new Error('El servicio de Gemini no respondió.');
+    }
+
+    const rawJson = (response.text || '').trim();
+    if (!rawJson) {
+      res.status(502).json({ error: 'Gemini no devolvió diseño para generar el trofeo.' });
+      return;
+    }
+
+    const spec = JSON.parse(rawJson) as TrophyDesignSpec;
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+
+    const trophySvg = buildTrophyShowcaseSvg({
+      spec,
+      cupStyle: safeCupStyle,
+      finish: safeFinish,
+      tournamentName,
+      divisionName,
+      placeLabel,
+      venue: venue || '',
+      city: city || '',
+      recipientName,
+    });
+
+    const slug = (divisionName || 'trofeo')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '_')
+      .slice(0, 24) || 'trofeo';
+    const uid = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const filename = `ai_trophy_${slug}_${uid}.svg`;
+
+    fs.writeFileSync(path.join(UPLOADS_DIR, filename), trophySvg, 'utf8');
+
+    res.json({
+      imageUrl: `/uploads/${filename}`,
+      title: spec.headline || title || `${placeLabel} · ${divisionName}`,
+      engravingText: `${spec.engravingLine1} · ${spec.engravingLine2}`,
+      motifNote: spec.motifNote,
+    });
+  } catch (err: unknown) {
+    console.error('Error al generar trofeo con IA:', err);
+    const anyErr = err as { status?: number; message?: string };
+    const status = typeof anyErr?.status === 'number' && anyErr.status >= 400 ? anyErr.status : 500;
+    let message =
+      anyErr?.message ||
+      'No se pudo generar el trofeo con Gemini. Verificá tu clave API en Settings > Secrets.';
+    try {
+      const parsed = JSON.parse(message) as { error?: { message?: string } };
+      if (parsed?.error?.message) {
+        message = parsed.error.message;
+      }
+    } catch {
+      // keep raw
     }
     res.status(status).json({ error: message });
   }

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, History, Shield, Trophy } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, History, Shield, Trash2, Trophy } from 'lucide-react';
 import {
   CorrectionRecord,
   Division,
@@ -15,13 +15,20 @@ import {
 } from '../../types/tennis';
 import { formatScoreString, validateAndDetermineWinner } from '../../utils/itfRules';
 import {
+  analyzeDuplicateMatches,
   compareMatchesByRound,
   computeGroupStandings,
   computePlayerStatsFromMatches,
   findAffectedDownstreamMatches,
   makeId,
 } from '../../utils/tournamentEngine';
-import { publishNotificationAndBroadcast, saveEntity, saveStaffRole } from '../../services/firestoreService';
+import {
+  deleteMatchesBatch,
+  publishNotificationAndBroadcast,
+  removeEntity,
+  saveEntity,
+  saveStaffRole,
+} from '../../services/firestoreService';
 import { buildMatchWhatsAppMessage } from '../../utils/whatsappShare';
 import { WhatsAppShareButton } from '../WhatsAppShareButton';
 
@@ -74,6 +81,8 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [confirmDeleteMatchId, setConfirmDeleteMatchId] = useState<string | null>(null);
+  const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
 
   // Gestión de roles (Superadmin)
   const [roleUid, setRoleUid] = useState('');
@@ -81,6 +90,16 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
   const [roleName, setRoleName] = useState('');
   const [roleType, setRoleType] = useState<UserRole>('operador');
   const [roleTournaments, setRoleTournaments] = useState<string>(tournament.id);
+
+  const duplicateAnalysis = useMemo(
+    () => analyzeDuplicateMatches(divisionMatches),
+    [divisionMatches]
+  );
+
+  const duplicateIdSet = useMemo(
+    () => new Set(duplicateAnalysis.duplicateMatches.map((m) => m.id)),
+    [duplicateAnalysis]
+  );
 
   const playableMatches = useMemo(
     () =>
@@ -398,32 +417,110 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Lista de partidos de la división */}
         <div className="lg:col-span-5 bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#F8FAFC]">
+          <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#F8FAFC] flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-[#0A1633]">
               Partidos ({playableMatches.length})
             </h3>
+            {duplicateAnalysis.duplicateMatches.length > 0 && isSuperAdmin && (
+              <button
+                type="button"
+                disabled={cleaningDuplicates}
+                onClick={async () => {
+                  setCleaningDuplicates(true);
+                  setErrorMsg(null);
+                  try {
+                    const ids = duplicateAnalysis.duplicateMatches.map((m) => m.id);
+                    await deleteMatchesBatch(ids);
+                    setFeedback(`Se eliminaron ${ids.length} partidos duplicados.`);
+                  } catch (err) {
+                    setErrorMsg(err instanceof Error ? err.message : 'No se pudieron eliminar duplicados.');
+                  } finally {
+                    setCleaningDuplicates(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-700 text-white text-[11px] font-semibold hover:bg-red-800 disabled:opacity-60"
+              >
+                <Trash2 className="w-3 h-3" />
+                {cleaningDuplicates
+                  ? 'Limpiando...'
+                  : `Borrar ${duplicateAnalysis.duplicateMatches.length} duplicados`}
+              </button>
+            )}
           </div>
           <div className="divide-y divide-[#E2E8F0] max-h-[520px] overflow-y-auto">
             {playableMatches.map((m) => {
               const selected = activeMatch?.id === m.id;
+              const isDup = duplicateIdSet.has(m.id);
               return (
-                <button
+                <div
                   key={m.id}
-                  onClick={() => loadMatchIntoEditor(m)}
-                  className={`w-full text-left p-4 transition-colors ${
+                  className={`p-4 transition-colors ${
                     selected ? 'bg-emerald-50/50' : 'hover:bg-[#F8FAFC]'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-xs text-[#475569]">
-                    <span>{m.roundName}</span>
-                    <span className="font-mono tabular-nums font-medium text-[#7C1FA2]">
-                      {m.sets.length > 0 || m.status === 'wo' ? formatScoreString(m.sets, m.status) : 'Pendiente'}
-                    </span>
+                  <div className="flex items-start justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => loadMatchIntoEditor(m)}
+                      className="flex-1 text-left min-w-0"
+                    >
+                      <div className="flex items-center justify-between gap-2 text-xs text-[#475569]">
+                        <span className="inline-flex items-center gap-1.5">
+                          {m.roundName}
+                          {isDup && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold text-[10px]">
+                              Duplicado
+                            </span>
+                          )}
+                        </span>
+                        <span className="font-mono tabular-nums font-medium text-[#7C1FA2]">
+                          {m.sets.length > 0 || m.status === 'wo'
+                            ? formatScoreString(m.sets, m.status)
+                            : 'Pendiente'}
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-[#0A1633] mt-1">
+                        {m.entryAName} vs {m.entryBName}
+                      </p>
+                    </button>
+
+                    {isSuperAdmin && (
+                      <div className="shrink-0">
+                        {confirmDeleteMatchId === m.id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteMatchId(null)}
+                              className="px-2 py-1 rounded border border-[#E2E8F0] bg-white text-[10px]"
+                            >
+                              No
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await removeEntity('matches', m.id);
+                                setConfirmDeleteMatchId(null);
+                                setFeedback(`Partido eliminado (${m.entryAName} vs ${m.entryBName}).`);
+                              }}
+                              className="px-2 py-1 rounded bg-red-700 text-white text-[10px] font-semibold"
+                            >
+                              Borrar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteMatchId(m.id)}
+                            title="Eliminar partido"
+                            className="p-1.5 rounded-lg text-[#475569] hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm font-semibold text-[#0A1633] mt-1">
-                    {m.entryAName} vs {m.entryBName}
-                  </p>
-                </button>
+                </div>
               );
             })}
           </div>

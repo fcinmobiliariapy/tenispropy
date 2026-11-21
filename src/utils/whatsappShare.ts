@@ -140,3 +140,32 @@ export function buildTournamentWhatsAppMessage(params: {
   }
   return lines.join('\n');
 }
+
+export function buildTrophyWhatsAppMessage(params: {
+  trophyTitle: string;
+  tournamentName: string;
+  divisionName?: string;
+  placeLabel: string;
+  recipientName?: string | null;
+  engravingText?: string | null;
+  appUrl?: string;
+}): string {
+  const { trophyTitle, tournamentName, divisionName, placeLabel, recipientName, engravingText, appUrl } =
+    params;
+  const url = appUrl || getAppBaseUrl();
+  const lines: string[] = [
+    `🏆 *${trophyTitle}*`,
+    `🎾 *${tournamentName}*${divisionName ? ` · ${divisionName}` : ''}`,
+    `🥇 Premio: *${placeLabel}*`,
+  ];
+  if (recipientName) {
+    lines.push(`👤 Ganador/a: *${recipientName}*`);
+  }
+  if (engravingText) {
+    lines.push(`✨ Grabado oficial: _${engravingText}_`);
+  }
+  if (url) {
+    lines.push(`🔗 Mirá los Premios del Torneo en PlayPy: ${url}`);
+  }
+  return lines.join('\n');
+}

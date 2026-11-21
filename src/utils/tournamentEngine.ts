@@ -879,3 +879,111 @@ export function compareMatchesByRound(a: Match, b: Match): number {
   const dB = `${b.scheduledDate || '9999-99-99'} ${b.scheduledTime || '99:99'}`;
   return dA.localeCompare(dB);
 }
+
+export interface DuplicateMatchGroup {
+  signature: string;
+  divisionId: string;
+  tournamentId: string;
+  keptMatch: Match;
+  duplicateMatches: Match[];
+}
+
+export interface DuplicateMatchAnalysis {
+  groups: DuplicateMatchGroup[];
+  duplicateMatches: Match[];
+  dedupedMatches: Match[];
+}
+
+function getCanonicalMatchSignature(match: Match): string {
+  if (match.phase === 'grupos') {
+    if (match.entryAId && match.entryBId) {
+      const pair = [match.entryAId, match.entryBId].sort().join('|');
+      return `${match.divisionId}::grupos::${pair}`;
+    }
+    const namePair = [match.entryAName.trim().toLowerCase(), match.entryBName.trim().toLowerCase()]
+      .sort()
+      .join('|');
+    return `${match.divisionId}::grupos_name::${match.roundName}::${namePair}`;
+  }
+
+  if (match.isThirdPlace || match.roundName === 'Tercer Puesto') {
+    return `${match.divisionId}::eliminacion::third_place`;
+  }
+
+  if (match.bracketPosition != null) {
+    return `${match.divisionId}::eliminacion::r${match.roundOrder}::pos${match.bracketPosition}`;
+  }
+
+  const pair = [
+    match.entryAId || match.entryAName.trim().toLowerCase(),
+    match.entryBId || match.entryBName.trim().toLowerCase(),
+  ]
+    .sort()
+    .join('|');
+  return `${match.divisionId}::eliminacion::${match.roundName}::${pair}`;
+}
+
+function scoreMatchPriority(match: Match, incomingRefCounts: Map<string, number>): number {
+  let score = 0;
+  if (match.winnerEntryId) score += 10000;
+  if (match.sets.length > 0) score += 5000;
+  if (match.status !== 'programado') score += 2000;
+  if ((incomingRefCounts.get(match.id) || 0) > 0) score += 1000;
+  if (match.entryAId && match.entryBId) score += 500;
+  if (match.scheduledDate) score += 200;
+  if (match.courtId) score += 100;
+  if (match.matchdayId) score += 50;
+  if (match.published) score += 25;
+  return score;
+}
+
+export function analyzeDuplicateMatches(matches: Match[]): DuplicateMatchAnalysis {
+  const incomingRefCounts = new Map<string, number>();
+  for (const m of matches) {
+    if (m.nextMatchId) {
+      incomingRefCounts.set(m.nextMatchId, (incomingRefCounts.get(m.nextMatchId) || 0) + 1);
+    }
+  }
+
+  const buckets = new Map<string, Match[]>();
+  for (const m of matches) {
+    const sig = getCanonicalMatchSignature(m);
+    const list = buckets.get(sig);
+    if (list) list.push(m);
+    else buckets.set(sig, [m]);
+  }
+
+  const groups: DuplicateMatchGroup[] = [];
+  const duplicateMatches: Match[] = [];
+  const duplicateIdSet = new Set<string>();
+
+  for (const [signature, groupMatches] of buckets.entries()) {
+    if (groupMatches.length <= 1) continue;
+    const sorted = [...groupMatches].sort((a, b) => {
+      const diff = scoreMatchPriority(b, incomingRefCounts) - scoreMatchPriority(a, incomingRefCounts);
+      if (diff !== 0) return diff;
+      return (a.createdAt || '').localeCompare(b.createdAt || '') || a.id.localeCompare(b.id);
+    });
+    const keptMatch = sorted[0];
+    const dupes = sorted.slice(1);
+    groups.push({
+      signature,
+      divisionId: keptMatch.divisionId,
+      tournamentId: keptMatch.tournamentId,
+      keptMatch,
+      duplicateMatches: dupes,
+    });
+    for (const d of dupes) {
+      duplicateMatches.push(d);
+      duplicateIdSet.add(d.id);
+    }
+  }
+
+  const dedupedMatches = matches.filter((m) => !duplicateIdSet.has(m.id));
+  return { groups, duplicateMatches, dedupedMatches };
+}
+
+export function dedupeMatches(matches: Match[]): Match[] {
+  return analyzeDuplicateMatches(matches).dedupedMatches;
+}
+

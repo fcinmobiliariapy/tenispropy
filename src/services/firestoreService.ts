@@ -26,6 +26,7 @@ import {
   StaffRole,
   Tournament,
   TournamentAd,
+  TournamentTrophy,
 } from '../types/tennis';
 
 export function subscribeCollection<T>(
@@ -89,6 +90,24 @@ async function deleteDocsInBatches(targets: Array<{ col: string; id: string }>):
   }
 }
 
+export async function deleteMatchesBatch(matchIds: string[]): Promise<void> {
+  if (matchIds.length === 0) return;
+  try {
+    await deleteDocsInBatches(matchIds.map((id) => ({ col: 'matches', id })));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, 'matches/batch');
+  }
+}
+
+export async function deleteGroupsBatch(groupIds: string[]): Promise<void> {
+  if (groupIds.length === 0) return;
+  try {
+    await deleteDocsInBatches(groupIds.map((id) => ({ col: 'groups', id })));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, 'groups/batch');
+  }
+}
+
 export async function deletePlayerCascade(playerId: string): Promise<void> {
   try {
     await deleteDocsInBatches([
@@ -131,6 +150,7 @@ export async function deleteDivisionCascade(
     matches: Match[];
     publishedPhotos: MatchdayPhoto[];
     draftPhotos: MatchdayPhoto[];
+    tournamentTrophies?: TournamentTrophy[];
   }
 ): Promise<void> {
   try {
@@ -141,6 +161,9 @@ export async function deleteDivisionCascade(
       ...ctx.matchdays.filter((md) => md.divisionId === divisionId).map((md) => ({ col: 'matchdays', id: md.id })),
       ...ctx.groups.filter((g) => g.divisionId === divisionId).map((g) => ({ col: 'groups', id: g.id })),
       ...ctx.registrations.filter((r) => r.divisionId === divisionId).map((r) => ({ col: 'registrations', id: r.id })),
+      ...(ctx.tournamentTrophies || [])
+        .filter((tr) => tr.divisionId === divisionId)
+        .map((tr) => ({ col: 'tournament_trophies', id: tr.id })),
       { col: 'divisions', id: divisionId },
     ];
     await deleteDocsInBatches(targets);
@@ -162,6 +185,7 @@ export async function deleteTournamentCascade(
     draftPhotos: MatchdayPhoto[];
     notifications: NotificationAlert[];
     tournamentAds: TournamentAd[];
+    tournamentTrophies?: TournamentTrophy[];
   }
 ): Promise<void> {
   try {
@@ -177,6 +201,9 @@ export async function deleteTournamentCascade(
       ...tPlayers.map((p) => ({ col: 'players_private', id: p.id })),
       ...tPlayers.map((p) => ({ col: 'players_public', id: p.id })),
       ...ctx.tournamentAds.filter((a) => a.tournamentId === tournamentId).map((a) => ({ col: 'tournament_ads', id: a.id })),
+      ...(ctx.tournamentTrophies || [])
+        .filter((tr) => tr.tournamentId === tournamentId)
+        .map((tr) => ({ col: 'tournament_trophies', id: tr.id })),
       ...ctx.divisions.filter((d) => d.tournamentId === tournamentId).map((d) => ({ col: 'divisions', id: d.id })),
       { col: 'tournaments', id: tournamentId },
     ];
@@ -256,11 +283,12 @@ export async function seedDemoTournamentsToFirestore(adminUid: string, force = f
       bundle.tournaments.map((t) => ({ col: 'tournaments', id: t.id, data: t }))
     );
 
-    // Capa 2: Divisiones, perfiles públicos por torneo y publicidades (dependen de Capa 1)
+    // Capa 2: Divisiones, perfiles públicos por torneo, publicidades y trofeos (dependen de Capa 1)
     await commitLayer([
       ...bundle.divisions.map((d) => ({ col: 'divisions', id: d.id, data: d })),
       ...bundle.playersPublic.map((p) => ({ col: 'players_public', id: p.id, data: p })),
       ...bundle.tournamentAds.map((a) => ({ col: 'tournament_ads', id: a.id, data: a })),
+      ...bundle.tournamentTrophies.map((tr) => ({ col: 'tournament_trophies', id: tr.id, data: tr })),
     ]);
 
     // Capa 3: PII privado, inscripciones, grupos y jornadas
@@ -320,5 +348,6 @@ export type CollectionEntityMap = {
   photos: MatchdayPhoto;
   notifications: NotificationAlert;
   tournament_ads: TournamentAd;
+  tournament_trophies: TournamentTrophy;
   site_settings: SiteLandingConfig;
 };

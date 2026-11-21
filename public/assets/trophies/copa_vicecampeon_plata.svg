@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1100" width="1000" height="1100">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1000" y2="1100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0A1633" />
+      <stop offset="55%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#060D21" />
+    </linearGradient>
+    <radialGradient id="glow2" cx="50%" cy="40%" r="48%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.38" />
+      <stop offset="55%" stop-color="#7C1FA2" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#0A1633" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="silverBody" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F8FAFC" />
+      <stop offset="48%" stop-color="#CBD5E1" />
+      <stop offset="100%" stop-color="#475569" />
+    </linearGradient>
+    <linearGradient id="silverTrim" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#475569" />
+      <stop offset="50%" stop-color="#F8FAFC" />
+      <stop offset="100%" stop-color="#475569" />
+    </linearGradient>
+    <linearGradient id="badge2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C1FA2" />
+      <stop offset="100%" stop-color="#0095FF" />
+    </linearGradient>
+  </defs>
+  <rect width="1000" height="1100" fill="url(#bg2)" />
+  <rect width="1000" height="1100" fill="url(#glow2)" />
+  <g opacity="0.18" fill="none" stroke="#38BDF8" stroke-width="2">
+    <polygon points="500,130 820,440 500,750 180,440" />
+    <polygon points="500,190 760,440 500,690 240,440" stroke="#7C1FA2" />
+  </g>
+  <g transform="translate(500, 72)">
+    <rect x="-185" y="0" width="370" height="44" rx="22" fill="url(#badge2)" fill-opacity="0.32" stroke="#38BDF8" stroke-opacity="0.65" stroke-width="1.5" />
+    <text x="0" y="29" text-anchor="middle" fill="#F8FAFC" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="18" font-weight="700" letter-spacing="2">VICECAMPEÓN 2° PUESTO</text>
+    <text x="0" y="92" text-anchor="middle" fill="#FFFFFF" font-family="Bricolage Grotesque, Plus Jakarta Sans, system-ui, sans-serif" font-size="38" font-weight="700">Cristal Plata Finalista</text>
+  </g>
+  <g transform="translate(500, 445)">
+    <polygon points="0,-275 135,-80 95,125 -95,125 -135,-80" fill="url(#silverBody)" opacity="0.96" stroke="#F8FAFC" stroke-width="3" />
+    <polygon points="0,-275 135,-80 0,20" fill="#F8FAFC" opacity="0.45" />
+    <polygon points="0,-275 -135,-80 0,20" fill="#475569" opacity="0.28" />
+    <polygon points="0,20 135,-80 95,125 0,125" fill="#7C1FA2" opacity="0.35" />
+    <polygon points="0,20 -135,-80 -95,125 0,125" fill="#38BDF8" opacity="0.25" />
+    <circle cx="0" cy="-95" r="48" fill="#D9F99D" stroke="#FFFFFF" stroke-width="3" />
+    <path d="M-36 -125 C-12 -102 -12 -88 -36 -65 M36 -125 C12 -102 12 -88 36 -65" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" />
+    <rect x="-52" y="125" width="104" height="22" rx="6" fill="url(#silverTrim)" />
+  </g>
+  <g transform="translate(500, 595)">
+    <path d="M-158 0 L158 0 L190 36 L-190 36 Z" fill="#1E293B" stroke="#CBD5E1" stroke-width="2" />
+    <rect x="-195" y="36" width="390" height="132" rx="14" fill="#0F172A" stroke="#475569" stroke-width="3" />
+    <rect x="-162" y="54" width="324" height="96" rx="10" fill="url(#silverBody)" stroke="#F8FAFC" stroke-width="2" />
+    <text x="0" y="92" text-anchor="middle" fill="#0A1633" font-family="Bricolage Grotesque, Plus Jakarta Sans, system-ui, sans-serif" font-size="24" font-weight="800">5ta Singles Masculino</text>
+    <text x="0" y="124" text-anchor="middle" fill="#1E293B" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="16" font-weight="700">Copa Asunción Apertura 2026</text>
+  </g>
+  <g transform="translate(500, 845)">
+    <rect x="-320" y="0" width="640" height="140" rx="26" fill="#FFFFFF" fill-opacity="0.06" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="1.5" />
+    <text x="0" y="48" text-anchor="middle" fill="#F8FAFC" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="22" font-weight="700">Subcampeón · Trofeo Cristal Plata</text>
+    <text x="0" y="84" text-anchor="middle" fill="#CBD5E1" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="18" font-weight="600">Club Internacional de Tenis (CIT)</text>
+    <text x="0" y="114" text-anchor="middle" fill="#94A3B8" font-family="Plus Jakarta Sans, system-ui, sans-serif" font-size="15">Asunción, Paraguay · PlayPy Oficial</text>
+  </g>
+</svg>

@@ -331,6 +331,35 @@ export interface TournamentAd {
   updatedAt: string;
 }
 
+export type TrophyPlace = 'campeon' | 'vicecampeon' | 'tercer_puesto' | 'especial';
+export type TrophyCupStyle =
+  | 'classic_chalice'
+  | 'modern_crystal'
+  | 'laurel_shield'
+  | 'tennis_crown';
+export type TrophyFinish = 'gold' | 'silver' | 'bronze' | 'playpy_crystal';
+
+export interface TournamentTrophy {
+  id: string;
+  tournamentId: string;
+  divisionId: string;
+  divisionName: string;
+  category: string;
+  place: TrophyPlace;
+  title: string;
+  recipientName?: string | null;
+  cupStyle: TrophyCupStyle;
+  finish: TrophyFinish;
+  engravingText: string;
+  customPrompt?: string | null;
+  aiMotifNote?: string | null;
+  imageUrl: string;
+  active: boolean;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type SitePillarIcon = 'award' | 'calendar' | 'sparkles' | 'trophy' | 'users' | 'shield';
 
 export interface SitePillar {

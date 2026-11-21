@@ -367,6 +367,29 @@ service cloud.firestore {
         && isNonEmptyStr(data.updatedAt, 40);
     }
 
+    function isValidTournamentTrophy(data, trophyId) {
+      return data.keys().hasAll(['id', 'tournamentId', 'divisionId', 'divisionName', 'category', 'place', 'title', 'cupStyle', 'finish', 'engravingText', 'imageUrl', 'active', 'order', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'tournamentId', 'divisionId', 'divisionName', 'category', 'place', 'title', 'recipientName', 'cupStyle', 'finish', 'engravingText', 'customPrompt', 'aiMotifNote', 'imageUrl', 'active', 'order', 'createdAt', 'updatedAt'])
+        && isValidId(data.id) && data.id == trophyId
+        && isValidId(data.tournamentId)
+        && isValidId(data.divisionId)
+        && isNonEmptyStr(data.divisionName, 140)
+        && isNonEmptyStr(data.category, 50)
+        && data.place in ['campeon', 'vicecampeon', 'tercer_puesto', 'especial']
+        && isNonEmptyStr(data.title, 140)
+        && (!('recipientName' in data) || isOptionalStr(data.recipientName, 180))
+        && data.cupStyle in ['classic_chalice', 'modern_crystal', 'laurel_shield', 'tennis_crown']
+        && data.finish in ['gold', 'silver', 'bronze', 'playpy_crystal']
+        && isNonEmptyStr(data.engravingText, 200)
+        && (!('customPrompt' in data) || isOptionalStr(data.customPrompt, 500))
+        && (!('aiMotifNote' in data) || isOptionalStr(data.aiMotifNote, 300))
+        && isNonEmptyStr(data.imageUrl, 250000)
+        && data.active is bool
+        && data.order is number && data.order >= 0 && data.order <= 500
+        && isNonEmptyStr(data.createdAt, 40)
+        && isNonEmptyStr(data.updatedAt, 40);
+    }
+
     function isValidSiteLandingConfig(data, settingId) {
       return data.keys().hasAll(['id', 'logoUrl', 'platformBadge', 'brandFirst', 'heroTitle', 'primaryCtaLabel', 'bannerEnabled', 'defaultTournamentCoverUrl', 'useAutoMetrics', 'pillars', 'updatedAt'])
         && data.keys().hasOnly([
@@ -621,6 +644,20 @@ service cloud.firestore {
         && (isSuperAdmin() || incoming().tournamentId == existing().tournamentId)
         && incoming().createdAt == existing().createdAt;
       allow delete: if isValidId(adId) && isSuperAdmin();
+    }
+
+    match /tournament_trophies/{trophyId} {
+      allow get: if isValidId(trophyId);
+      allow list: if true;
+      allow create: if isValidId(trophyId) && isValidTournamentTrophy(incoming(), trophyId)
+        && isVerified()
+        && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId));
+      allow update: if isValidId(trophyId) && isValidTournamentTrophy(incoming(), trophyId)
+        && isVerified()
+        && incoming().id == existing().id
+        && (isSuperAdmin() || incoming().tournamentId == existing().tournamentId)
+        && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(trophyId) && isSuperAdmin();
     }
 
     match /site_settings/{settingId} {
