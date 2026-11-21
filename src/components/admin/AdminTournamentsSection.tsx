@@ -10,6 +10,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Sparkles,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -221,18 +222,27 @@ export const AdminTournamentsSection: React.FC<Props> = ({
   ]);
   const [confirmDeleteDivisionId, setConfirmDeleteDivisionId] = useState<string | null>(null);
 
-  // Form Publicidad del Torneo
+  // Form Publicidad del Torneo (soporte Horizontal + Vertical + IA)
   const [showAdForm, setShowAdForm] = useState(false);
   const [editingAdId, setEditingAdId] = useState<string | null>(null);
   const [adSponsor, setAdSponsor] = useState('');
   const [adTitle, setAdTitle] = useState('');
   const [adSubtitle, setAdSubtitle] = useState('');
   const [adImageUrl, setAdImageUrl] = useState('');
+  const [adHorizontalUrl, setAdHorizontalUrl] = useState('');
+  const [adVerticalUrl, setAdVerticalUrl] = useState('');
+  const [adAiStyle, setAdAiStyle] = useState<'PlayPy Oficial' | 'Polvo de Ladrillo' | 'Noche & LED' | 'Elegante Minimal'>('PlayPy Oficial');
+  const [adAiPrompt, setAdAiPrompt] = useState('');
+  const [generatingAiBanner, setGeneratingAiBanner] = useState(false);
   const [adTargetUrl, setAdTargetUrl] = useState('');
   const [adPlacement, setAdPlacement] = useState<AdPlacement>('banner_principal');
   const [adActive, setAdActive] = useState(true);
   const [uploadingAdImg, setUploadingAdImg] = useState(false);
+  const [uploadingHorizImg, setUploadingHorizImg] = useState(false);
+  const [uploadingVertImg, setUploadingVertImg] = useState(false);
   const [adPreviewError, setAdPreviewError] = useState(false);
+  const [horizPreviewErr, setHorizPreviewErr] = useState(false);
+  const [vertPreviewErr, setVertPreviewErr] = useState(false);
   const [adError, setAdError] = useState<string | null>(null);
   const [brokenAdThumbIds, setBrokenAdThumbIds] = useState<Record<string, boolean>>({});
   const [confirmDeleteAdId, setConfirmDeleteAdId] = useState<string | null>(null);
@@ -444,7 +454,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         const newT: Tournament = {
           id: makeId('tor'),
           name: tName.trim(),
-          organizerName: tOrg.trim() || 'Organización TenisPro',
+          organizerName: tOrg.trim() || 'Organización PlayPy',
           organizerUid: currentUid,
           venue: tVenue.trim(),
           city: tCity.trim() || 'Asunción',
@@ -775,17 +785,23 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setFeedback(`Configuración de "${div.name}" actualizada.`);
   };
 
-  // Publicidad personalizada del torneo
+  // Publicidad personalizada del torneo (Horizontal + Vertical + Generador IA)
   const openNewAdForm = () => {
     setEditingAdId(null);
     setAdSponsor('');
     setAdTitle('');
     setAdSubtitle('');
     setAdImageUrl('');
+    setAdHorizontalUrl('');
+    setAdVerticalUrl('');
+    setAdAiStyle('PlayPy Oficial');
+    setAdAiPrompt('');
     setAdTargetUrl('');
     setAdPlacement('banner_principal');
     setAdActive(true);
     setAdPreviewError(false);
+    setHorizPreviewErr(false);
+    setVertPreviewErr(false);
     setAdError(null);
     setShowAdForm(true);
   };
@@ -796,39 +812,124 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setAdTitle(ad.title);
     setAdSubtitle(ad.subtitle || '');
     setAdImageUrl(ad.imageUrl);
+    setAdHorizontalUrl(ad.horizontalImageUrl || ad.imageUrl || '');
+    setAdVerticalUrl(ad.verticalImageUrl || '');
+    setAdAiPrompt(ad.aiPrompt || '');
     setAdTargetUrl(ad.targetUrl || '');
     setAdPlacement(ad.placement);
     setAdActive(ad.active);
     setAdPreviewError(false);
+    setHorizPreviewErr(false);
+    setVertPreviewErr(false);
     setAdError(null);
     setShowAdForm(true);
   };
 
-  const handleUploadAdImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadAdImage = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    target: 'default' | 'horizontal' | 'vertical' = 'default'
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploadingAdImg(true);
+    if (target === 'horizontal') {
+      setUploadingHorizImg(true);
+      setHorizPreviewErr(false);
+    } else if (target === 'vertical') {
+      setUploadingVertImg(true);
+      setVertPreviewErr(false);
+    } else {
+      setUploadingAdImg(true);
+      setAdPreviewError(false);
+    }
     setErrorMsg(null);
     setAdError(null);
-    setAdPreviewError(false);
     try {
       const url = await optimizeAndUploadAdBanner(file);
-      setAdImageUrl(url);
+      if (target === 'horizontal') {
+        setAdHorizontalUrl(url);
+        if (!adImageUrl.trim()) setAdImageUrl(url);
+      } else if (target === 'vertical') {
+        setAdVerticalUrl(url);
+        if (!adImageUrl.trim()) setAdImageUrl(url);
+      } else {
+        setAdImageUrl(url);
+        if (!adHorizontalUrl.trim()) setAdHorizontalUrl(url);
+      }
     } catch (err) {
       const msg = formatFirestoreError(err, 'No se pudo procesar la imagen publicitaria.');
       setAdError(msg);
       setErrorMsg(msg);
     } finally {
-      setUploadingAdImg(false);
+      if (target === 'horizontal') setUploadingHorizImg(false);
+      else if (target === 'vertical') setUploadingVertImg(false);
+      else setUploadingAdImg(false);
       e.target.value = '';
+    }
+  };
+
+  const handleGenerateAiBanners = async () => {
+    if (!activeTournament) return;
+    if (!adSponsor.trim()) {
+      setAdError('Ingresá primero el nombre del Sponsor / Marca para generar los banners con IA.');
+      return;
+    }
+    setGeneratingAiBanner(true);
+    setAdError(null);
+    setErrorMsg(null);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/ai/generate-banner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournamentName: activeTournament.name,
+          venue: activeTournament.venue,
+          city: activeTournament.city,
+          sponsorName: adSponsor.trim(),
+          title: adTitle.trim() || adSponsor.trim(),
+          subtitle: adSubtitle.trim(),
+          placement: adPlacement,
+          stylePreset: adAiStyle,
+          customPrompt: adAiPrompt.trim(),
+        }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        horizontalUrl?: string;
+        verticalUrl?: string;
+        headline?: string;
+        subheadline?: string;
+      };
+      if (!res.ok || !data.horizontalUrl || !data.verticalUrl) {
+        throw new Error(data.error || 'No se pudieron generar los banners con IA.');
+      }
+
+      setAdHorizontalUrl(data.horizontalUrl);
+      setAdVerticalUrl(data.verticalUrl);
+      setAdImageUrl(adPlacement === 'lateral' ? data.verticalUrl : data.horizontalUrl);
+      if (!adTitle.trim() && data.headline) setAdTitle(data.headline);
+      if (!adSubtitle.trim() && data.subheadline) setAdSubtitle(data.subheadline);
+      setHorizPreviewErr(false);
+      setVertPreviewErr(false);
+      setAdPreviewError(false);
+      setFeedback(
+        `Banners IA generados en formato Horizontal (16:9) y Vertical (3:4) para "${activeTournament.name}".`
+      );
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Error al generar banners publicitarios con IA.';
+      setAdError(msg);
+    } finally {
+      setGeneratingAiBanner(false);
     }
   };
 
   const handleSaveAd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeTournament) return;
-    if (!adSponsor.trim() || !adTitle.trim() || !adImageUrl.trim()) {
-      const msg = 'Completá el nombre del sponsor, título y cargá una imagen para la publicidad.';
+    const anyImg = adHorizontalUrl.trim() || adVerticalUrl.trim() || adImageUrl.trim();
+    if (!adSponsor.trim() || !adTitle.trim() || !anyImg) {
+      const msg = 'Completá el nombre del sponsor, título y cargá o generá al menos una imagen.';
       setAdError(msg);
       setErrorMsg(msg);
       return;
@@ -838,7 +939,20 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setErrorMsg(null);
     setAdError(null);
     try {
-      const normalizedImageUrl = await normalizeImageInputValue(adImageUrl);
+      const normHoriz = adHorizontalUrl.trim()
+        ? await normalizeImageInputValue(adHorizontalUrl)
+        : '';
+      const normVert = adVerticalUrl.trim()
+        ? await normalizeImageInputValue(adVerticalUrl)
+        : '';
+      const normBase = adImageUrl.trim()
+        ? await normalizeImageInputValue(adImageUrl)
+        : '';
+      const primaryImage =
+        adPlacement === 'lateral'
+          ? normVert || normBase || normHoriz
+          : normHoriz || normBase || normVert;
+
       const normalizedTargetUrl = normalizeOptionalTargetUrl(adTargetUrl);
       const now = new Date().toISOString();
       const existing = editingAdId ? activeAds.find((a) => a.id === editingAdId) : null;
@@ -850,7 +964,10 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         sponsorName: adSponsor.trim().slice(0, 120),
         title: adTitle.trim().slice(0, 120),
         subtitle: adSubtitle.trim().slice(0, 240) || null,
-        imageUrl: normalizedImageUrl,
+        imageUrl: primaryImage,
+        horizontalImageUrl: normHoriz || null,
+        verticalImageUrl: normVert || null,
+        aiPrompt: adAiPrompt.trim().slice(0, 500) || null,
         targetUrl: normalizedTargetUrl,
         placement: adPlacement,
         order: safeOrder,
@@ -949,22 +1066,22 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-[#0F1A15]">Torneos, Divisiones y Publicidad</h2>
-          <p className="text-xs text-[#4A5550]">
+          <h2 className="text-xl font-bold text-[#0A1633]">Torneos, Divisiones y Publicidad</h2>
+          <p className="text-xs text-[#475569]">
             Cada torneo gestiona sus divisiones, padrón privado de jugadores y espacios de sponsors.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onOpenItfModal}
-            className="inline-flex items-center gap-2 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+            className="inline-flex items-center gap-2 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
           >
-            <BookOpen className="w-4 h-4 text-[#14532D]" />
+            <BookOpen className="w-4 h-4 text-[#7C1FA2]" />
             Consultar ITF
           </button>
           <button
             onClick={openNewTournamentForm}
-            className="inline-flex items-center gap-2 px-4 min-h-[44px] sm:min-h-[38px] rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+            className="inline-flex items-center gap-2 px-4 min-h-[44px] sm:min-h-[38px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
           >
             <Plus className="w-4 h-4" />
             Nuevo torneo
@@ -979,7 +1096,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
       )}
 
       {feedback && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-medium text-[#14532D]">
+        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-medium text-[#7C1FA2]">
           {feedback}
         </div>
       )}
@@ -987,117 +1104,117 @@ export const AdminTournamentsSection: React.FC<Props> = ({
       {showTournamentForm && (
         <form
           onSubmit={handleSaveTournament}
-          className="bg-white border border-[#E2E7E4] rounded-2xl p-5 space-y-4"
+          className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4"
         >
-          <h3 className="text-sm font-semibold text-[#0F1A15]">
+          <h3 className="text-sm font-semibold text-[#0A1633]">
             {editingTournamentId ? 'Editar torneo' : 'Crear nuevo torneo'}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Nombre del torneo *</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Nombre del torneo *</label>
               <input
                 required
                 value={tName}
                 onChange={(e) => setTName(e.target.value)}
                 placeholder="Ej. Torneo Nacional Primavera 2026"
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Organizador *</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Organizador *</label>
               <input
                 required
                 value={tOrg}
                 onChange={(e) => setTOrg(e.target.value)}
                 placeholder="Club o Federación"
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Sede *</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Sede *</label>
               <input
                 required
                 value={tVenue}
                 onChange={(e) => setTVenue(e.target.value)}
                 placeholder="Sede principal"
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Ciudad</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Ciudad</label>
               <input
                 value={tCity}
                 onChange={(e) => setTCity(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             {!editingTournamentId && (
               <div>
-                <label className="block text-xs font-medium text-[#4A5550] mb-1">Canchas (separadas por coma)</label>
+                <label className="block text-xs font-medium text-[#475569] mb-1">Canchas (separadas por coma)</label>
                 <input
                   value={tCourtsText}
                   onChange={(e) => setTCourtsText(e.target.value)}
-                  className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                  className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
                 />
               </div>
             )}
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Descanso mínimo (min)</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Descanso mínimo (min)</label>
               <input
                 type="number"
                 min={0}
                 max={480}
                 value={tRest}
                 onChange={(e) => setTRest(Number(e.target.value))}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm font-mono tabular-nums"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm font-mono tabular-nums"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Inicio torneo *</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Inicio torneo *</label>
               <input
                 required
                 type="date"
                 value={tStart}
                 onChange={(e) => setTStart(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Fin torneo *</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Fin torneo *</label>
               <input
                 required
                 type="date"
                 value={tEnd}
                 onChange={(e) => setTEnd(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Inicio inscripciones *</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Inicio inscripciones *</label>
               <input
                 required
                 type="date"
                 value={tRegStart}
                 onChange={(e) => setTRegStart(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Cierre inscripciones *</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Cierre inscripciones *</label>
               <input
                 required
                 type="date"
                 value={tRegEnd}
                 onChange={(e) => setTRegEnd(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Estado</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Estado</label>
               <select
                 value={tStatus}
                 onChange={(e) => setTStatus(e.target.value as TournamentStatus)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               >
                 <option value="borrador">Borrador</option>
                 <option value="inscripciones">Inscripciones abiertas</option>
@@ -1107,11 +1224,11 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] space-y-3">
+          <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-xs font-semibold text-[#0F1A15]">Foto de portada del torneo</p>
-                <p className="text-[11px] text-[#4A5550]">
+                <p className="text-xs font-semibold text-[#0A1633]">Foto de portada del torneo</p>
+                <p className="text-[11px] text-[#475569]">
                   Se muestra en la portada principal del portal público (opcional; si queda vacía usa la portada predeterminada).
                 </p>
               </div>
@@ -1119,7 +1236,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => setTCoverImageUrl('')}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#E2E7E4] bg-white text-[11px] font-medium text-[#4A5550] hover:text-[#0F1A15]"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#E2E8F0] bg-white text-[11px] font-medium text-[#475569] hover:text-[#0A1633]"
                 >
                   <RotateCcw className="w-3 h-3" />
                   Usar predeterminada
@@ -1135,10 +1252,10 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   setFormCoverPreviewError(false);
                 }}
                 placeholder="Pegá URL de imagen o subí una foto desde tu dispositivo..."
-                className="flex-1 h-9 px-3 rounded-lg border border-[#E2E7E4] bg-white text-xs min-w-0"
+                className="flex-1 h-9 px-3 rounded-lg border border-[#E2E8F0] bg-white text-xs min-w-0"
               />
-              <label className="inline-flex items-center justify-center gap-1.5 px-3.5 h-9 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50 cursor-pointer shrink-0">
-                <Upload className="w-3.5 h-3.5 text-[#14532D]" />
+              <label className="inline-flex items-center justify-center gap-1.5 px-3.5 h-9 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 cursor-pointer shrink-0">
+                <Upload className="w-3.5 h-3.5 text-[#7C1FA2]" />
                 {uploadingCoverImg ? 'Optimizando...' : 'Subir portada'}
                 <input
                   type="file"
@@ -1156,9 +1273,9 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 alt="Vista previa de portada del torneo"
                 referrerPolicy="no-referrer"
                 onError={() => setFormCoverPreviewError(true)}
-                className="w-36 aspect-[16/9] rounded-lg object-cover border border-[#E2E7E4] bg-slate-100 shrink-0"
+                className="w-36 aspect-[16/9] rounded-lg object-cover border border-[#E2E8F0] bg-slate-100 shrink-0"
               />
-              <p className="text-[11px] text-[#4A5550]">
+              <p className="text-[11px] text-[#475569]">
                 {formCoverPreviewError && tCoverImageUrl
                   ? 'No se pudo cargar la vista previa de esa imagen. Subí otro archivo o verificá la URL.'
                   : tCoverImageUrl
@@ -1169,9 +1286,9 @@ export const AdminTournamentsSection: React.FC<Props> = ({
           </div>
 
           {editingTournamentId && (
-            <div className="p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] space-y-3">
+            <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-[#0F1A15]">Canchas del torneo</p>
+                <p className="text-xs font-semibold text-[#0A1633]">Canchas del torneo</p>
                 <button
                   type="button"
                   onClick={() =>
@@ -1185,7 +1302,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       },
                     ])
                   }
-                  className="px-2.5 py-1 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#14532D]"
+                  className="px-2.5 py-1 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#7C1FA2]"
                 >
                   + Agregar cancha
                 </button>
@@ -1201,7 +1318,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                         )
                       }
                       placeholder="Nombre cancha"
-                      className="sm:col-span-5 h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="sm:col-span-5 h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     />
                     <select
                       value={crt.surface}
@@ -1214,14 +1331,14 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                           )
                         )
                       }
-                      className="sm:col-span-4 h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="sm:col-span-4 h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       <option value="Polvo de ladrillo">Polvo de ladrillo</option>
                       <option value="Cemento">Cemento</option>
                       <option value="Césped">Césped</option>
                       <option value="Indoor">Indoor</option>
                     </select>
-                    <label className="sm:col-span-2 inline-flex items-center gap-1.5 text-xs text-[#0F1A15]">
+                    <label className="sm:col-span-2 inline-flex items-center gap-1.5 text-xs text-[#0A1633]">
                       <input
                         type="checkbox"
                         checked={crt.lights}
@@ -1264,14 +1381,14 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 setEditingTournamentId(null);
                 setTournamentError(null);
               }}
-              className="px-4 py-2 rounded-lg border border-[#E2E7E4] text-xs font-medium text-[#4A5550]"
+              className="px-4 py-2 rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#475569]"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={saving || uploadingCoverImg}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534] disabled:opacity-60"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B] disabled:opacity-60"
             >
               <Save className="w-4 h-4" />
               {uploadingCoverImg
@@ -1288,14 +1405,14 @@ export const AdminTournamentsSection: React.FC<Props> = ({
 
       {/* Torneo seleccionado y sus canchas */}
       {activeTournament && (
-        <div className="bg-white border border-[#E2E7E4] rounded-2xl p-5 space-y-5">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs text-[#14532D] font-medium">
+              <p className="text-xs text-[#7C1FA2] font-medium">
                 {activeTournament.venue} · {activeTournament.city} · {activeTournament.timezone}
               </p>
-              <h3 className="text-lg font-bold text-[#0F1A15] mt-0.5">{activeTournament.name}</h3>
-              <p className="text-xs text-[#4A5550] mt-1">
+              <h3 className="text-lg font-bold text-[#0A1633] mt-0.5">{activeTournament.name}</h3>
+              <p className="text-xs text-[#475569] mt-1">
                 Torneo: {activeTournament.startDate} al {activeTournament.endDate} · Inscripciones:{' '}
                 {activeTournament.regStartDate} al {activeTournament.regEndDate} · Descanso mínimo:{' '}
                 <span className="font-mono tabular-nums font-medium">{activeTournament.minRestMinutes} min</span>
@@ -1310,14 +1427,14 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   setQuickCoverPreviewError(false);
                   setShowQuickCover((v) => !v);
                 }}
-                className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E7E4] text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
               >
-                <ImageIcon className="w-3.5 h-3.5 text-[#14532D]" />
+                <ImageIcon className="w-3.5 h-3.5 text-[#7C1FA2]" />
                 Foto de portada
               </button>
               <button
                 onClick={handleAddCourt}
-                className="px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E7E4] text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+                className="px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
               >
                 + Añadir cancha
               </button>
@@ -1325,9 +1442,9 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 <>
                   <button
                     onClick={() => openEditTournamentForm(activeTournament)}
-                    className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E7E4] text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+                    className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
                   >
-                    <Edit3 className="w-3.5 h-3.5 text-[#14532D]" />
+                    <Edit3 className="w-3.5 h-3.5 text-[#7C1FA2]" />
                     Editar torneo
                   </button>
                   <button
@@ -1344,20 +1461,20 @@ export const AdminTournamentsSection: React.FC<Props> = ({
           </div>
 
           {showQuickCover && (
-            <div className="p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] space-y-3">
+            <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="text-xs font-semibold text-[#0F1A15]">
+                  <p className="text-xs font-semibold text-[#0A1633]">
                     Modificar foto de portada · {activeTournament.name}
                   </p>
-                  <p className="text-[11px] text-[#4A5550]">
+                  <p className="text-[11px] text-[#475569]">
                     Subí una imagen propia del club o certamen (formato panorámico recomendado).
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowQuickCover(false)}
-                  className="text-xs text-[#4A5550] hover:text-[#0F1A15]"
+                  className="text-xs text-[#475569] hover:text-[#0A1633]"
                 >
                   Cerrar
                 </button>
@@ -1370,7 +1487,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               )}
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <div className="w-full sm:w-44 aspect-[16/9] rounded-xl overflow-hidden border border-[#E2E7E4] bg-slate-100 shrink-0 relative">
+                <div className="w-full sm:w-44 aspect-[16/9] rounded-xl overflow-hidden border border-[#E2E8F0] bg-slate-100 shrink-0 relative">
                   <img
                     src={
                       quickCoverPreviewError
@@ -1395,10 +1512,10 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                         setQuickCoverError(null);
                       }}
                       placeholder="https://... o subí archivo desde tu dispositivo"
-                      className="flex-1 h-9 px-3 rounded-lg border border-[#E2E7E4] bg-white text-xs min-w-0"
+                      className="flex-1 h-9 px-3 rounded-lg border border-[#E2E8F0] bg-white text-xs min-w-0"
                     />
-                    <label className="inline-flex items-center justify-center gap-1.5 px-3.5 h-9 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50 cursor-pointer shrink-0">
-                      <Upload className="w-3.5 h-3.5 text-[#14532D]" />
+                    <label className="inline-flex items-center justify-center gap-1.5 px-3.5 h-9 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 cursor-pointer shrink-0">
+                      <Upload className="w-3.5 h-3.5 text-[#7C1FA2]" />
                       {uploadingQuickCover ? 'Optimizando...' : 'Elegir imagen'}
                       <input
                         type="file"
@@ -1419,7 +1536,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       type="button"
                       disabled={saving || uploadingQuickCover}
                       onClick={() => handleSaveQuickCover(quickCoverUrl.trim() || null)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534] disabled:opacity-60"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B] disabled:opacity-60"
                     >
                       <Save className="w-3.5 h-3.5" />
                       {uploadingQuickCover
@@ -1437,7 +1554,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                           setQuickCoverPreviewError(false);
                           handleSaveQuickCover(null);
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#4A5550] hover:text-[#0F1A15] disabled:opacity-60"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#475569] hover:text-[#0A1633] disabled:opacity-60"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         Restaurar predeterminada
@@ -1463,7 +1580,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteTournamentId(null)}
-                  className="px-3 py-1.5 rounded-lg border border-red-200 bg-white text-xs font-medium text-[#0F1A15]"
+                  className="px-3 py-1.5 rounded-lg border border-red-200 bg-white text-xs font-medium text-[#0A1633]"
                 >
                   Cancelar
                 </button>
@@ -1479,8 +1596,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2 text-xs text-[#4A5550]">
-            <span className="font-medium text-[#0F1A15]">Canchas habilitadas:</span>
+          <div className="flex flex-wrap gap-2 text-xs text-[#475569]">
+            <span className="font-medium text-[#0A1633]">Canchas habilitadas:</span>
             {activeTournament.courts.map((c, idx) => (
               <span key={c.id}>
                 {c.name} ({c.surface}){idx < activeTournament.courts.length - 1 ? ' ·' : ''}
@@ -1489,14 +1606,14 @@ export const AdminTournamentsSection: React.FC<Props> = ({
           </div>
 
           {/* Lista de divisiones independientes */}
-          <div className="pt-4 border-t border-[#E2E7E4]">
+          <div className="pt-4 border-t border-[#E2E8F0]">
             <div className="flex items-center justify-between gap-3 mb-3">
-              <h4 className="text-sm font-semibold text-[#0F1A15]">
+              <h4 className="text-sm font-semibold text-[#0A1633]">
                 Divisiones del torneo ({tournamentDivisions.length})
               </h4>
               <button
                 onClick={openNewDivisionForm}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Agregar división
@@ -1506,18 +1623,18 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             {showDivForm && (
               <form
                 onSubmit={handleSaveDivision}
-                className="mb-5 p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] space-y-4"
+                className="mb-5 p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-4"
               >
-                <h5 className="text-xs font-semibold text-[#0F1A15]">
+                <h5 className="text-xs font-semibold text-[#0A1633]">
                   {editingDivisionId ? 'Editar división' : 'Nueva división independiente'}
                 </h5>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Categoría</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Categoría</label>
                     <select
                       value={dCategory}
                       onChange={(e) => setDCategory(e.target.value)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       {CATEGORIES.map((c) => (
                         <option key={c} value={c}>
@@ -1528,44 +1645,44 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   </div>
                   {dCategory === 'Personalizada' && (
                     <div>
-                      <label className="block text-xs font-medium text-[#4A5550] mb-1">Nombre categoría</label>
+                      <label className="block text-xs font-medium text-[#475569] mb-1">Nombre categoría</label>
                       <input
                         required
                         value={dCustomCat}
                         onChange={(e) => setDCustomCat(e.target.value)}
                         placeholder="Ej. Sub-16"
-                        className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                        className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                       />
                     </div>
                   )}
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Modalidad</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Modalidad</label>
                     <select
                       value={dModality}
                       onChange={(e) => setDModality(e.target.value as Modality)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       <option value="Singles">Singles</option>
                       <option value="Dobles">Dobles</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Rama</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Rama</label>
                     <select
                       value={dGender}
                       onChange={(e) => setDGender(e.target.value as Gender)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       <option value="Masculino">Masculino</option>
                       <option value="Femenino">Femenino</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Formato</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Formato</label>
                     <select
                       value={dFormat}
                       onChange={(e) => setDFormat(e.target.value as DivisionFormat)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       <option value="grupos_y_final">Grupos con fase final</option>
                       <option value="todos_contra_todos">Todos contra todos</option>
@@ -1573,11 +1690,11 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Sets para ganar</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Sets para ganar</label>
                     <select
                       value={dSetsToWin}
                       onChange={(e) => setDSetsToWin(Number(e.target.value) as 1 | 2 | 3)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       <option value={2}>Al mejor de 3 sets</option>
                       <option value={1}>Set único</option>
@@ -1585,11 +1702,11 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Games por set</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Games por set</label>
                     <select
                       value={dGamesPerSet}
                       onChange={(e) => setDGamesPerSet(Number(e.target.value) as 4 | 6 | 8)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       <option value={6}>6 games (Estándar ITF)</option>
                       <option value={4}>4 games (Set corto)</option>
@@ -1597,56 +1714,56 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Sistema de Tie-Break</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Sistema de Tie-Break</label>
                     <select
                       value={dSetTiebreakPoints}
                       onChange={(e) => setDSetTiebreakPoints(Number(e.target.value) as 7 | 10)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       <option value={7}>A 7 puntos (Estándar ITF)</option>
                       <option value={10}>A 10 puntos (ej. 10-3, 10-1)</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Cupo máximo</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Cupo máximo</label>
                     <input
                       type="number"
                       min={2}
                       max={128}
                       value={dMaxEntries}
                       onChange={(e) => setDMaxEntries(Number(e.target.value))}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs font-mono tabular-nums"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-mono tabular-nums"
                     />
                   </div>
                   {dFormat === 'grupos_y_final' && (
                     <>
                       <div>
-                        <label className="block text-xs font-medium text-[#4A5550] mb-1">Cant. grupos</label>
+                        <label className="block text-xs font-medium text-[#475569] mb-1">Cant. grupos</label>
                         <input
                           type="number"
                           min={1}
                           max={16}
                           value={dGroupCount}
                           onChange={(e) => setDGroupCount(Number(e.target.value))}
-                          className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs font-mono"
+                          className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-mono"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-[#4A5550] mb-1">Clasifican por grupo</label>
+                        <label className="block text-xs font-medium text-[#475569] mb-1">Clasifican por grupo</label>
                         <input
                           type="number"
                           min={1}
                           max={4}
                           value={dQualifiers}
                           onChange={(e) => setDQualifiers(Number(e.target.value))}
-                          className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs font-mono"
+                          className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-mono"
                         />
                       </div>
                     </>
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-4 text-xs text-[#0F1A15]">
+                <div className="flex flex-wrap gap-4 text-xs text-[#0A1633]">
                   <label className="inline-flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={dUseTiebreak} onChange={(e) => setDUseTiebreak(e.target.checked)} />
                     Tie-break en set
@@ -1690,20 +1807,20 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 </div>
 
                 <div>
-                  <p className="text-xs font-medium text-[#4A5550] mb-1.5">
+                  <p className="text-xs font-medium text-[#475569] mb-1.5">
                     Orden de desempates en clasificación:
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {dTiebreakers.map((tb, idx) => {
                       const label = ALL_TIEBREAKERS.find((x) => x.id === tb)?.label || tb;
                       return (
-                        <div key={tb} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#E2E7E4] text-xs">
-                          <span className="font-mono text-[#14532D]">{idx + 1}.</span>
+                        <div key={tb} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#E2E8F0] text-xs">
+                          <span className="font-mono text-[#7C1FA2]">{idx + 1}.</span>
                           <span>{label}</span>
-                          <button type="button" onClick={() => moveTiebreaker(idx, -1)} className="text-[#4A5550] hover:text-[#0F1A15] px-1">
+                          <button type="button" onClick={() => moveTiebreaker(idx, -1)} className="text-[#475569] hover:text-[#0A1633] px-1">
                             ←
                           </button>
-                          <button type="button" onClick={() => moveTiebreaker(idx, 1)} className="text-[#4A5550] hover:text-[#0F1A15] px-1">
+                          <button type="button" onClick={() => moveTiebreaker(idx, 1)} className="text-[#475569] hover:text-[#0A1633] px-1">
                             →
                           </button>
                         </div>
@@ -1719,14 +1836,14 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       setShowDivForm(false);
                       setEditingDivisionId(null);
                     }}
-                    className="px-3.5 py-2 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium"
+                    className="px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={saving}
-                    className="px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+                    className="px-4 py-2 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
                   >
                     {editingDivisionId ? 'Guardar cambios' : 'Crear división'}
                   </button>
@@ -1742,8 +1859,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     key={d.id}
                     className={`rounded-xl border transition-colors flex flex-col justify-between ${
                       isSelected
-                        ? 'border-[#14532D] bg-emerald-50/40'
-                        : 'border-[#E2E7E4] bg-[#F8F9F8] hover:border-slate-300'
+                        ? 'border-[#7C1FA2] bg-emerald-50/40'
+                        : 'border-[#E2E8F0] bg-[#F8FAFC] hover:border-slate-300'
                     }`}
                   >
                     <button
@@ -1752,12 +1869,12 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       className="text-left p-4 flex-1"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-[#0F1A15]">{d.name}</span>
-                        <span className="text-[11px] text-[#14532D] font-medium">
+                        <span className="text-sm font-semibold text-[#0A1633]">{d.name}</span>
+                        <span className="text-[11px] text-[#7C1FA2] font-medium">
                           {d.drawStatus === 'publicado' ? 'Publicado' : d.drawStatus === 'borrador' ? 'Borrador' : 'Sin sorteo'}
                         </span>
                       </div>
-                      <p className="text-xs text-[#4A5550] mt-1">
+                      <p className="text-xs text-[#475569] mt-1">
                         {d.format === 'grupos_y_final'
                           ? 'Grupos y fase final'
                           : d.format === 'todos_contra_todos'
@@ -1777,13 +1894,13 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       )}
                     </button>
                     {isSuperAdmin && (
-                      <div className="px-4 py-2 border-t border-[#E2E7E4]/80 flex items-center justify-end gap-2">
+                      <div className="px-4 py-2 border-t border-[#E2E8F0]/80 flex items-center justify-end gap-2">
                         <button
                           type="button"
                           onClick={() => openEditDivisionForm(d)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-[#E2E7E4] text-[11px] font-medium text-[#0F1A15] hover:bg-slate-50"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
                         >
-                          <Edit3 className="w-3 h-3 text-[#14532D]" />
+                          <Edit3 className="w-3 h-3 text-[#7C1FA2]" />
                           Editar
                         </button>
                         <button
@@ -1810,7 +1927,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => setConfirmDeleteDivisionId(null)}
-                    className="px-3 py-1.5 rounded-lg border border-red-200 bg-white text-xs font-medium text-[#0F1A15]"
+                    className="px-3 py-1.5 rounded-lg border border-red-200 bg-white text-xs font-medium text-[#0A1633]"
                   >
                     Cancelar
                   </button>
@@ -1827,16 +1944,16 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             )}
 
             {selectedDivision && (
-              <div className="mt-4 p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] flex flex-wrap items-center justify-between gap-4">
+              <div className="mt-4 p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs font-semibold text-[#0F1A15]">
+                  <p className="text-xs font-semibold text-[#0A1633]">
                     Opciones de reglamento · {selectedDivision.name}
                   </p>
-                  <p className="text-[11px] text-[#4A5550]">
+                  <p className="text-[11px] text-[#475569]">
                     Ajustá puntajes opcionales, sistema de tie-break a 10 puntos y partido por 3er puesto.
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-4 text-xs text-[#0F1A15]">
+                <div className="flex flex-wrap items-center gap-4 text-xs text-[#0A1633]">
                   <label className="inline-flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -1883,15 +2000,15 @@ export const AdminTournamentsSection: React.FC<Props> = ({
           </div>
 
           {/* Publicidad personalizada del torneo */}
-          <div className="pt-5 border-t border-[#E2E7E4] space-y-4">
+          <div className="pt-5 border-t border-[#E2E8F0] space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Megaphone className="w-4 h-4 text-[#14532D]" />
+                <Megaphone className="w-4 h-4 text-[#7C1FA2]" />
                 <div>
-                  <h4 className="text-sm font-semibold text-[#0F1A15]">
+                  <h4 className="text-sm font-semibold text-[#0A1633]">
                     Publicidades personalizadas del torneo ({activeAds.length})
                   </h4>
-                  <p className="text-[11px] text-[#4A5550]">
+                  <p className="text-[11px] text-[#475569]">
                     Cargá múltiples banners y sponsors exclusivos para {activeTournament.name}. Se publican en el portal público según su ubicación.
                   </p>
                 </div>
@@ -1899,7 +2016,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={openNewAdForm}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] sm:min-h-[34px] rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] sm:min-h-[34px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Agregar publicidad
@@ -1915,9 +2032,9 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             {showAdForm && (
               <form
                 onSubmit={handleSaveAd}
-                className="p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] space-y-4"
+                className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-4"
               >
-                <h5 className="text-xs font-semibold text-[#0F1A15]">
+                <h5 className="text-xs font-semibold text-[#0A1633]">
                   {editingAdId ? 'Editar publicidad' : `Nueva publicidad para ${activeTournament.name}`}
                 </h5>
 
@@ -1929,43 +2046,43 @@ export const AdminTournamentsSection: React.FC<Props> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Sponsor / Marca *</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Sponsor / Marca *</label>
                     <input
                       required
                       maxLength={120}
                       value={adSponsor}
                       onChange={(e) => setAdSponsor(e.target.value)}
                       placeholder="Ej. Asunción Pro Shop"
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Título del anuncio *</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Título del anuncio *</label>
                     <input
                       required
                       maxLength={120}
                       value={adTitle}
                       onChange={(e) => setAdTitle(e.target.value)}
                       placeholder="Ej. 20% off en encordado oficial"
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Subtítulo (opcional)</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Subtítulo (opcional)</label>
                     <input
                       maxLength={240}
                       value={adSubtitle}
                       onChange={(e) => setAdSubtitle(e.target.value)}
                       placeholder="Detalle o promoción vigente"
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Ubicación en portal</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Ubicación en portal</label>
                     <select
                       value={adPlacement}
                       onChange={(e) => setAdPlacement(e.target.value as AdPlacement)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       <option value="banner_principal">{PLACEMENT_LABELS.banner_principal}</option>
                       <option value="lateral">{PLACEMENT_LABELS.lateral}</option>
@@ -1973,17 +2090,186 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Enlace destino (opcional)</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Enlace destino (opcional)</label>
                     <input
                       type="text"
                       value={adTargetUrl}
                       onChange={(e) => setAdTargetUrl(e.target.value)}
                       placeholder="https://... o www.sponsor.com"
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     />
                   </div>
+                </div>
+
+                {/* Generador de Banners con IA (Vertical + Horizontal por Torneo) */}
+                <div className="p-4 rounded-xl bg-white border border-[#7C1FA2]/30 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#7C1FA2] to-[#0284C7] text-white flex items-center justify-center shrink-0">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-[#0A1633]">
+                          Generador IA de Banners (Horizontal + Vertical)
+                        </p>
+                        <p className="text-[11px] text-[#475569]">
+                          Adaptado automáticamente a <strong>{activeTournament.name}</strong> ({activeTournament.city})
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                    <div className="sm:col-span-3">
+                      <label className="block text-[11px] font-medium text-[#475569] mb-1">
+                        Estilo visual
+                      </label>
+                      <select
+                        value={adAiStyle}
+                        onChange={(e) =>
+                          setAdAiStyle(
+                            e.target.value as
+                              | 'PlayPy Oficial'
+                              | 'Polvo de Ladrillo'
+                              | 'Noche & LED'
+                              | 'Elegante Minimal'
+                          )
+                        }
+                        className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
+                      >
+                        <option value="PlayPy Oficial">PlayPy Oficial</option>
+                        <option value="Polvo de Ladrillo">Polvo de Ladrillo</option>
+                        <option value="Noche & LED">Noche &amp; Luces LED</option>
+                        <option value="Elegante Minimal">Elegante Minimal</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-5">
+                      <label className="block text-[11px] font-medium text-[#475569] mb-1">
+                        Indicaciones creativas IA (opcional)
+                      </label>
+                      <input
+                        maxLength={400}
+                        value={adAiPrompt}
+                        onChange={(e) => setAdAiPrompt(e.target.value)}
+                        placeholder="Ej. Destacar 20% off para jugadores inscriptos..."
+                        className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
+                      />
+                    </div>
+                    <div className="sm:col-span-4">
+                      <button
+                        type="button"
+                        disabled={generatingAiBanner || saving}
+                        onClick={handleGenerateAiBanners}
+                        className="w-full h-9 inline-flex items-center justify-center gap-1.5 px-3.5 rounded-lg bg-gradient-to-r from-[#7C1FA2] to-[#0284C7] text-white text-xs font-semibold hover:opacity-95 disabled:opacity-60 transition-opacity"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                        {generatingAiBanner
+                          ? 'Generando con IA...'
+                          : 'Generar Horizontal + Vertical'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Controles y vistas previas duales: Horizontal 16:9 y Vertical 3:4 */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2 border-t border-[#E2E8F0]">
+                    {/* Formato Horizontal */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-[11px] font-semibold text-[#0A1633]">
+                          Formato Horizontal (16:9 · Banner y Pie)
+                        </label>
+                        <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-[#E2E8F0] bg-[#F8FAFC] text-[11px] font-medium text-[#0A1633] hover:bg-slate-100 cursor-pointer">
+                          <Upload className="w-3 h-3 text-[#7C1FA2]" />
+                          {uploadingHorizImg ? 'Subiendo...' : 'Subir H'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleUploadAdImage(e, 'horizontal')}
+                            disabled={uploadingHorizImg}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                      <input
+                        value={adHorizontalUrl}
+                        onChange={(e) => {
+                          setAdHorizontalUrl(e.target.value);
+                          setHorizPreviewErr(false);
+                        }}
+                        placeholder="URL horizontal o generá con IA arriba"
+                        className="w-full h-8 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
+                      />
+                      {adHorizontalUrl && !horizPreviewErr ? (
+                        <img
+                          src={adHorizontalUrl}
+                          alt="Vista previa banner horizontal"
+                          referrerPolicy="no-referrer"
+                          onError={() => setHorizPreviewErr(true)}
+                          className="w-full aspect-[16/9] rounded-lg object-cover border border-[#E2E8F0] bg-[#0A1633]"
+                        />
+                      ) : (
+                        <div className="w-full aspect-[16/9] rounded-lg border border-dashed border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center text-[11px] text-[#475569] text-center px-3">
+                          {horizPreviewErr
+                            ? 'Vista previa horizontal no disponible'
+                            : 'Sin imagen horizontal (16:9)'}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Formato Vertical */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-[11px] font-semibold text-[#0A1633]">
+                          Formato Vertical (3:4 · Lateral y Móvil)
+                        </label>
+                        <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-[#E2E8F0] bg-[#F8FAFC] text-[11px] font-medium text-[#0A1633] hover:bg-slate-100 cursor-pointer">
+                          <Upload className="w-3 h-3 text-[#0284C7]" />
+                          {uploadingVertImg ? 'Subiendo...' : 'Subir V'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleUploadAdImage(e, 'vertical')}
+                            disabled={uploadingVertImg}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                      <input
+                        value={adVerticalUrl}
+                        onChange={(e) => {
+                          setAdVerticalUrl(e.target.value);
+                          setVertPreviewErr(false);
+                        }}
+                        placeholder="URL vertical o generá con IA arriba"
+                        className="w-full h-8 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
+                      />
+                      <div className="flex justify-center bg-[#F8FAFC] rounded-lg border border-dashed border-[#E2E8F0] p-2">
+                        {adVerticalUrl && !vertPreviewErr ? (
+                          <img
+                            src={adVerticalUrl}
+                            alt="Vista previa banner vertical"
+                            referrerPolicy="no-referrer"
+                            onError={() => setVertPreviewErr(true)}
+                            className="h-44 aspect-[3/4] rounded-lg object-cover border border-[#E2E8F0] bg-[#0A1633]"
+                          />
+                        ) : (
+                          <div className="h-44 aspect-[3/4] rounded-lg flex items-center justify-center text-[11px] text-[#475569] text-center px-2">
+                            {vertPreviewErr
+                              ? 'Vista previa vertical no disponible'
+                              : 'Sin imagen vertical (3:4)'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fallback imagen base manual si solo cargaron una */}
+                {!adHorizontalUrl && !adVerticalUrl && (
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">URL imagen o subir archivo *</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">
+                      O cargá una imagen única manual *
+                    </label>
                     <div className="flex items-center gap-2">
                       <input
                         value={adImageUrl}
@@ -1993,39 +2279,39 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                           setAdError(null);
                         }}
                         placeholder="https://... o subir"
-                        className="flex-1 h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs min-w-0"
+                        className="flex-1 h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs min-w-0"
                       />
-                      <label className="inline-flex items-center gap-1 px-2.5 h-9 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50 cursor-pointer shrink-0">
-                        <Upload className="w-3.5 h-3.5 text-[#14532D]" />
+                      <label className="inline-flex items-center gap-1 px-2.5 h-9 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 cursor-pointer shrink-0">
+                        <Upload className="w-3.5 h-3.5 text-[#7C1FA2]" />
                         {uploadingAdImg ? 'Subiendo...' : 'Subir'}
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={handleUploadAdImage}
+                          onChange={(e) => handleUploadAdImage(e, 'default')}
                           disabled={uploadingAdImg}
                           className="hidden"
                         />
                       </label>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {adImageUrl && (
-                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white border border-[#E2E7E4]">
+                {adImageUrl && !adHorizontalUrl && !adVerticalUrl && (
+                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white border border-[#E2E8F0]">
                     {!adPreviewError ? (
                       <img
                         src={adImageUrl}
                         alt="Vista previa banner publicitario"
                         referrerPolicy="no-referrer"
                         onError={() => setAdPreviewError(true)}
-                        className="w-28 aspect-[16/9] rounded-lg object-cover border border-[#E2E7E4] shrink-0"
+                        className="w-28 aspect-[16/9] rounded-lg object-cover border border-[#E2E8F0] shrink-0"
                       />
                     ) : (
                       <div className="w-28 aspect-[16/9] rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-[10px] text-amber-800 text-center px-1.5 shrink-0">
                         Vista previa no disponible
                       </div>
                     )}
-                    <p className="text-xs text-[#4A5550] truncate">
+                    <p className="text-xs text-[#475569] truncate">
                       {adPreviewError
                         ? 'No se pudo cargar la imagen desde esa ruta. Subí un archivo nuevo o pegá otro enlace.'
                         : `Vista previa del banner (${adSponsor || 'Sponsor'})`}
@@ -2034,7 +2320,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 )}
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <label className="inline-flex items-center gap-2 text-xs text-[#0F1A15] cursor-pointer">
+                  <label className="inline-flex items-center gap-2 text-xs text-[#0A1633] cursor-pointer">
                     <input
                       type="checkbox"
                       checked={adActive}
@@ -2051,17 +2337,17 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                         setEditingAdId(null);
                         setAdError(null);
                       }}
-                      className="px-3.5 py-2 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium"
+                      className="px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium"
                     >
                       Cancelar
                     </button>
                     <button
                       type="submit"
-                      disabled={saving || uploadingAdImg}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534] disabled:opacity-60"
+                      disabled={saving || uploadingAdImg || uploadingHorizImg || uploadingVertImg || generatingAiBanner}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0A1633] text-white text-xs font-medium hover:bg-[#7C1FA2] disabled:opacity-60 transition-colors"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      {uploadingAdImg
+                      {uploadingAdImg || uploadingHorizImg || uploadingVertImg
                         ? 'Procesando imagen...'
                         : saving
                         ? 'Guardando...'
@@ -2075,8 +2361,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             )}
 
             {activeAds.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[#E2E7E4] p-6 text-center text-xs text-[#4A5550]">
-                Este torneo aún no tiene publicidades cargadas. Agregá banners de auspiciantes propios del torneo.
+              <div className="rounded-xl border border-dashed border-[#E2E8F0] p-6 text-center text-xs text-[#475569]">
+                Este torneo aún no tiene publicidades cargadas. Agregá o generá con IA banners para los auspiciantes del torneo.
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2084,46 +2370,51 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   <div
                     key={ad.id}
                     className={`rounded-xl border p-3.5 flex flex-col justify-between gap-3 ${
-                      ad.active ? 'border-[#E2E7E4] bg-white' : 'border-[#E2E7E4] bg-[#F8F9F8] opacity-75'
+                      ad.active ? 'border-[#E2E8F0] bg-white' : 'border-[#E2E8F0] bg-[#F8FAFC] opacity-75'
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      {!brokenAdThumbIds[ad.id] && ad.imageUrl ? (
+                      {!brokenAdThumbIds[ad.id] && (ad.horizontalImageUrl || ad.imageUrl) ? (
                         <img
-                          src={ad.imageUrl}
+                          src={ad.horizontalImageUrl || ad.imageUrl}
                           alt={ad.sponsorName}
                           referrerPolicy="no-referrer"
                           onError={() =>
                             setBrokenAdThumbIds((prev) => ({ ...prev, [ad.id]: true }))
                           }
-                          className="w-24 aspect-[16/9] rounded-lg object-cover border border-[#E2E7E4] shrink-0 bg-slate-100"
+                          className="w-24 aspect-[16/9] rounded-lg object-cover border border-[#E2E8F0] shrink-0 bg-[#0A1633]"
                         />
                       ) : (
-                        <div className="w-24 aspect-[16/9] rounded-lg bg-gradient-to-br from-[#14532D] to-[#0F3D21] text-white flex items-center justify-center text-xs font-bold shrink-0">
+                        <div className="w-24 aspect-[16/9] rounded-lg bg-gradient-to-br from-[#0A1633] via-[#7C1FA2] to-[#0284C7] text-white flex items-center justify-center text-xs font-bold shrink-0">
                           {ad.sponsorName.slice(0, 2).toUpperCase()}
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#14532D] truncate">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#7C1FA2] truncate">
                             {ad.sponsorName}
                           </p>
-                          <span className="text-[11px] font-medium text-[#4A5550] shrink-0">
+                          <span className="text-[11px] font-medium text-[#475569] shrink-0">
                             {ad.active ? 'Activa' : 'Pausada'}
                           </span>
                         </div>
-                        <p className="text-xs font-semibold text-[#0F1A15] mt-0.5 line-clamp-1">
+                        <p className="text-xs font-semibold text-[#0A1633] mt-0.5 line-clamp-1">
                           {ad.title}
                         </p>
-                        <p className="text-[11px] text-[#4A5550] mt-0.5 truncate">
+                        <p className="text-[11px] text-[#475569] mt-0.5 truncate">
                           {PLACEMENT_LABELS[ad.placement]}
+                          {ad.horizontalImageUrl && ad.verticalImageUrl
+                            ? ' · Horizontal + Vertical'
+                            : ad.verticalImageUrl
+                            ? ' · Vertical'
+                            : ''}
                         </p>
                         {ad.targetUrl && (
                           <a
                             href={ad.targetUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] text-[#14532D] hover:underline mt-1"
+                            className="inline-flex items-center gap-1 text-[11px] text-[#0284C7] hover:underline mt-1"
                           >
                             <ExternalLink className="w-3 h-3" />
                             Enlace externo
@@ -2139,7 +2430,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteAdId(null)}
-                            className="px-2.5 py-1 rounded border border-[#E2E7E4] bg-white text-[11px]"
+                            className="px-2.5 py-1 rounded border border-[#E2E8F0] bg-white text-[11px]"
                           >
                             No
                           </button>
@@ -2153,14 +2444,14 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                         </div>
                       </div>
                     ) : (
-                      <div className="pt-2 border-t border-[#E2E7E4] flex items-center justify-between gap-2">
+                      <div className="pt-2 border-t border-[#E2E8F0] flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
                             disabled={idx === 0}
                             onClick={() => handleReorderAd(idx, -1)}
                             title="Subir orden"
-                            className="p-1.5 rounded border border-[#E2E7E4] text-[#4A5550] disabled:opacity-40"
+                            className="p-1.5 rounded border border-[#E2E8F0] text-[#475569] disabled:opacity-40"
                           >
                             <ArrowUp className="w-3.5 h-3.5" />
                           </button>
@@ -2169,7 +2460,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                             disabled={idx === activeAds.length - 1}
                             onClick={() => handleReorderAd(idx, 1)}
                             title="Bajar orden"
-                            className="p-1.5 rounded border border-[#E2E7E4] text-[#4A5550] disabled:opacity-40"
+                            className="p-1.5 rounded border border-[#E2E8F0] text-[#475569] disabled:opacity-40"
                           >
                             <ArrowDown className="w-3.5 h-3.5" />
                           </button>
@@ -2178,16 +2469,16 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                           <button
                             type="button"
                             onClick={() => handleToggleAdActive(ad)}
-                            className="px-2.5 py-1 rounded-lg border border-[#E2E7E4] text-[11px] font-medium text-[#0F1A15] hover:bg-slate-50"
+                            className="px-2.5 py-1 rounded-lg border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
                           >
                             {ad.active ? 'Pausar' : 'Activar'}
                           </button>
                           <button
                             type="button"
                             onClick={() => openEditAdForm(ad)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#E2E7E4] text-[11px] font-medium text-[#0F1A15] hover:bg-slate-50"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
                           >
-                            <Edit3 className="w-3 h-3 text-[#14532D]" />
+                            <Edit3 className="w-3 h-3 text-[#7C1FA2]" />
                             Editar
                           </button>
                           {isSuperAdmin && (

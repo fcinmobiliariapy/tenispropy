@@ -177,12 +177,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   if (!user) {
     return (
       <div className="max-w-lg mx-auto my-12 px-4">
-        <div className="bg-white border border-[#E2E7E4] rounded-2xl p-8 text-center">
-          <div className="w-12 h-12 rounded-xl bg-[#14532D] text-white flex items-center justify-center mx-auto mb-4">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-8 text-center">
+          <div className="w-12 h-12 rounded-xl bg-[#7C1FA2] text-white flex items-center justify-center mx-auto mb-4">
             <Shield className="w-6 h-6" />
           </div>
-          <h1 className="text-2xl font-bold text-[#0F1A15]">Panel Privado de Administración</h1>
-          <p className="mt-2 text-sm text-[#4A5550]">
+          <h1 className="text-2xl font-bold text-[#0A1633]">Panel Privado de Administración</h1>
+          <p className="mt-2 text-sm text-[#475569]">
             Iniciá sesión con Google para gestionar torneos, padrón privado de jugadores, sorteos,
             horarios, carga de marcadores ITF y galerías de fotos.
           </p>
@@ -193,7 +193,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
           <button
             onClick={handleGoogleLogin}
-            className="mt-6 w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-[#14532D] text-white text-sm font-semibold hover:bg-[#166534] transition-colors"
+            className="mt-6 w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-[#7C1FA2] text-white text-sm font-semibold hover:bg-[#6B1A8B] transition-colors"
           >
             <LogIn className="w-4 h-4" />
             Ingresar con Google
@@ -206,18 +206,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   if (!isOperatorOrAbove) {
     return (
       <div className="max-w-lg mx-auto my-12 px-4">
-        <div className="bg-white border border-[#E2E7E4] rounded-2xl p-8 text-center">
-          <h2 className="text-lg font-semibold text-[#0F1A15]">Acceso restringido al equipo</h2>
-          <p className="mt-2 text-sm text-[#4A5550]">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-8 text-center">
+          <h2 className="text-lg font-semibold text-[#0A1633]">Acceso restringido al equipo</h2>
+          <p className="mt-2 text-sm text-[#475569]">
             Tu cuenta (<strong>{user.email}</strong>) no tiene un rol de administrador, organizador
             u operador asignado todavía. Solicitá al superadministrador que habilite tu UID:
           </p>
-          <p className="mt-3 p-2.5 rounded-lg bg-[#F8F9F8] border border-[#E2E7E4] font-mono text-xs break-all">
+          <p className="mt-3 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] font-mono text-xs break-all">
             {user.uid}
           </p>
           <button
             onClick={() => signOut(auth)}
-            className="mt-5 px-4 py-2 rounded-lg border border-[#E2E7E4] text-xs font-medium text-[#0F1A15]"
+            className="mt-5 px-4 py-2 rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633]"
           >
             Cerrar sesión
           </button>
@@ -256,13 +256,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 pb-10">
       {/* Navegación y contexto compacto para móviles / tablets (< lg) */}
       <div className="lg:hidden space-y-3 mb-5">
-        <div className="bg-white border border-[#E2E7E4] rounded-2xl p-3.5 space-y-3">
-          <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-[#E2E7E4]">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-3.5 space-y-3">
+          <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-[#E2E8F0]">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-[#14532D] capitalize">
+              <p className="text-[11px] font-semibold text-[#7C1FA2] capitalize">
                 Perfil: {effectiveRole}
               </p>
-              <p className="text-sm font-semibold text-[#0F1A15] truncate">
+              <p className="text-sm font-semibold text-[#0A1633] truncate">
                 {user.displayName || user.email}
               </p>
             </div>
@@ -272,7 +272,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onClick={handleResetDemo}
                   disabled={seeding}
                   title="Restaurar torneos demo"
-                  className="min-h-[40px] px-2.5 rounded-lg border border-[#E2E7E4] text-xs text-[#4A5550] hover:text-[#0F1A15] inline-flex items-center gap-1"
+                  className="min-h-[40px] px-2.5 rounded-lg border border-[#E2E8F0] text-xs text-[#475569] hover:text-[#0A1633] inline-flex items-center gap-1"
                 >
                   <Database className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">{seeding ? 'Sync...' : 'Demo'}</span>
@@ -280,7 +280,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
               <button
                 onClick={() => signOut(auth)}
-                className="min-h-[40px] px-2.5 rounded-lg border border-[#E2E7E4] text-xs text-red-700 hover:bg-red-50 inline-flex items-center gap-1"
+                className="min-h-[40px] px-2.5 rounded-lg border border-[#E2E8F0] text-xs text-red-700 hover:bg-red-50 inline-flex items-center gap-1"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Salir</span>
@@ -290,13 +290,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Torneo en gestión
               </label>
               <select
                 value={activeTournament?.id || ''}
                 onChange={(e) => onSelectTournament(e.target.value)}
-                className="w-full h-11 px-3 rounded-xl border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium"
+                className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium"
               >
                 {tournaments.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -307,13 +307,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 División activa
               </label>
               <select
                 value={activeDivision?.id || ''}
                 onChange={(e) => onSelectDivision(e.target.value)}
-                className="w-full h-11 px-3 rounded-xl border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium"
+                className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium"
               >
                 {tournamentDivisions.map((d) => (
                   <option key={d.id} value={d.id}>
@@ -327,7 +327,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         <nav
           aria-label="Secciones de administración"
-          className="flex items-center gap-1.5 p-1 bg-white border border-[#E2E7E4] rounded-xl overflow-x-auto clean-scroll"
+          className="flex items-center gap-1.5 p-1 bg-white border border-[#E2E8F0] rounded-xl overflow-x-auto clean-scroll"
         >
           {visibleNavItems.map((item) => (
             <button
@@ -335,8 +335,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onClick={() => setActiveTab(item.id)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 min-h-[44px] ${
                 currentTab === item.id
-                  ? 'bg-[#14532D] text-white'
-                  : 'text-[#4A5550] hover:bg-[#F8F9F8] hover:text-[#0F1A15]'
+                  ? 'bg-[#7C1FA2] text-white'
+                  : 'text-[#475569] hover:bg-[#F8FAFC] hover:text-[#0A1633]'
               }`}
             >
               {item.icon}
@@ -349,22 +349,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Sidebar de Administración (solo desktop lg+) */}
         <aside className="hidden lg:block lg:w-64 shrink-0 space-y-4">
-          <div className="bg-white border border-[#E2E7E4] rounded-2xl p-4 space-y-3 sticky top-20">
-            <div className="pb-3 border-b border-[#E2E7E4]">
-              <p className="text-xs font-medium text-[#14532D] capitalize">Perfil: {effectiveRole}</p>
-              <p className="text-sm font-semibold text-[#0F1A15] truncate mt-0.5">
+          <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 space-y-3 sticky top-20">
+            <div className="pb-3 border-b border-[#E2E8F0]">
+              <p className="text-xs font-medium text-[#7C1FA2] capitalize">Perfil: {effectiveRole}</p>
+              <p className="text-sm font-semibold text-[#0A1633] truncate mt-0.5">
                 {user.displayName || user.email}
               </p>
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Torneo en gestión
               </label>
               <select
                 value={activeTournament?.id || ''}
                 onChange={(e) => onSelectTournament(e.target.value)}
-                className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium"
+                className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium"
               >
                 {tournaments.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -375,13 +375,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 División activa
               </label>
               <select
                 value={activeDivision?.id || ''}
                 onChange={(e) => onSelectDivision(e.target.value)}
-                className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium"
+                className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium"
               >
                 {tournamentDivisions.map((d) => (
                   <option key={d.id} value={d.id}>
@@ -398,8 +398,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onClick={() => setActiveTab(item.id)}
                   className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors min-h-[40px] ${
                     currentTab === item.id
-                      ? 'bg-[#14532D] text-white'
-                      : 'text-[#4A5550] hover:bg-[#F8F9F8] hover:text-[#0F1A15]'
+                      ? 'bg-[#7C1FA2] text-white'
+                      : 'text-[#475569] hover:bg-[#F8FAFC] hover:text-[#0A1633]'
                   }`}
                 >
                   {item.icon}
@@ -408,12 +408,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               ))}
             </nav>
 
-            <div className="pt-3 border-t border-[#E2E7E4] space-y-2">
+            <div className="pt-3 border-t border-[#E2E8F0] space-y-2">
               {isSuperAdmin && (
                 <button
                   onClick={handleResetDemo}
                   disabled={seeding}
-                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-[#E2E7E4] text-xs text-[#4A5550] hover:text-[#0F1A15]"
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-[#E2E8F0] text-xs text-[#475569] hover:text-[#0A1633]"
                 >
                   <Database className="w-3.5 h-3.5" />
                   {seeding ? 'Sincronizando...' : 'Restaurar torneos demo'}
@@ -421,7 +421,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
               <button
                 onClick={() => signOut(auth)}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-[#E2E7E4] text-xs text-red-700 hover:bg-red-50"
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-[#E2E8F0] text-xs text-red-700 hover:bg-red-50"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 Cerrar sesión

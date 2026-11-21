@@ -320,6 +320,9 @@ export interface TournamentAd {
   title: string;
   subtitle?: string | null;
   imageUrl: string;
+  horizontalImageUrl?: string | null;
+  verticalImageUrl?: string | null;
+  aiPrompt?: string | null;
   targetUrl?: string | null;
   placement: AdPlacement;
   order: number;

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'teniscupy-v1';
+const CACHE_NAME = 'playpy-v1';
 const CORE_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -38,7 +38,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let payload = { title: 'TenisCupy', body: 'Actualización de torneo disponible', url: '/' };
+  let payload = { title: 'PlayPy', body: 'Actualización de torneo disponible', url: '/' };
   try {
     if (event.data) {
       payload = { ...payload, ...event.data.json() };

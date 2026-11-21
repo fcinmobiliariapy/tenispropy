@@ -349,13 +349,16 @@ service cloud.firestore {
 
     function isValidTournamentAd(data, adId) {
       return data.keys().hasAll(['id', 'tournamentId', 'sponsorName', 'title', 'imageUrl', 'placement', 'order', 'active', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'tournamentId', 'sponsorName', 'title', 'subtitle', 'imageUrl', 'targetUrl', 'placement', 'order', 'active', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'tournamentId', 'sponsorName', 'title', 'subtitle', 'imageUrl', 'horizontalImageUrl', 'verticalImageUrl', 'aiPrompt', 'targetUrl', 'placement', 'order', 'active', 'createdAt', 'updatedAt'])
         && isValidId(data.id) && data.id == adId
         && isValidId(data.tournamentId)
         && isNonEmptyStr(data.sponsorName, 120)
         && isNonEmptyStr(data.title, 120)
         && (!('subtitle' in data) || isOptionalStr(data.subtitle, 240))
         && isNonEmptyStr(data.imageUrl, 250000)
+        && (!('horizontalImageUrl' in data) || isOptionalStr(data.horizontalImageUrl, 250000))
+        && (!('verticalImageUrl' in data) || isOptionalStr(data.verticalImageUrl, 250000))
+        && (!('aiPrompt' in data) || isOptionalStr(data.aiPrompt, 500))
         && (!('targetUrl' in data) || isOptionalStr(data.targetUrl, 2000))
         && data.placement in ['banner_principal', 'lateral', 'pie']
         && data.order is number && data.order >= 0 && data.order <= 500

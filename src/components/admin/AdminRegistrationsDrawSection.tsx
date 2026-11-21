@@ -607,10 +607,10 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-xs text-[#14532D] font-medium">
+        <p className="text-xs text-[#7C1FA2] font-medium">
           División seleccionada · {division.modality} · {division.gender}
         </p>
-        <h2 className="text-xl font-bold text-[#0F1A15]">
+        <h2 className="text-xl font-bold text-[#0A1633]">
           Inscripciones y Sorteo — {division.name}
         </h2>
       </div>
@@ -621,7 +621,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
         </div>
       )}
       {feedback && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-medium text-[#14532D]">
+        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-medium text-[#7C1FA2]">
           {feedback}
         </div>
       )}
@@ -629,11 +629,11 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
       {/* Formulario de inscripción */}
       <form
         onSubmit={handleEnroll}
-        className="bg-white border border-[#E2E7E4] rounded-2xl p-4 sm:p-5 space-y-4"
+        className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 space-y-4"
       >
         <div className="flex items-center gap-2">
-          <UserPlus className="w-4 h-4 text-[#14532D]" />
-          <h3 className="text-sm font-semibold text-[#0F1A15]">
+          <UserPlus className="w-4 h-4 text-[#7C1FA2]" />
+          <h3 className="text-sm font-semibold text-[#0A1633]">
             Inscribir {division.modality === 'Dobles' ? 'pareja de Dobles' : 'jugador en Singles'}
           </h3>
         </div>
@@ -642,7 +642,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
           <select
             value={player1Id}
             onChange={(e) => setPlayer1Id(e.target.value)}
-            className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+            className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
           >
             <option value="">
               {division.modality === 'Dobles' ? 'Jugador/a 1...' : 'Seleccionar jugador/a...'}
@@ -658,7 +658,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
             <select
               value={player2Id}
               onChange={(e) => setPlayer2Id(e.target.value)}
-              className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+              className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
             >
               <option value="">Jugador/a 2 (pareja)...</option>
               {eligiblePlayers.map((p) => (
@@ -676,13 +676,13 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
             placeholder="Cabeza de serie (opcional)"
             value={seedInput}
             onChange={(e) => setSeedInput(e.target.value)}
-            className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm font-mono"
+            className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm font-mono"
           />
 
           <select
             value={regStatus}
             onChange={(e) => setRegStatus(e.target.value as RegistrationStatus)}
-            className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+            className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
           >
             <option value="confirmada">Estado: Confirmada</option>
             <option value="pendiente">Estado: Pendiente</option>
@@ -693,7 +693,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
         <div className="flex justify-end">
           <button
             type="submit"
-            className="w-full sm:w-auto px-4 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+            className="w-full sm:w-auto px-4 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
           >
             Confirmar inscripción
           </button>
@@ -701,17 +701,17 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
       </form>
 
       {/* Lista de inscriptos */}
-      <div className="bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden">
-        <div className="px-4 sm:px-5 py-3.5 border-b border-[#E2E7E4] flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-[#0F1A15]">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+        <div className="px-4 sm:px-5 py-3.5 border-b border-[#E2E8F0] flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-[#0A1633]">
             Inscripciones registradas ({registrations.length})
           </h3>
-          <span className="text-xs text-[#4A5550] font-mono tabular-nums shrink-0">
+          <span className="text-xs text-[#475569] font-mono tabular-nums shrink-0">
             Confirmadas: {confirmedEntries.length} / {division.maxEntries}
           </span>
         </div>
 
-        <div className="divide-y divide-[#E2E7E4]">
+        <div className="divide-y divide-[#E2E8F0]">
           {registrations.map((reg) => {
             const isEditing = editingRegId === reg.id;
             const isDeleting = confirmDeleteRegId === reg.id;
@@ -723,13 +723,13 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                       value={editRegName}
                       onChange={(e) => setEditRegName(e.target.value)}
                       placeholder="Nombre inscripto"
-                      className="sm:col-span-4 h-9 px-2.5 rounded-lg border border-[#E2E7E4] text-xs"
+                      className="sm:col-span-4 h-9 px-2.5 rounded-lg border border-[#E2E8F0] text-xs"
                     />
                     <input
                       value={editRegClub}
                       onChange={(e) => setEditRegClub(e.target.value)}
                       placeholder="Club"
-                      className="sm:col-span-3 h-9 px-2.5 rounded-lg border border-[#E2E7E4] text-xs"
+                      className="sm:col-span-3 h-9 px-2.5 rounded-lg border border-[#E2E8F0] text-xs"
                     />
                     <input
                       type="number"
@@ -738,12 +738,12 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                       value={editRegSeed}
                       onChange={(e) => setEditRegSeed(e.target.value)}
                       placeholder="Seed"
-                      className="sm:col-span-1 h-9 px-2 rounded-lg border border-[#E2E7E4] text-xs font-mono"
+                      className="sm:col-span-1 h-9 px-2 rounded-lg border border-[#E2E8F0] text-xs font-mono"
                     />
                     <select
                       value={editRegStatus}
                       onChange={(e) => setEditRegStatus(e.target.value as RegistrationStatus)}
-                      className="sm:col-span-2 h-9 px-2 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs"
+                      className="sm:col-span-2 h-9 px-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
                     >
                       <option value="confirmada">Confirmada</option>
                       <option value="pendiente">Pendiente</option>
@@ -754,14 +754,14 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                       <button
                         type="button"
                         onClick={() => setEditingRegId(null)}
-                        className="px-2.5 py-1.5 rounded-lg border border-[#E2E7E4] text-xs"
+                        className="px-2.5 py-1.5 rounded-lg border border-[#E2E8F0] text-xs"
                       >
                         Cancelar
                       </button>
                       <button
                         type="button"
                         onClick={() => handleSaveRegistrationEdit(reg)}
-                        className="px-3 py-1.5 rounded-lg bg-[#14532D] text-white text-xs font-medium"
+                        className="px-3 py-1.5 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium"
                       >
                         Guardar
                       </button>
@@ -770,16 +770,16 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                 ) : (
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <span className="font-medium text-[#0F1A15]">{reg.displayName}</span>
-                      {reg.seed && <span className="ml-2 text-xs text-[#14532D] font-mono">[Seed {reg.seed}]</span>}
-                      <p className="text-xs text-[#4A5550] truncate">{reg.club}</p>
+                      <span className="font-medium text-[#0A1633]">{reg.displayName}</span>
+                      {reg.seed && <span className="ml-2 text-xs text-[#7C1FA2] font-mono">[Seed {reg.seed}]</span>}
+                      <p className="text-xs text-[#475569] truncate">{reg.club}</p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
                       <select
                         value={reg.status}
                         onChange={(e) => handleUpdateRegStatus(reg, e.target.value as RegistrationStatus)}
-                        className="h-10 sm:h-8 px-2.5 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium"
+                        className="h-10 sm:h-8 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium"
                       >
                         <option value="confirmada">Confirmada</option>
                         <option value="pendiente">Pendiente</option>
@@ -793,9 +793,9 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                             type="button"
                             onClick={() => startEditRegistration(reg)}
                             title="Editar inscripción"
-                            className="p-2 rounded-lg border border-[#E2E7E4] text-[#0F1A15] hover:bg-slate-50"
+                            className="p-2 rounded-lg border border-[#E2E8F0] text-[#0A1633] hover:bg-slate-50"
                           >
-                            <Edit3 className="w-3.5 h-3.5 text-[#14532D]" />
+                            <Edit3 className="w-3.5 h-3.5 text-[#7C1FA2]" />
                           </button>
                           <button
                             type="button"
@@ -820,7 +820,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteRegId(null)}
-                        className="px-2.5 py-1 rounded border border-red-200 bg-white text-[#0F1A15]"
+                        className="px-2.5 py-1 rounded border border-red-200 bg-white text-[#0A1633]"
                       >
                         Cancelar
                       </button>
@@ -841,24 +841,24 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
       </div>
 
       {/* Módulo de Sorteo y Generación de Cruces (Automático o Manual) */}
-      <div className="bg-white border border-[#E2E7E4] rounded-2xl p-4 sm:p-5 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#E2E7E4]">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#E2E8F0]">
           <div>
-            <h3 className="text-sm font-semibold text-[#0F1A15]">Sorteo y armado de cruces</h3>
-            <p className="text-xs text-[#4A5550]">
+            <h3 className="text-sm font-semibold text-[#0A1633]">Sorteo y armado de cruces</h3>
+            <p className="text-xs text-[#475569]">
               Elegí entre sorteo automático o asignación manual de grupos y enfrentamientos antes de publicar.
             </p>
           </div>
 
           {/* Switch Automático / Manual */}
-          <div className="inline-flex items-center p-1 rounded-xl border border-[#E2E7E4] bg-[#F8F9F8] self-start sm:self-auto">
+          <div className="inline-flex items-center p-1 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] self-start sm:self-auto">
             <button
               type="button"
               onClick={() => setDrawMode('automatico')}
               className={`inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg text-xs font-medium transition-colors ${
                 drawMode === 'automatico'
-                  ? 'bg-[#14532D] text-white'
-                  : 'text-[#4A5550] hover:text-[#0F1A15]'
+                  ? 'bg-[#7C1FA2] text-white'
+                  : 'text-[#475569] hover:text-[#0A1633]'
               }`}
             >
               <Shuffle className="w-3.5 h-3.5" />
@@ -874,8 +874,8 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
               }}
               className={`inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg text-xs font-medium transition-colors ${
                 drawMode === 'manual'
-                  ? 'bg-[#14532D] text-white'
-                  : 'text-[#4A5550] hover:text-[#0F1A15]'
+                  ? 'bg-[#7C1FA2] text-white'
+                  : 'text-[#475569] hover:text-[#0A1633]'
               }`}
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -889,7 +889,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
           <div className="flex flex-wrap gap-2">
             <button
               onClick={handleGenerateAutoPreview}
-              className="inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+              className="inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
             >
               <Shuffle className="w-3.5 h-3.5" />
               Sortear automáticamente (vista previa)
@@ -919,13 +919,13 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
 
         {/* MODO MANUAL PARA GRUPOS / TODOS CONTRA TODOS */}
         {drawMode === 'manual' && division.format !== 'eliminacion_directa' && (
-          <div className="space-y-4 p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4]">
+          <div className="space-y-4 p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-xs font-semibold text-[#0F1A15]">
+                <p className="text-xs font-semibold text-[#0A1633]">
                   Asignación manual de {division.format === 'todos_contra_todos' ? 'tabla' : 'grupos'}
                 </p>
-                <p className="text-[11px] text-[#4A5550]">
+                <p className="text-[11px] text-[#475569]">
                   Elegí en qué grupo participa cada inscripto confirmado y luego generá los cruces o armalos uno a uno.
                 </p>
               </div>
@@ -938,14 +938,14 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                   });
                   setManualGroupAssignments(next);
                 }}
-                className="px-3 min-h-[36px] rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+                className="px-3 min-h-[36px] rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
               >
                 Distribuir equitativamente
               </button>
             </div>
 
             {confirmedEntries.length < 2 ? (
-              <p className="text-xs text-[#4A5550]">
+              <p className="text-xs text-[#475569]">
                 Se necesitan al menos 2 participantes confirmados.
               </p>
             ) : (
@@ -954,11 +954,11 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                   {confirmedEntries.map((entry) => (
                     <div
                       key={entry.id}
-                      className="flex items-center justify-between gap-2 bg-white border border-[#E2E7E4] rounded-xl px-3 py-2 text-xs"
+                      className="flex items-center justify-between gap-2 bg-white border border-[#E2E8F0] rounded-xl px-3 py-2 text-xs"
                     >
                       <div className="min-w-0">
-                        <p className="font-medium text-[#0F1A15] truncate">{entry.displayName}</p>
-                        <p className="text-[11px] text-[#4A5550] truncate">
+                        <p className="font-medium text-[#0A1633] truncate">{entry.displayName}</p>
+                        <p className="text-[11px] text-[#475569] truncate">
                           {entry.club} {entry.seed ? `· Seed ${entry.seed}` : ''}
                         </p>
                       </div>
@@ -970,7 +970,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                             [entry.id]: Number(e.target.value),
                           }))
                         }
-                        className="h-9 px-2 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium shrink-0"
+                        className="h-9 px-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium shrink-0"
                       >
                         {groupNames.map((gName, idx) => (
                           <option key={gName} value={idx}>
@@ -986,7 +986,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => handleBuildManualGroupsPreview(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+                    className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     Previsualizar con cruces todos contra todos
@@ -994,7 +994,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => handleBuildManualGroupsPreview(false)}
-                    className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg border border-[#14532D] bg-white text-[#14532D] text-xs font-medium hover:bg-emerald-50"
+                    className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg border border-[#7C1FA2] bg-white text-[#7C1FA2] text-xs font-medium hover:bg-emerald-50"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                     Previsualizar y armar cruces manualmente
@@ -1007,13 +1007,13 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
 
         {/* MODO MANUAL PARA ELIMINACIÓN DIRECTA DESDE EL INICIO */}
         {drawMode === 'manual' && division.format === 'eliminacion_directa' && (
-          <div className="space-y-4 p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4]">
+          <div className="space-y-4 p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-xs font-semibold text-[#0F1A15]">
+                <p className="text-xs font-semibold text-[#0A1633]">
                   Armado manual de cruces de Ronda 1
                 </p>
-                <p className="text-[11px] text-[#4A5550]">
+                <p className="text-[11px] text-[#475569]">
                   Definí manualmente cada enfrentamiento o asigná BYE (pase libre).
                 </p>
               </div>
@@ -1021,14 +1021,14 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => initManualBracketSlots(confirmedEntries, 'direct')}
-                  className="px-3 min-h-[36px] rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15]"
+                  className="px-3 min-h-[36px] rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633]"
                 >
                   Reiniciar casillas
                 </button>
                 <button
                   type="button"
                   onClick={() => handleAutoFillManualBracket(confirmedEntries)}
-                  className="px-3 min-h-[36px] rounded-lg border border-[#14532D] bg-white text-xs font-medium text-[#14532D]"
+                  className="px-3 min-h-[36px] rounded-lg border border-[#7C1FA2] bg-white text-xs font-medium text-[#7C1FA2]"
                 >
                   Completar vacíos automáticamente
                 </button>
@@ -1036,7 +1036,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
             </div>
 
             {confirmedEntries.length < 2 ? (
-              <p className="text-xs text-[#4A5550]">
+              <p className="text-xs text-[#475569]">
                 Se necesitan al menos 2 participantes confirmados.
               </p>
             ) : (
@@ -1045,9 +1045,9 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                   {manualKoPairs.map(([aId, bId], idx) => (
                     <div
                       key={idx}
-                      className="bg-white border border-[#E2E7E4] rounded-xl p-3 space-y-2"
+                      className="bg-white border border-[#E2E8F0] rounded-xl p-3 space-y-2"
                     >
-                      <p className="text-[11px] font-semibold text-[#4A5550]">
+                      <p className="text-[11px] font-semibold text-[#475569]">
                         Llave #{idx + 1}
                       </p>
                       <select
@@ -1058,7 +1058,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                             prev.map((p, i) => (i === idx ? [val, p[1]] : p))
                           );
                         }}
-                        className="w-full h-10 px-2.5 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs"
+                        className="w-full h-10 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
                       >
                         <option value="">BYE / Pase libre</option>
                         {confirmedEntries.map((entry) => (
@@ -1075,7 +1075,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                             prev.map((p, i) => (i === idx ? [p[0], val] : p))
                           );
                         }}
-                        className="w-full h-10 px-2.5 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs"
+                        className="w-full h-10 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
                       >
                         <option value="">BYE / Pase libre</option>
                         {confirmedEntries.map((entry) => (
@@ -1097,7 +1097,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                       'Borrador manual de cuadro eliminatorio'
                     )
                   }
-                  className="inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+                  className="inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Previsualizar cuadro manual
@@ -1109,24 +1109,24 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
 
         {/* SECCIÓN ESPECÍFICA: FASE FINAL DESDE CLASIFICADOS (grupos_y_final) */}
         {division.format === 'grupos_y_final' && groups.length > 0 && (
-          <div className="pt-4 border-t border-[#E2E7E4] space-y-3">
+          <div className="pt-4 border-t border-[#E2E8F0] space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-[#14532D]">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-[#7C1FA2]">
                   Fase final desde clasificados ({groupQualifiers.length} clasificados)
                 </h4>
-                <p className="text-xs text-[#4A5550]">
+                <p className="text-xs text-[#475569]">
                   Generá el cuadro eliminatorio de forma automática por posición o armando los cruces manualmente.
                 </p>
               </div>
-              <div className="inline-flex items-center p-1 rounded-xl border border-[#E2E7E4] bg-[#F8F9F8] self-start">
+              <div className="inline-flex items-center p-1 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] self-start">
                 <button
                   type="button"
                   onClick={() => setKoPhaseMode('automatico')}
                   className={`px-3 min-h-[36px] rounded-lg text-xs font-medium ${
                     koPhaseMode === 'automatico'
-                      ? 'bg-[#14532D] text-white'
-                      : 'text-[#4A5550]'
+                      ? 'bg-[#7C1FA2] text-white'
+                      : 'text-[#475569]'
                   }`}
                 >
                   Cruces automáticos
@@ -1141,8 +1141,8 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                   }}
                   className={`px-3 min-h-[36px] rounded-lg text-xs font-medium ${
                     koPhaseMode === 'manual'
-                      ? 'bg-[#14532D] text-white'
-                      : 'text-[#4A5550]'
+                      ? 'bg-[#7C1FA2] text-white'
+                      : 'text-[#475569]'
                   }`}
                 >
                   Cruces manuales
@@ -1155,7 +1155,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={handleGenerateKnockoutFromGroupsAuto}
-                  className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg border border-[#14532D] text-[#14532D] text-xs font-medium hover:bg-emerald-50"
+                  className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg border border-[#7C1FA2] text-[#7C1FA2] text-xs font-medium hover:bg-emerald-50"
                 >
                   <Trophy className="w-3.5 h-3.5" />
                   Generar fase final automática (vista previa)
@@ -1171,15 +1171,15 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                 )}
               </div>
             ) : (
-              <div className="p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] space-y-3">
+              <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-[#0F1A15]">
+                  <p className="text-xs font-medium text-[#0A1633]">
                     Emparejá manualmente a los clasificados para la Ronda 1 de Fase Final:
                   </p>
                   <button
                     type="button"
                     onClick={() => handleAutoFillManualBracket(groupQualifiers)}
-                    className="px-3 min-h-[36px] rounded-lg border border-[#14532D] bg-white text-xs font-medium text-[#14532D]"
+                    className="px-3 min-h-[36px] rounded-lg border border-[#7C1FA2] bg-white text-xs font-medium text-[#7C1FA2]"
                   >
                     Completar automáticamente
                   </button>
@@ -1188,9 +1188,9 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                   {manualKoPairs.map(([aId, bId], idx) => (
                     <div
                       key={idx}
-                      className="bg-white border border-[#E2E7E4] rounded-xl p-3 space-y-2"
+                      className="bg-white border border-[#E2E8F0] rounded-xl p-3 space-y-2"
                     >
-                      <p className="text-[11px] font-semibold text-[#4A5550]">
+                      <p className="text-[11px] font-semibold text-[#475569]">
                         Cruce Fase Final #{idx + 1}
                       </p>
                       <select
@@ -1201,7 +1201,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                             prev.map((p, i) => (i === idx ? [val, p[1]] : p))
                           );
                         }}
-                        className="w-full h-10 px-2.5 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs"
+                        className="w-full h-10 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
                       >
                         <option value="">BYE / Pase libre</option>
                         {groupQualifiers.map((entry) => (
@@ -1218,7 +1218,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                             prev.map((p, i) => (i === idx ? [p[0], val] : p))
                           );
                         }}
-                        className="w-full h-10 px-2.5 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs"
+                        className="w-full h-10 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
                       >
                         <option value="">BYE / Pase libre</option>
                         {groupQualifiers.map((entry) => (
@@ -1239,7 +1239,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                       'Borrador manual de fase final'
                     )
                   }
-                  className="inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+                  className="inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Previsualizar fase final manual
@@ -1251,7 +1251,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
 
         {/* VISTA PREVIA EDITABLE ANTES DE PUBLICAR */}
         {previewMatches && (
-          <div className="p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] space-y-4">
+          <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs font-semibold text-[#C2410C]">
                 {previewTitle} (aún no publicado en el portal público)
@@ -1262,13 +1262,13 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                     setPreviewGroups(null);
                     setPreviewMatches(null);
                   }}
-                  className="px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                  className="px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] bg-white text-xs"
                 >
                   Descartar
                 </button>
                 <button
                   onClick={handlePublishDraw}
-                  className="inline-flex items-center gap-1.5 px-4 min-h-[40px] sm:min-h-[34px] rounded-lg bg-[#14532D] text-white text-xs font-medium"
+                  className="inline-flex items-center gap-1.5 px-4 min-h-[40px] sm:min-h-[34px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Publicar sorteo
@@ -1280,8 +1280,8 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {previewGroups.map((g) => (
-                    <div key={g.id} className="bg-white border border-[#E2E7E4] rounded-xl p-3">
-                      <p className="text-xs font-semibold text-[#0F1A15] mb-2">{g.name}</p>
+                    <div key={g.id} className="bg-white border border-[#E2E8F0] rounded-xl p-3">
+                      <p className="text-xs font-semibold text-[#0A1633] mb-2">{g.name}</p>
                       <div className="space-y-1.5">
                         {g.standings.map((s) => (
                           <div key={s.entryId} className="flex items-center justify-between gap-2 text-xs">
@@ -1292,7 +1292,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                               <select
                                 value={g.id}
                                 onChange={(e) => handleMoveEntryInPreview(s.entryId, e.target.value)}
-                                className="h-8 px-2 rounded border border-[#E2E7E4] text-[11px] shrink-0"
+                                className="h-8 px-2 rounded border border-[#E2E8F0] text-[11px] shrink-0"
                               >
                                 {previewGroups.map((opt) => (
                                   <option key={opt.id} value={opt.id}>
@@ -1309,15 +1309,15 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                 </div>
 
                 {/* Agregar cruce manual dentro de los grupos previsualizados */}
-                <div className="bg-white border border-[#E2E7E4] rounded-xl p-3 space-y-2.5">
-                  <p className="text-xs font-semibold text-[#0F1A15]">
+                <div className="bg-white border border-[#E2E8F0] rounded-xl p-3 space-y-2.5">
+                  <p className="text-xs font-semibold text-[#0A1633]">
                     Agregar cruce manual en borrador de grupo
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
                     <select
                       value={customGroupIdx}
                       onChange={(e) => setCustomGroupIdx(Number(e.target.value))}
-                      className="h-9 px-2.5 rounded-lg border border-[#E2E7E4] text-xs"
+                      className="h-9 px-2.5 rounded-lg border border-[#E2E8F0] text-xs"
                     >
                       {previewGroups.map((g, idx) => (
                         <option key={g.id} value={idx}>
@@ -1328,7 +1328,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                     <select
                       value={customMatchAId}
                       onChange={(e) => setCustomMatchAId(e.target.value)}
-                      className="h-9 px-2.5 rounded-lg border border-[#E2E7E4] text-xs"
+                      className="h-9 px-2.5 rounded-lg border border-[#E2E8F0] text-xs"
                     >
                       <option value="">Participante A...</option>
                       {(previewGroups[customGroupIdx]?.entryIds || []).map((id) => {
@@ -1343,7 +1343,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                     <select
                       value={customMatchBId}
                       onChange={(e) => setCustomMatchBId(e.target.value)}
-                      className="h-9 px-2.5 rounded-lg border border-[#E2E7E4] text-xs"
+                      className="h-9 px-2.5 rounded-lg border border-[#E2E8F0] text-xs"
                     >
                       <option value="">Participante B...</option>
                       {(previewGroups[customGroupIdx]?.entryIds || []).map((id) => {
@@ -1362,12 +1362,12 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                       value={customRoundOrder}
                       onChange={(e) => setCustomRoundOrder(Number(e.target.value))}
                       placeholder="Fecha"
-                      className="h-9 px-2.5 rounded-lg border border-[#E2E7E4] text-xs font-mono"
+                      className="h-9 px-2.5 rounded-lg border border-[#E2E8F0] text-xs font-mono"
                     />
                     <button
                       type="button"
                       onClick={handleAddCustomGroupMatch}
-                      className="inline-flex items-center justify-center gap-1 h-9 px-3 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+                      className="inline-flex items-center justify-center gap-1 h-9 px-3 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       Agregar cruce
@@ -1378,18 +1378,18 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
             )}
 
             <div>
-              <p className="text-xs font-medium text-[#4A5550] mb-1.5">
+              <p className="text-xs font-medium text-[#475569] mb-1.5">
                 Cruces generados ({previewMatches.length} partidos):
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto">
                 {previewMatches.map((m) => (
                   <div
                     key={m.id}
-                    className="bg-white border border-[#E2E7E4] rounded-lg px-3 py-2 text-xs flex items-center justify-between gap-2"
+                    className="bg-white border border-[#E2E8F0] rounded-lg px-3 py-2 text-xs flex items-center justify-between gap-2"
                   >
                     <div className="min-w-0">
-                      <span className="text-[#4A5550]">{m.roundName}: </span>
-                      <span className="font-medium text-[#0F1A15]">
+                      <span className="text-[#475569]">{m.roundName}: </span>
+                      <span className="font-medium text-[#0A1633]">
                         {m.entryAName} vs {m.entryBName}
                       </span>
                     </div>

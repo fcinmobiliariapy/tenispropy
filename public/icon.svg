@@ -1,9 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <rect width="512" height="512" rx="112" fill="#14532D"/>
-  <rect x="64" y="96" width="384" height="320" rx="24" stroke="#F8F9F8" stroke-width="18"/>
-  <line x1="256" y1="96" x2="256" y2="416" stroke="#F8F9F8" stroke-width="14"/>
-  <line x1="64" y1="256" x2="448" y2="256" stroke="#D97706" stroke-width="12" stroke-dasharray="16 10"/>
-  <circle cx="348" cy="184" r="44" fill="#D9F99D"/>
-  <path d="M318 154C334 172 334 196 318 214" stroke="#14532D" stroke-width="8" stroke-linecap="round"/>
-  <path d="M378 154C362 172 362 196 378 214" stroke="#14532D" stroke-width="8" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="playpyGrad" x1="88" y1="88" x2="430" y2="412" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#B91CF6"/>
+      <stop offset="48%" stop-color="#7C1FA2"/>
+      <stop offset="100%" stop-color="#00A6FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0A1633"/>
+  <path d="M138 118C138 92 167 76 189 90L392 222C412 235 412 265 392 278L189 410C167 424 138 408 138 382V118Z" fill="url(#playpyGrad)"/>
+  <circle cx="294" cy="182" r="22" fill="#FFFFFF"/>
+  <path d="M180 214C224 196 268 202 316 232C282 246 250 264 218 298L182 344C198 302 214 270 238 248C214 234 196 226 180 214Z" fill="#FFFFFF"/>
+  <path d="M110 296C128 336 164 366 218 378" stroke="#00B8FF" stroke-width="16" stroke-linecap="round"/>
 </svg>

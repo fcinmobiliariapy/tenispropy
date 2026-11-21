@@ -463,10 +463,10 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-xs text-[#14532D] font-medium">
+          <p className="text-xs text-[#7C1FA2] font-medium">
             {tournament.name} · Zona America/Asuncion
           </p>
-          <h2 className="text-xl font-bold text-[#0F1A15]">
+          <h2 className="text-xl font-bold text-[#0A1633]">
             Jornadas, Fixture y Fotos — {division.name}
           </h2>
         </div>
@@ -474,14 +474,14 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
         <div className="flex flex-wrap gap-2">
           <button
             onClick={handleAutoSchedule}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
           >
-            <Wand2 className="w-3.5 h-3.5 text-[#14532D]" />
+            <Wand2 className="w-3.5 h-3.5 text-[#7C1FA2]" />
             Proponer horarios automáticos
           </button>
           <button
             onClick={() => setShowNewMd((v) => !v)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
           >
             <Plus className="w-4 h-4" />
             Nueva jornada
@@ -495,7 +495,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
         </div>
       )}
       {feedback && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-medium text-[#14532D]">
+        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-medium text-[#7C1FA2]">
           {feedback}
         </div>
       )}
@@ -503,39 +503,39 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
       {showNewMd && (
         <form
           onSubmit={handleCreateMatchday}
-          className="bg-white border border-[#E2E7E4] rounded-2xl p-5 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end"
+          className="bg-white border border-[#E2E8F0] rounded-2xl p-5 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end"
         >
           <div>
-            <label className="block text-xs font-medium text-[#4A5550] mb-1">Nombre jornada *</label>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Nombre jornada *</label>
             <input
               required
               placeholder="Ej. Jornada 3 · Semifinales"
               value={mdName}
               onChange={(e) => setMdName(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+              className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#4A5550] mb-1">Fecha (opcional)</label>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Fecha (opcional)</label>
             <input
               type="date"
               value={mdDate}
               onChange={(e) => setMdDate(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+              className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#4A5550] mb-1">Descripción</label>
+            <label className="block text-xs font-medium text-[#475569] mb-1">Descripción</label>
             <input
               placeholder="Resumen opcional"
               value={mdDesc}
               onChange={(e) => setMdDesc(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+              className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
             />
           </div>
           <button
             type="submit"
-            className="h-10 px-4 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+            className="h-10 px-4 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
           >
             Crear jornada
           </button>
@@ -543,8 +543,8 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
       )}
 
       {/* Selector de Jornada y Pestañas (Partidos vs Fotos) */}
-      <div className="bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-[#E2E7E4] flex flex-wrap items-center justify-between gap-3 bg-[#F8F9F8]">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-[#E2E8F0] flex flex-wrap items-center justify-between gap-3 bg-[#F8FAFC]">
           <div className="flex items-center gap-2 overflow-x-auto">
             {matchdays.map((md) => (
               <button
@@ -552,8 +552,8 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                 onClick={() => setSelectedMatchdayId(md.id)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
                   activeMatchday?.id === md.id
-                    ? 'bg-[#0F1A15] text-white'
-                    : 'bg-white border border-[#E2E7E4] text-[#4A5550]'
+                    ? 'bg-[#0A1633] text-white'
+                    : 'bg-white border border-[#E2E8F0] text-[#475569]'
                 }`}
               >
                 {md.name}{md.date ? ` (${md.date})` : ''}
@@ -567,9 +567,9 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => startEditMatchday(activeMatchday)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
                 >
-                  <Edit3 className="w-3.5 h-3.5 text-[#14532D]" />
+                  <Edit3 className="w-3.5 h-3.5 text-[#7C1FA2]" />
                   Editar jornada
                 </button>
                 <button
@@ -583,11 +583,11 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
               </div>
             )}
 
-            <div className="flex items-center gap-1 p-1 bg-white border border-[#E2E7E4] rounded-lg">
+            <div className="flex items-center gap-1 p-1 bg-white border border-[#E2E8F0] rounded-lg">
               <button
                 onClick={() => setInnerTab('partidos')}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium ${
-                  innerTab === 'partidos' ? 'bg-[#14532D] text-white' : 'text-[#4A5550]'
+                  innerTab === 'partidos' ? 'bg-[#7C1FA2] text-white' : 'text-[#475569]'
                 }`}
               >
                 <Calendar className="w-3.5 h-3.5" />
@@ -596,7 +596,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
               <button
                 onClick={() => setInnerTab('fotos')}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium ${
-                  innerTab === 'fotos' ? 'bg-[#14532D] text-white' : 'text-[#4A5550]'
+                  innerTab === 'fotos' ? 'bg-[#7C1FA2] text-white' : 'text-[#475569]'
                 }`}
               >
                 <Images className="w-3.5 h-3.5" />
@@ -609,55 +609,55 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
         {editingMdId && activeMatchday?.id === editingMdId && (
           <form
             onSubmit={handleSaveMatchdayEdit}
-            className="p-4 border-b border-[#E2E7E4] bg-[#FAFBF9] grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
+            className="p-4 border-b border-[#E2E8F0] bg-[#FAFBF9] grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
           >
             <div className="sm:col-span-4">
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Nombre jornada</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Nombre jornada</label>
               <input
                 required
                 value={editMdName}
                 onChange={(e) => setEditMdName(e.target.value)}
-                className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Fecha (opcional)</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Fecha (opcional)</label>
               <input
                 type="date"
                 value={editMdDate}
                 onChange={(e) => setEditMdDate(e.target.value)}
-                className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
               />
             </div>
             <div className="sm:col-span-1">
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Orden</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Orden</label>
               <input
                 type="number"
                 min={1}
                 value={editMdOrder}
                 onChange={(e) => setEditMdOrder(Number(e.target.value))}
-                className="w-full h-9 px-2 rounded-lg border border-[#E2E7E4] bg-white text-xs font-mono"
+                className="w-full h-9 px-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-mono"
               />
             </div>
             <div className="sm:col-span-3">
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Descripción</label>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Descripción</label>
               <input
                 value={editMdDesc}
                 onChange={(e) => setEditMdDesc(e.target.value)}
-                className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
               />
             </div>
             <div className="sm:col-span-2 flex items-center justify-end gap-1.5">
               <button
                 type="button"
                 onClick={() => setEditingMdId(null)}
-                className="px-3 h-9 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                className="px-3 h-9 rounded-lg border border-[#E2E8F0] bg-white text-xs"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-3.5 h-9 rounded-lg bg-[#14532D] text-white text-xs font-medium"
+                className="px-3.5 h-9 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium"
               >
                 Guardar
               </button>
@@ -674,7 +674,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => setConfirmDeleteMdId(null)}
-                className="px-3 py-1.5 rounded-lg border border-red-200 bg-white text-[#0F1A15]"
+                className="px-3 py-1.5 rounded-lg border border-red-200 bg-white text-[#0A1633]"
               >
                 Cancelar
               </button>
@@ -693,9 +693,9 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
         {innerTab === 'partidos' && (
           <div className="p-5 space-y-4">
             {editingMatchId && (
-              <div className="p-4 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] space-y-3">
+              <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold text-[#0F1A15]">
+                  <h4 className="text-sm font-semibold text-[#0A1633]">
                     Programar / Reprogramar partido (fechas opcionales)
                   </h4>
                   {(editDate || editTime) && (
@@ -705,7 +705,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                         setEditDate('');
                         setEditTime('');
                       }}
-                      className="text-xs font-medium text-[#4A5550] hover:text-[#0F1A15] underline"
+                      className="text-xs font-medium text-[#475569] hover:text-[#0A1633] underline"
                     >
                       Dejar sin fecha ni hora
                     </button>
@@ -713,11 +713,11 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                   <div>
-                    <label className="block text-[11px] font-medium text-[#4A5550] mb-1">Jornada</label>
+                    <label className="block text-[11px] font-medium text-[#475569] mb-1">Jornada</label>
                     <select
                       value={editMatchdayId}
                       onChange={(e) => setEditMatchdayId(e.target.value)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       <option value="">Sin jornada asignada</option>
                       {matchdays.map((md) => (
@@ -728,29 +728,29 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-[#4A5550] mb-1">Fecha (opcional)</label>
+                    <label className="block text-[11px] font-medium text-[#475569] mb-1">Fecha (opcional)</label>
                     <input
                       type="date"
                       value={editDate}
                       onChange={(e) => setEditDate(e.target.value)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-[#4A5550] mb-1">Hora (opcional)</label>
+                    <label className="block text-[11px] font-medium text-[#475569] mb-1">Hora (opcional)</label>
                     <input
                       type="time"
                       value={editTime}
                       onChange={(e) => setEditTime(e.target.value)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs font-mono"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-mono"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-[#4A5550] mb-1">Cancha</label>
+                    <label className="block text-[11px] font-medium text-[#475569] mb-1">Cancha</label>
                     <select
                       value={editCourtId}
                       onChange={(e) => setEditCourtId(e.target.value)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
                       <option value="">Cancha por definir</option>
                       {tournament.courts.map((c) => (
@@ -761,12 +761,12 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-[#4A5550] mb-1">Motivo si reprograma</label>
+                    <label className="block text-[11px] font-medium text-[#475569] mb-1">Motivo si reprograma</label>
                     <input
                       placeholder="Motivo opcional..."
                       value={rescheduleReason}
                       onChange={(e) => setRescheduleReason(e.target.value)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     />
                   </div>
                 </div>
@@ -785,7 +785,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={() => setEditingMatchId(null)}
-                    className="px-3 py-1.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                    className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                   >
                     Cancelar
                   </button>
@@ -799,7 +799,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                   ) : (
                     <button
                       onClick={() => handleSaveMatchSchedule(false)}
-                      className="px-4 py-1.5 rounded-lg bg-[#14532D] text-white text-xs font-medium"
+                      className="px-4 py-1.5 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium"
                     >
                       Guardar programación
                     </button>
@@ -808,7 +808,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
               </div>
             )}
 
-            <div className="divide-y divide-[#E2E7E4]">
+            <div className="divide-y divide-[#E2E8F0]">
               {[...divisionMatches]
                 .filter((m) => !m.isBye)
                 .sort(compareMatchesByRound)
@@ -818,13 +818,13 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                     className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                   >
                     <div>
-                      <p className="text-xs text-[#4A5550]">
+                      <p className="text-xs text-[#475569]">
                         {m.roundName} ·{' '}
                         {m.matchdayId
                           ? matchdays.find((md) => md.id === m.matchdayId)?.name || 'Jornada'
                           : 'Sin jornada'}
                       </p>
-                      <p className="text-sm font-semibold text-[#0F1A15]">
+                      <p className="text-sm font-semibold text-[#0A1633]">
                         {m.entryAName} vs {m.entryBName}
                       </p>
                       {m.rescheduleHistory.length > 0 && (
@@ -836,20 +836,20 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-mono tabular-nums text-[#4A5550]">
+                      <span className="text-xs font-mono tabular-nums text-[#475569]">
                         {m.scheduledDate ? `${m.scheduledDate} ${m.scheduledTime || ''}` : 'Sin horario'}{' '}
                         · {m.courtName || 'Sin cancha'}
                       </span>
                       <button
                         onClick={() => openScheduleEditor(m)}
-                        className="px-3 py-1.5 rounded-lg border border-[#E2E7E4] text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+                        className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
                       >
                         Programar
                       </button>
                       <button
                         onClick={() => handleNotifyMatch(m)}
                         title="Enviar alerta push a los jugadores"
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E2E7E4] text-xs font-medium text-[#14532D] hover:bg-emerald-50"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#7C1FA2] hover:bg-emerald-50"
                       >
                         <Bell className="w-3.5 h-3.5" />
                         Llamar
@@ -866,17 +866,17 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
           <div className="p-5 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h3 className="text-sm font-semibold text-[#0F1A15]">
+                <h3 className="text-sm font-semibold text-[#0A1633]">
                   Galería de {activeMatchday.name}
                 </h3>
-                <p className="text-xs text-[#4A5550]">
+                <p className="text-xs text-[#475569]">
                   Admite JPG, PNG y WebP · Se generan miniaturas WebP automáticas para carga rápida móvil.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50 cursor-pointer">
-                  <Upload className="w-4 h-4 text-[#14532D]" />
+                <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 cursor-pointer">
+                  <Upload className="w-4 h-4 text-[#7C1FA2]" />
                   {uploadingPhotos ? 'Optimizando y subiendo...' : 'Subir fotos'}
                   <input
                     type="file"
@@ -891,7 +891,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                 <button
                   onClick={handlePublishGallery}
                   disabled={matchdayPhotos.length === 0}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B] disabled:opacity-50"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   {activeMatchday.galleryPublished ? 'Actualizar publicación' : 'Publicar galería'}
@@ -900,7 +900,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
             </div>
 
             {matchdayPhotos.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[#E2E7E4] p-10 text-center text-xs text-[#4A5550]">
+              <div className="rounded-xl border border-dashed border-[#E2E8F0] p-10 text-center text-xs text-[#475569]">
                 Subí una o varias fotos desde tu computadora o celular para revisar la galería en borrador.
               </div>
             ) : (
@@ -908,7 +908,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                 {matchdayPhotos.map((ph, idx) => (
                   <div
                     key={ph.id}
-                    className="border border-[#E2E7E4] rounded-xl overflow-hidden bg-[#F8F9F8] flex flex-col"
+                    className="border border-[#E2E8F0] rounded-xl overflow-hidden bg-[#F8FAFC] flex flex-col"
                   >
                     <div className="relative aspect-[4/3] bg-slate-200">
                       <img
@@ -929,14 +929,14 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                           placeholder="Pie de foto opcional..."
                           defaultValue={ph.caption || ''}
                           onBlur={(e) => handleUpdatePhotoMeta(ph, { caption: e.target.value })}
-                          className="w-full h-8 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                          className="w-full h-8 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                         />
                         <select
                           value={ph.matchId || ''}
                           onChange={(e) =>
                             handleUpdatePhotoMeta(ph, { matchId: e.target.value || null })
                           }
-                          className="w-full h-8 px-2 rounded-lg border border-[#E2E7E4] bg-white text-xs"
+                          className="w-full h-8 px-2 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                         >
                           <option value="">Sin partido vinculado</option>
                           {divisionMatches
@@ -949,7 +949,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                         </select>
                       </div>
 
-                      <div className="pt-2 border-t border-[#E2E7E4] space-y-2">
+                      <div className="pt-2 border-t border-[#E2E8F0] space-y-2">
                         {confirmDeletePhotoId === ph.id ? (
                           <div className="p-2 rounded-lg bg-red-50 border border-red-200 flex items-center justify-between gap-2 text-[11px]">
                             <span className="text-red-900 font-medium">¿Eliminar foto?</span>
@@ -957,7 +957,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                               <button
                                 type="button"
                                 onClick={() => setConfirmDeletePhotoId(null)}
-                                className="px-2 py-1 rounded border border-red-200 bg-white text-[#0F1A15]"
+                                className="px-2 py-1 rounded border border-red-200 bg-white text-[#0A1633]"
                               >
                                 No
                               </button>
@@ -977,7 +977,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                                 onClick={() => handleReorderPhoto(idx, -1)}
                                 disabled={idx === 0}
                                 title="Subir orden"
-                                className="p-1.5 rounded border border-[#E2E7E4] bg-white text-[#4A5550] disabled:opacity-40"
+                                className="p-1.5 rounded border border-[#E2E8F0] bg-white text-[#475569] disabled:opacity-40"
                               >
                                 <ArrowUp className="w-3.5 h-3.5" />
                               </button>
@@ -985,7 +985,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                                 onClick={() => handleReorderPhoto(idx, 1)}
                                 disabled={idx === matchdayPhotos.length - 1}
                                 title="Bajar orden"
-                                className="p-1.5 rounded border border-[#E2E7E4] bg-white text-[#4A5550] disabled:opacity-40"
+                                className="p-1.5 rounded border border-[#E2E8F0] bg-white text-[#475569] disabled:opacity-40"
                               >
                                 <ArrowDown className="w-3.5 h-3.5" />
                               </button>
@@ -997,7 +997,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                                 className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border ${
                                   ph.isCover
                                     ? 'bg-amber-50 border-amber-300 text-amber-800'
-                                    : 'bg-white border-[#E2E7E4] text-[#4A5550]'
+                                    : 'bg-white border-[#E2E8F0] text-[#475569]'
                                 }`}
                               >
                                 <Star className="w-3 h-3" />

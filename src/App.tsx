@@ -23,19 +23,21 @@ import { useRealtimePush } from './hooks/usePWA';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ItfReferenceModal } from './components/ItfReferenceModal';
 import {
+  AppView,
   LiveToastOverlay,
   MobileBottomNav,
   OfflineIndicator,
   PublicTab,
   TopBar,
 } from './components/TopBarAndPWA';
+import { EntryLandingPage } from './components/EntryLandingPage';
 import { PublicPortal } from './components/PublicPortal';
 import { AdminDashboard } from './components/AdminDashboard';
 
 export default function App() {
   const demoFallback = useMemo(() => buildDemoBundle(), []);
 
-  const [mode, setMode] = useState<'public' | 'admin'>('public');
+  const [view, setView] = useState<AppView>('landing');
   const [activePublicTab, setActivePublicTab] = useState<PublicTab>('resumen');
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [itfModalOpen, setItfModalOpen] = useState(false);
@@ -56,7 +58,9 @@ export default function App() {
   // Seguimiento de jugadores para notificaciones push
   const [followedPlayerIds, setFollowedPlayerIds] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('teniscupy_followed_players');
+      const saved =
+        localStorage.getItem('playpy_followed_players') ||
+        localStorage.getItem('teniscupy_followed_players');
       return saved ? (JSON.parse(saved) as string[]) : [];
     } catch {
       return [];
@@ -124,13 +128,26 @@ export default function App() {
     return tDivs[0]?.id || '';
   }, [divisions, effectiveTournamentId, selectedDivisionId]);
 
+  const handleSelectTournament = (tid: string) => {
+    setSelectedTournamentId(tid);
+    const firstDiv = divisions.find((d) => d.tournamentId === tid);
+    if (firstDiv) setSelectedDivisionId(firstDiv.id);
+  };
+
+  const handleEnterTournament = (tid: string) => {
+    handleSelectTournament(tid);
+    setActivePublicTab('resumen');
+    setView('portal');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleToggleFollowPlayer = (playerId: string) => {
     setFollowedPlayerIds((prev) => {
       const next = prev.includes(playerId)
         ? prev.filter((id) => id !== playerId)
         : [...prev, playerId];
       try {
-        localStorage.setItem('teniscupy_followed_players', JSON.stringify(next));
+        localStorage.setItem('playpy_followed_players', JSON.stringify(next));
       } catch {
         // ignore storage quota errors
       }
@@ -140,17 +157,37 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex flex-col bg-[#F8F9F8] text-[#0F1A15]">
+      <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-[#0A1633]">
         <TopBar
-          mode={mode}
+          view={view}
           activePublicTab={activePublicTab}
-          onSelectPublicTab={setActivePublicTab}
-          onToggleMode={() => setMode((m) => (m === 'public' ? 'admin' : 'public'))}
+          onGoLanding={() => {
+            setView('landing');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onSelectPublicTab={(tab) => {
+            setActivePublicTab(tab);
+            setView('portal');
+          }}
+          onToggleAdmin={() => setView((v) => (v === 'admin' ? 'landing' : 'admin'))}
           isAuthenticated={Boolean(user)}
         />
 
         <div className="flex-1">
-          {mode === 'public' ? (
+          {view === 'landing' && (
+            <EntryLandingPage
+              tournaments={tournaments}
+              divisions={divisions}
+              players={players}
+              matches={matches}
+              tournamentAds={tournamentAds}
+              selectedTournamentId={effectiveTournamentId}
+              onEnterTournament={handleEnterTournament}
+              onOpenItfModal={() => setItfModalOpen(true)}
+            />
+          )}
+
+          {view === 'portal' && (
             <PublicPortal
               tournaments={tournaments}
               divisions={divisions}
@@ -164,12 +201,12 @@ export default function App() {
               tournamentAds={tournamentAds}
               activeTab={activePublicTab}
               onSelectTab={setActivePublicTab}
-              selectedTournamentId={effectiveTournamentId}
-              onSelectTournament={(tid) => {
-                setSelectedTournamentId(tid);
-                const firstDiv = divisions.find((d) => d.tournamentId === tid);
-                if (firstDiv) setSelectedDivisionId(firstDiv.id);
+              onGoLanding={() => {
+                setView('landing');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
+              selectedTournamentId={effectiveTournamentId}
+              onSelectTournament={handleSelectTournament}
               selectedDivisionId={effectiveDivisionId}
               onSelectDivision={setSelectedDivisionId}
               onOpenItfModal={() => setItfModalOpen(true)}
@@ -178,7 +215,9 @@ export default function App() {
               followedPlayerIds={followedPlayerIds}
               onToggleFollowPlayer={handleToggleFollowPlayer}
             />
-          ) : (
+          )}
+
+          {view === 'admin' && (
             <AdminDashboard
               user={user}
               tournaments={tournaments}
@@ -192,11 +231,7 @@ export default function App() {
               notifications={notifications}
               tournamentAds={tournamentAds}
               selectedTournamentId={effectiveTournamentId}
-              onSelectTournament={(tid) => {
-                setSelectedTournamentId(tid);
-                const firstDiv = divisions.find((d) => d.tournamentId === tid);
-                if (firstDiv) setSelectedDivisionId(firstDiv.id);
-              }}
+              onSelectTournament={handleSelectTournament}
               selectedDivisionId={effectiveDivisionId}
               onSelectDivision={setSelectedDivisionId}
               onOpenItfModal={() => setItfModalOpen(true)}
@@ -204,19 +239,32 @@ export default function App() {
           )}
         </div>
 
-        <footer className="border-t border-[#E2E7E4] bg-white py-5 px-4 sm:px-6 text-xs text-[#4A5550] mb-14 md:mb-0">
+        <footer className="border-t border-[#E2E8F0] bg-white py-5 px-4 sm:px-6 text-xs text-[#475569] mb-14 md:mb-0">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span className="font-medium text-[#0F1A15]">TenisCupy</span>
+            <div className="flex items-center gap-2">
+              <span className="font-bold font-display text-[#0A1633]">
+                Play<span className="text-[#7C1FA2]">Py</span>
+              </span>
+              <span>· Tu App de Torneos y Competencias</span>
+            </div>
             <span>
-              Gestión de torneos de tenis · Zona horaria America/Asuncion · Reglas ITF 2026
+              Zona horaria America/Asuncion · Reglas ITF 2026
             </span>
           </div>
         </footer>
 
-        {mode === 'public' && (
+        {view !== 'admin' && (
           <MobileBottomNav
+            view={view}
             activeTab={activePublicTab}
-            onSelectTab={setActivePublicTab}
+            onGoLanding={() => {
+              setView('landing');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onSelectTab={(tab) => {
+              setActivePublicTab(tab);
+              setView('portal');
+            }}
           />
         )}
 

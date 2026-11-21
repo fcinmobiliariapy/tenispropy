@@ -97,7 +97,7 @@ export function useRealtimePush(subscribedPlayerIds: string[]) {
     if (granted && 'serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.ready;
-        await reg.showNotification('TenisCupy · Alertas activadas', {
+        await reg.showNotification('PlayPy · Alertas activadas', {
           body: 'Recibirás notificaciones en tiempo real sobre próximos partidos y resultados.',
           icon: '/pwa-192x192.png',
         });

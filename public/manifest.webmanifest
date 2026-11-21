@@ -1,13 +1,13 @@
 {
   "id": "/",
-  "name": "TenisCupy — Gestión de Torneos",
-  "short_name": "TenisCupy",
-  "description": "Organización integral de torneos de tenis con reglas ITF, fixture, clasificación, cuadros finales y galerías.",
+  "name": "PlayPy — Tu App de Torneos y Competencias",
+  "short_name": "PlayPy",
+  "description": "Organización integral de torneos y competencias con reglas ITF, fixture, clasificación, cuadros finales, galerías y banners con IA.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#F8F9F8",
-  "theme_color": "#14532D",
+  "background_color": "#F8FAFC",
+  "theme_color": "#0A1633",
   "orientation": "any",
   "icons": [
     {

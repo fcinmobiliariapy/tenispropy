@@ -369,7 +369,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-xs text-[#14532D] font-medium">
+        <p className="text-xs text-[#7C1FA2] font-medium">
           {division.itfConfig.edition} · {division.itfConfig.setsToWin === 2 ? 'Mejor de 3 sets' : division.itfConfig.setsToWin === 1 ? 'Set único' : 'Mejor de 5 sets'}
           {division.itfConfig.setTiebreakPoints === 10 ? ' · Tie-break a 10 pts' : ''}
           {division.itfConfig.tiebreakExactTarget ? ' · El que llegue primero' : ''}
@@ -377,7 +377,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
           {division.itfConfig.matchTiebreakThirdSet ? ' · Match Tie-Break 10 pts' : ''}
           {division.itfConfig.decisivePointNoAd ? ' · Sin ventaja (No-Ad)' : ''}
         </p>
-        <h2 className="text-xl font-bold text-[#0F1A15]">
+        <h2 className="text-xl font-bold text-[#0A1633]">
           Carga y Corrección de Marcadores — {division.name}
         </h2>
       </div>
@@ -388,20 +388,20 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
         </div>
       )}
       {feedback && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-medium text-[#14532D]">
+        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-medium text-[#7C1FA2]">
           {feedback}
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Lista de partidos de la división */}
-        <div className="lg:col-span-5 bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#E2E7E4] bg-[#F8F9F8]">
-            <h3 className="text-sm font-semibold text-[#0F1A15]">
+        <div className="lg:col-span-5 bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#F8FAFC]">
+            <h3 className="text-sm font-semibold text-[#0A1633]">
               Partidos ({playableMatches.length})
             </h3>
           </div>
-          <div className="divide-y divide-[#E2E7E4] max-h-[520px] overflow-y-auto">
+          <div className="divide-y divide-[#E2E8F0] max-h-[520px] overflow-y-auto">
             {playableMatches.map((m) => {
               const selected = activeMatch?.id === m.id;
               return (
@@ -409,16 +409,16 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                   key={m.id}
                   onClick={() => loadMatchIntoEditor(m)}
                   className={`w-full text-left p-4 transition-colors ${
-                    selected ? 'bg-emerald-50/50' : 'hover:bg-[#F8F9F8]'
+                    selected ? 'bg-emerald-50/50' : 'hover:bg-[#F8FAFC]'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-xs text-[#4A5550]">
+                  <div className="flex items-center justify-between text-xs text-[#475569]">
                     <span>{m.roundName}</span>
-                    <span className="font-mono tabular-nums font-medium text-[#14532D]">
+                    <span className="font-mono tabular-nums font-medium text-[#7C1FA2]">
                       {m.sets.length > 0 || m.status === 'wo' ? formatScoreString(m.sets, m.status) : 'Pendiente'}
                     </span>
                   </div>
-                  <p className="text-sm font-semibold text-[#0F1A15] mt-1">
+                  <p className="text-sm font-semibold text-[#0A1633] mt-1">
                     {m.entryAName} vs {m.entryBName}
                   </p>
                 </button>
@@ -428,25 +428,25 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
         </div>
 
         {/* Editor de Marcador ITF */}
-        <div className="lg:col-span-7 bg-white border border-[#E2E7E4] rounded-2xl p-5 space-y-5">
+        <div className="lg:col-span-7 bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-5">
           {!activeMatch ? (
-            <p className="text-sm text-[#4A5550]">Seleccioná un partido para cargar el resultado.</p>
+            <p className="text-sm text-[#475569]">Seleccioná un partido para cargar el resultado.</p>
           ) : (
             <>
-              <div className="pb-4 border-b border-[#E2E7E4]">
-                <p className="text-xs text-[#4A5550]">{activeMatch.roundName}</p>
-                <h3 className="text-base font-bold text-[#0F1A15] mt-0.5">
+              <div className="pb-4 border-b border-[#E2E8F0]">
+                <p className="text-xs text-[#475569]">{activeMatch.roundName}</p>
+                <h3 className="text-base font-bold text-[#0A1633] mt-0.5">
                   {activeMatch.entryAName} vs {activeMatch.entryBName}
                 </h3>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-[#4A5550] mb-1">Estado / Incidencia</label>
+                  <label className="block text-xs font-medium text-[#475569] mb-1">Estado / Incidencia</label>
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value as MatchStatus)}
-                    className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                    className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
                   >
                     <option value="finalizado">Finalizado normal</option>
                     <option value="wo">Walkover (WO)</option>
@@ -460,11 +460,11 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                   status === 'descalificado' ||
                   (status === 'finalizado' && !includeSetScores)) && (
                   <div>
-                    <label className="block text-xs font-medium text-[#4A5550] mb-1">Ganador oficial *</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">Ganador oficial *</label>
                     <select
                       value={incidentWinnerSide || ''}
                       onChange={(e) => setIncidentWinnerSide((e.target.value as 'A' | 'B') || null)}
-                      className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                      className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
                     >
                       <option value="">Seleccionar ganador...</option>
                       <option value="A">{activeMatch.entryAName}</option>
@@ -475,8 +475,8 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
               </div>
 
               {status === 'finalizado' && (
-                <div className="p-3 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] flex flex-wrap items-center justify-between gap-3">
-                  <label className="inline-flex items-center gap-2 text-xs font-medium text-[#0F1A15] cursor-pointer">
+                <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-wrap items-center justify-between gap-3">
+                  <label className="inline-flex items-center gap-2 text-xs font-medium text-[#0A1633] cursor-pointer">
                     <input
                       type="checkbox"
                       checked={includeSetScores}
@@ -484,7 +484,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                     />
                     Cargar puntaje detallado por sets (opcional)
                   </label>
-                  <span className="text-[11px] text-[#4A5550]">
+                  <span className="text-[11px] text-[#475569]">
                     {includeSetScores
                       ? 'Validación ITF por games y tie-break activa'
                       : 'Se registrará únicamente el ganador oficial'}
@@ -495,12 +495,12 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
               {status !== 'wo' && (status !== 'finalizado' || includeSetScores) && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-[#0F1A15]">Marcador por set</span>
+                    <span className="text-xs font-semibold text-[#0A1633]">Marcador por set</span>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => setSets([...sets, { a: 6, b: 4 }])}
-                        className="px-2.5 py-1 rounded border border-[#E2E7E4] text-xs hover:bg-slate-50"
+                        className="px-2.5 py-1 rounded border border-[#E2E8F0] text-xs hover:bg-slate-50"
                       >
                         + Set
                       </button>
@@ -510,7 +510,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                         <button
                           type="button"
                           onClick={() => setSets([...sets, { a: 10, b: 3, isMatchTiebreak: true }])}
-                          className="px-2.5 py-1 rounded border border-[#E2E7E4] text-xs hover:bg-slate-50"
+                          className="px-2.5 py-1 rounded border border-[#E2E8F0] text-xs hover:bg-slate-50"
                         >
                           + Tie-Break (10)
                         </button>
@@ -526,9 +526,9 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                     return (
                     <div
                       key={idx}
-                      className="p-3 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] flex flex-wrap items-center gap-3"
+                      className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-wrap items-center gap-3"
                     >
-                      <span className="text-xs font-medium text-[#4A5550] w-24">
+                      <span className="text-xs font-medium text-[#475569] w-24">
                         {s.isMatchTiebreak ? 'Tie-Break (10)' : `Set ${idx + 1}`}
                       </span>
                       <div className="flex items-center gap-2">
@@ -542,9 +542,9 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                             next[idx] = { ...s, a: Number(e.target.value) };
                             setSets(next);
                           }}
-                          className="w-16 h-9 px-2 rounded-lg border border-[#E2E7E4] bg-white text-center font-mono tabular-nums text-sm"
+                          className="w-16 h-9 px-2 rounded-lg border border-[#E2E8F0] bg-white text-center font-mono tabular-nums text-sm"
                         />
-                        <span className="text-xs text-[#4A5550]">-</span>
+                        <span className="text-xs text-[#475569]">-</span>
                         <input
                           type="number"
                           min={0}
@@ -555,13 +555,13 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                             next[idx] = { ...s, b: Number(e.target.value) };
                             setSets(next);
                           }}
-                          className="w-16 h-9 px-2 rounded-lg border border-[#E2E7E4] bg-white text-center font-mono tabular-nums text-sm"
+                          className="w-16 h-9 px-2 rounded-lg border border-[#E2E8F0] bg-white text-center font-mono tabular-nums text-sm"
                         />
                       </div>
 
                       {showSetTiebreak && (
                         <div className="flex items-center gap-1.5 text-xs">
-                          <span className="text-[#4A5550]">
+                          <span className="text-[#475569]">
                             TB ({division.itfConfig.setTiebreakPoints ?? 7}
                             {division.itfConfig.tiebreakExactTarget ? ' exacto' : ''}):
                           </span>
@@ -576,7 +576,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                               next[idx] = { ...s, tbA: e.target.value === '' ? null : Number(e.target.value) };
                               setSets(next);
                             }}
-                            className="w-12 h-8 px-1 rounded border border-[#E2E7E4] bg-white text-center font-mono text-xs"
+                            className="w-12 h-8 px-1 rounded border border-[#E2E8F0] bg-white text-center font-mono text-xs"
                           />
                           <input
                             type="number"
@@ -589,7 +589,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                               next[idx] = { ...s, tbB: e.target.value === '' ? null : Number(e.target.value) };
                               setSets(next);
                             }}
-                            className="w-12 h-8 px-1 rounded border border-[#E2E7E4] bg-white text-center font-mono text-xs"
+                            className="w-12 h-8 px-1 rounded border border-[#E2E8F0] bg-white text-center font-mono text-xs"
                           />
                         </div>
                       )}
@@ -614,7 +614,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                 <div
                   className={`p-3 rounded-xl text-xs border ${
                     liveValidation.valid
-                      ? 'bg-emerald-50 border-emerald-200 text-[#14532D]'
+                      ? 'bg-emerald-50 border-emerald-200 text-[#7C1FA2]'
                       : 'bg-amber-50 border-amber-200 text-amber-900'
                   }`}
                 >
@@ -633,7 +633,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                   placeholder="Observación (opcional)"
                   value={outcomeNote}
                   onChange={(e) => setOutcomeNote(e.target.value)}
-                  className="h-9 px-3 rounded-lg border border-[#E2E7E4] text-xs"
+                  className="h-9 px-3 rounded-lg border border-[#E2E8F0] text-xs"
                 />
                 {activeMatch.winnerEntryId && (
                   <input
@@ -683,7 +683,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
               <div className="flex justify-end">
                 <button
                   onClick={() => applyScoreAndCascade(false)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#14532D] text-white text-xs font-semibold hover:bg-[#166534]"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#7C1FA2] text-white text-xs font-semibold hover:bg-[#6B1A8B]"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   Confirmar resultado oficial
@@ -692,16 +692,16 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
 
               {/* Historial de correcciones */}
               {activeMatch.correctionHistory.length > 0 && (
-                <div className="pt-4 border-t border-[#E2E7E4]">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-[#0F1A15] mb-2">
-                    <History className="w-4 h-4 text-[#4A5550]" />
+                <div className="pt-4 border-t border-[#E2E8F0]">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-[#0A1633] mb-2">
+                    <History className="w-4 h-4 text-[#475569]" />
                     Historial de correcciones ({activeMatch.correctionHistory.length})
                   </div>
-                  <div className="space-y-1.5 text-xs text-[#4A5550]">
+                  <div className="space-y-1.5 text-xs text-[#475569]">
                     {activeMatch.correctionHistory.map((c) => (
-                      <div key={c.id} className="p-2.5 rounded-lg bg-[#F8F9F8] border border-[#E2E7E4]">
+                      <div key={c.id} className="p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                         <span className="font-mono">{c.previousScore}</span> →{' '}
-                        <span className="font-mono font-semibold text-[#0F1A15]">{c.newScore}</span> ·{' '}
+                        <span className="font-mono font-semibold text-[#0A1633]">{c.newScore}</span> ·{' '}
                         {c.reason} ({c.byEmail})
                       </div>
                     ))}
@@ -715,14 +715,14 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
 
       {/* Gestión de Roles y Operadores (Superadministrador) */}
       {isSuperAdmin && (
-        <div className="bg-white border border-[#E2E7E4] rounded-2xl p-5 space-y-4">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-2.5">
-            <Shield className="w-5 h-5 text-[#14532D]" />
+            <Shield className="w-5 h-5 text-[#7C1FA2]" />
             <div>
-              <h3 className="text-sm font-semibold text-[#0F1A15]">
+              <h3 className="text-sm font-semibold text-[#0A1633]">
                 Equipo de Administración y Operadores (Superadmin)
               </h3>
-              <p className="text-xs text-[#4A5550]">
+              <p className="text-xs text-[#475569]">
                 Asigná perfiles de superadministrador, organizador u operador de resultados por torneo.
               </p>
             </div>
@@ -734,7 +734,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
               placeholder="UID Firebase *"
               value={roleUid}
               onChange={(e) => setRoleUid(e.target.value)}
-              className="h-9 px-3 rounded-lg border border-[#E2E7E4] text-xs font-mono"
+              className="h-9 px-3 rounded-lg border border-[#E2E8F0] text-xs font-mono"
             />
             <input
               required
@@ -742,18 +742,18 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
               placeholder="Correo *"
               value={roleEmail}
               onChange={(e) => setRoleEmail(e.target.value)}
-              className="h-9 px-3 rounded-lg border border-[#E2E7E4] text-xs"
+              className="h-9 px-3 rounded-lg border border-[#E2E8F0] text-xs"
             />
             <input
               placeholder="Nombre completo"
               value={roleName}
               onChange={(e) => setRoleName(e.target.value)}
-              className="h-9 px-3 rounded-lg border border-[#E2E7E4] text-xs"
+              className="h-9 px-3 rounded-lg border border-[#E2E8F0] text-xs"
             />
             <select
               value={roleType}
               onChange={(e) => setRoleType(e.target.value as UserRole)}
-              className="h-9 px-3 rounded-lg border border-[#E2E7E4] text-xs"
+              className="h-9 px-3 rounded-lg border border-[#E2E8F0] text-xs"
             >
               <option value="operador">Operador de resultados</option>
               <option value="organizador">Organizador</option>
@@ -761,21 +761,21 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
             </select>
             <button
               type="submit"
-              className="h-9 px-4 rounded-lg bg-[#14532D] text-white text-xs font-medium"
+              className="h-9 px-4 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium"
             >
               Asignar rol
             </button>
           </form>
 
           {staffRoles.length > 0 && (
-            <div className="divide-y divide-[#E2E7E4] border border-[#E2E7E4] rounded-xl text-xs">
+            <div className="divide-y divide-[#E2E8F0] border border-[#E2E8F0] rounded-xl text-xs">
               {staffRoles.map((sr) => (
                 <div key={sr.uid} className="px-4 py-2.5 flex items-center justify-between gap-3">
                   <div>
-                    <span className="font-semibold text-[#0F1A15]">{sr.displayName}</span> ·{' '}
-                    <span className="text-[#4A5550]">{sr.email}</span>
+                    <span className="font-semibold text-[#0A1633]">{sr.displayName}</span> ·{' '}
+                    <span className="text-[#475569]">{sr.email}</span>
                   </div>
-                  <span className="font-medium text-[#14532D] capitalize">{sr.role}</span>
+                  <span className="font-medium text-[#7C1FA2] capitalize">{sr.role}</span>
                 </div>
               ))}
             </div>

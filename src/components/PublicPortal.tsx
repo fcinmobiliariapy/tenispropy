@@ -46,6 +46,7 @@ interface PublicPortalProps {
   tournamentAds: TournamentAd[];
   activeTab: PublicTab;
   onSelectTab: (tab: PublicTab) => void;
+  onGoLanding?: () => void;
   selectedTournamentId: string;
   onSelectTournament: (id: string) => void;
   selectedDivisionId: string;
@@ -86,7 +87,7 @@ const PlayerAvatar: React.FC<{
   player,
   fallbackName = '',
   sizeClass = 'w-11 h-11 text-xs',
-  toneClass = 'bg-[#14532D] text-white',
+  toneClass = 'bg-[#7C1FA2] text-white',
 }) => {
   const [imgError, setImgError] = useState(false);
 
@@ -112,7 +113,7 @@ const PlayerAvatar: React.FC<{
         alt={player.fullName || fallbackName || 'Foto del jugador'}
         referrerPolicy="no-referrer"
         onError={() => setImgError(true)}
-        className={`${sizeClass} rounded-xl object-cover border border-[#E2E7E4] bg-slate-100 shrink-0`}
+        className={`${sizeClass} rounded-xl object-cover border border-[#E2E8F0] bg-slate-100 shrink-0`}
       />
     );
   }
@@ -199,7 +200,7 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
     ? 'rounded-2xl border border-[#F59E0B]/60 bg-gradient-to-b from-[#FFFBEB] via-white to-[#F8FAFC] p-3.5 sm:p-4 shadow-[0_10px_28px_-14px_rgba(180,83,9,0.28)]'
     : isThird
     ? 'rounded-2xl border border-[#EA580C]/45 bg-gradient-to-b from-[#FFF7ED] via-white to-white p-3.5 sm:p-4 shadow-[0_10px_28px_-14px_rgba(194,65,12,0.18)]'
-    : 'rounded-xl border border-[#E2E7E4] bg-[#F8F9F8] p-3';
+    : 'rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3';
 
   const renderSide = (side: 'A' | 'B') => {
     const entryId = side === 'A' ? match.entryAId : match.entryBId;
@@ -215,11 +216,11 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
         ? 'bg-gradient-to-r from-[#FEF3C7]/90 to-[#FFFBEB] border-[#F59E0B]/65'
         : isRunnerUp
         ? 'bg-gradient-to-r from-[#F1F5F9] to-[#F8FAFC] border-[#94A3B8]/60'
-        : 'bg-white/90 border-[#E2E7E4]/80'
+        : 'bg-white/90 border-[#E2E8F0]/80'
       : isThird
       ? isWinner
         ? 'bg-gradient-to-r from-[#FFEDD5]/90 to-[#FFF7ED] border-[#EA580C]/55'
-        : 'bg-white/90 border-[#E2E7E4]/80'
+        : 'bg-white/90 border-[#E2E8F0]/80'
       : isWinner
       ? 'bg-white border-emerald-200'
       : 'bg-white/75 border-transparent';
@@ -234,7 +235,7 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
       ? isWinner
         ? 'bg-[#9A3412] text-[#FFEDD5] ring-2 ring-[#EA580C]/50'
         : 'bg-slate-600 text-white'
-      : 'bg-[#14532D] text-white';
+      : 'bg-[#7C1FA2] text-white';
 
     const medalCaption =
       isFinal && isWinner
@@ -281,7 +282,7 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
             )}
             <div className="flex items-center gap-1.5 min-w-0">
               {seed && (
-                <span className="font-mono tabular-nums text-[10px] font-semibold text-[#4A5550] shrink-0">
+                <span className="font-mono tabular-nums text-[10px] font-semibold text-[#475569] shrink-0">
                   [{seed}]
                 </span>
               )}
@@ -290,10 +291,10 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
                   isFinal || isThird ? 'text-xs sm:text-sm' : 'text-xs'
                 } ${
                   isWinner
-                    ? 'font-bold text-[#0F1A15]'
+                    ? 'font-bold text-[#0A1633]'
                     : isRunnerUp
                     ? 'font-semibold text-[#1E293B]'
-                    : 'font-medium text-[#0F1A15]'
+                    : 'font-medium text-[#0A1633]'
                 }`}
               >
                 {entryName}
@@ -318,13 +319,13 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
                         ? 'font-bold text-[#92400E]'
                         : isThird && isWinner
                         ? 'font-bold text-[#9A3412]'
-                        : 'font-bold text-[#14532D]'
-                      : 'text-[#4A5550]'
+                        : 'font-bold text-[#7C1FA2]'
+                      : 'text-[#475569]'
                   }`}
                 >
                   {myGames}
                   {tb !== null && tb !== undefined && (
-                    <sup className="text-[9px] font-normal text-[#4A5550] ml-[1px]">{tb}</sup>
+                    <sup className="text-[9px] font-normal text-[#475569] ml-[1px]">{tb}</sup>
                   )}
                 </span>
               );
@@ -332,7 +333,7 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
           ) : outcomeOnlyLabel ? (
             <span
               className={`font-mono tabular-nums text-[11px] font-bold ${
-                isThird ? 'text-[#9A3412]' : isFinal ? 'text-[#92400E]' : 'text-[#14532D]'
+                isThird ? 'text-[#9A3412]' : isFinal ? 'text-[#92400E]' : 'text-[#7C1FA2]'
               }`}
             >
               {outcomeOnlyLabel}
@@ -369,7 +370,7 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
             </div>
           </div>
         ) : (
-          <span className="text-[11px] font-mono tabular-nums text-[#4A5550] truncate">
+          <span className="text-[11px] font-mono tabular-nums text-[#475569] truncate">
             {scheduleText}
           </span>
         )}
@@ -377,8 +378,8 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
         <span
           className={`text-[11px] shrink-0 ${
             isFinal || isThird
-              ? statusInfo?.tone || 'text-[#4A5550]'
-              : 'font-mono tabular-nums text-[#4A5550]'
+              ? statusInfo?.tone || 'text-[#475569]'
+              : 'font-mono tabular-nums text-[#475569]'
           }`}
         >
           {isFinal || isThird
@@ -393,13 +394,13 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
       </div>
 
       {(isFinal || isThird) && (
-        <div className="mt-2.5 pt-2 border-t border-[#E2E7E4]/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#4A5550]">
+        <div className="mt-2.5 pt-2 border-t border-[#E2E8F0]/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#475569]">
           <span className="font-mono tabular-nums">
             {scheduleText}
             {match.courtName ? ` · ${match.courtName}` : ''}
           </span>
           {match.outcomeNote && (
-            <span className="truncate max-w-full font-medium text-[#0F1A15]">
+            <span className="truncate max-w-full font-medium text-[#0A1633]">
               {match.outcomeNote}
             </span>
           )}
@@ -413,11 +414,17 @@ const SponsorAdCard: React.FC<{
   ad: TournamentAd;
   variant?: 'featured' | 'compact' | 'footer';
 }> = ({ ad, variant = 'compact' }) => {
-  const [imgError, setImgError] = useState(false);
+  const [horizontalErr, setHorizontalErr] = useState(false);
+  const [verticalErr, setVerticalErr] = useState(false);
+
+  const horizontalSrc = ad.horizontalImageUrl || ad.imageUrl;
+  const verticalSrc = ad.verticalImageUrl || ad.imageUrl;
+  const hasDedicatedVertical = Boolean(ad.verticalImageUrl);
 
   useEffect(() => {
-    setImgError(false);
-  }, [ad.imageUrl]);
+    setHorizontalErr(false);
+    setVerticalErr(false);
+  }, [ad.imageUrl, ad.horizontalImageUrl, ad.verticalImageUrl]);
 
   const sponsorInitials = useMemo(() => {
     const parts = ad.sponsorName.trim().split(/\s+/).filter(Boolean);
@@ -428,42 +435,102 @@ const SponsorAdCard: React.FC<{
   const isFeatured = variant === 'featured';
   const isFooter = variant === 'footer';
 
+  const renderFallback = (compactLabel = false) => (
+    <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center text-white bg-gradient-to-br from-[#0A1633] via-[#7C1FA2] to-[#0284C7]">
+      <span className="font-mono tabular-nums text-base font-bold tracking-wider">
+        {sponsorInitials}
+      </span>
+      {!compactLabel && (
+        <span className="text-[11px] text-white/85 mt-1 line-clamp-1">
+          {ad.sponsorName}
+        </span>
+      )}
+    </div>
+  );
+
   const cardBody = (
     <div
-      className={`group h-full bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden flex ${
-        isFeatured ? 'flex-col md:flex-row' : isFooter ? 'flex-row items-center gap-3.5 p-3' : 'flex-col'
-      } hover:border-[#14532D]/40 transition-colors`}
+      className={`group h-full bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden flex ${
+        isFeatured
+          ? 'flex-col md:flex-row'
+          : isFooter
+          ? 'flex-row items-center gap-3.5 p-3'
+          : 'flex-col'
+      } hover:border-[#7C1FA2]/50 transition-colors`}
     >
-      <div
-        className={`relative overflow-hidden bg-gradient-to-br from-[#14532D] via-[#1E6B3E] to-[#0F3D21] shrink-0 ${
-          isFeatured
-            ? 'w-full md:w-[44%] aspect-[16/9] md:aspect-auto md:min-h-[196px]'
-            : isFooter
-            ? 'w-20 h-14 rounded-xl'
-            : 'w-full aspect-[16/9]'
-        }`}
-      >
-        {ad.imageUrl && !imgError ? (
-          <img
-            src={ad.imageUrl}
-            alt={`${ad.sponsorName} - ${ad.title}`}
-            referrerPolicy="no-referrer"
-            onError={() => setImgError(true)}
-            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center text-white">
-            <span className="font-mono tabular-nums text-base font-bold tracking-wider">
-              {sponsorInitials}
-            </span>
-            {!isFooter && (
-              <span className="text-[11px] text-white/80 mt-1 line-clamp-1">
-                {ad.sponsorName}
-              </span>
+      {/* Bloque multimedia adaptativo: Horizontal en desktop/pie y Vertical en lateral/móvil retrato */}
+      {isFeatured ? (
+        <div className="relative overflow-hidden bg-[#0A1633] shrink-0 w-full md:w-[46%]">
+          {/* Móvil retrato (< sm): formato vertical automático si está disponible */}
+          <div className={`sm:hidden ${hasDedicatedVertical ? 'aspect-[3/4] max-h-[380px] mx-auto' : 'aspect-[16/9]'}`}>
+            {verticalSrc && !verticalErr ? (
+              <img
+                src={verticalSrc}
+                alt={`${ad.sponsorName} - ${ad.title}`}
+                referrerPolicy="no-referrer"
+                onError={() => setVerticalErr(true)}
+                className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+              />
+            ) : (
+              renderFallback()
             )}
           </div>
-        )}
-      </div>
+          {/* Tablet y escritorio (>= sm): formato horizontal 16:9 */}
+          <div className="hidden sm:block w-full h-full aspect-[16/9] md:aspect-auto md:min-h-[210px]">
+            {horizontalSrc && !horizontalErr ? (
+              <img
+                src={horizontalSrc}
+                alt={`${ad.sponsorName} - ${ad.title}`}
+                referrerPolicy="no-referrer"
+                onError={() => setHorizontalErr(true)}
+                className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+              />
+            ) : (
+              renderFallback()
+            )}
+          </div>
+        </div>
+      ) : isFooter ? (
+        <div className="relative overflow-hidden bg-[#0A1633] shrink-0 w-24 aspect-[16/9] rounded-xl">
+          {horizontalSrc && !horizontalErr ? (
+            <img
+              src={horizontalSrc}
+              alt={`${ad.sponsorName} - ${ad.title}`}
+              referrerPolicy="no-referrer"
+              onError={() => setHorizontalErr(true)}
+              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+            />
+          ) : (
+            renderFallback(true)
+          )}
+        </div>
+      ) : (
+        <div
+          className={`relative overflow-hidden bg-[#0A1633] shrink-0 w-full ${
+            hasDedicatedVertical ? 'aspect-[3/4] max-h-[340px]' : 'aspect-[16/9]'
+          }`}
+        >
+          {verticalSrc && !verticalErr ? (
+            <img
+              src={verticalSrc}
+              alt={`${ad.sponsorName} - ${ad.title}`}
+              referrerPolicy="no-referrer"
+              onError={() => setVerticalErr(true)}
+              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+            />
+          ) : horizontalSrc && !horizontalErr ? (
+            <img
+              src={horizontalSrc}
+              alt={`${ad.sponsorName} - ${ad.title}`}
+              referrerPolicy="no-referrer"
+              onError={() => setHorizontalErr(true)}
+              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+            />
+          ) : (
+            renderFallback()
+          )}
+        </div>
+      )}
 
       <div
         className={`flex-1 min-w-0 flex flex-col justify-between ${
@@ -472,28 +539,28 @@ const SponsorAdCard: React.FC<{
       >
         <div>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#14532D] truncate">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7C1FA2] truncate">
               {ad.sponsorName}
             </p>
-            <span className="text-[10px] text-[#4A5550] shrink-0">Auspiciante</span>
+            <span className="text-[10px] text-[#475569] shrink-0">Auspiciante</span>
           </div>
           <h3
-            className={`font-bold text-[#0F1A15] leading-snug mt-1 ${
+            className={`font-bold text-[#0A1633] leading-snug mt-1 ${
               isFeatured ? 'text-base sm:text-lg' : isFooter ? 'text-xs sm:text-sm truncate' : 'text-sm sm:text-base'
             }`}
           >
             {ad.title}
           </h3>
           {ad.subtitle && !isFooter && (
-            <p className="text-xs sm:text-sm text-[#4A5550] mt-1.5 line-clamp-2">
+            <p className="text-xs sm:text-sm text-[#475569] mt-1.5 line-clamp-2">
               {ad.subtitle}
             </p>
           )}
         </div>
 
         {ad.targetUrl && (
-          <div className={isFooter ? 'mt-1' : 'mt-3 pt-2.5 border-t border-[#E2E7E4]'}>
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#14532D] group-hover:underline">
+          <div className={isFooter ? 'mt-1' : 'mt-3 pt-2.5 border-t border-[#E2E8F0]'}>
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0284C7] group-hover:underline">
               Visitar sitio oficial
               <ExternalLink className="w-3.5 h-3.5 shrink-0" />
             </span>
@@ -509,7 +576,7 @@ const SponsorAdCard: React.FC<{
         href={ad.targetUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#14532D] rounded-2xl"
+        className="block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7C1FA2] rounded-2xl"
       >
         {cardBody}
       </a>
@@ -532,6 +599,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   tournamentAds,
   activeTab,
   onSelectTab,
+  onGoLanding,
   selectedTournamentId,
   onSelectTournament,
   selectedDivisionId,
@@ -879,19 +947,31 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   return (
     <div className="pb-24 md:pb-12">
       {/* Hero Split + Selector de Torneo y División */}
-      <section className="bg-white border-b border-[#E2E7E4]">
+      <section className="bg-white border-b border-[#E2E8F0]">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 py-5 sm:py-8 lg:py-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
             <div className="lg:col-span-7 flex flex-col justify-between">
               <div>
-                <p className="text-xs font-medium text-[#14532D] tracking-wide">
-                  Circuito Oficial Paraguay · Hora America/Asuncion
-                </p>
-                <h1 className="mt-1.5 sm:mt-2 text-2xl sm:text-4xl lg:text-[42px] font-bold tracking-tight text-[#0F1A15] leading-[1.12] [text-wrap:balance]">
-                  {activeTournament ? activeTournament.name : 'Torneos de Tenis en Vivo'}
+                <div className="flex flex-wrap items-center gap-3">
+                  {onGoLanding && (
+                    <button
+                      type="button"
+                      onClick={onGoLanding}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#0284C7] hover:underline"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      Cambiar torneo
+                    </button>
+                  )}
+                  <p className="text-xs font-medium text-[#7C1FA2] tracking-wide">
+                    PlayPy Circuito Oficial · Hora America/Asuncion
+                  </p>
+                </div>
+                <h1 className="mt-1.5 sm:mt-2 text-2xl sm:text-4xl lg:text-[42px] font-bold tracking-tight text-[#0A1633] leading-[1.12] [text-wrap:balance]">
+                  {activeTournament ? activeTournament.name : 'Torneos en Vivo'}
                 </h1>
                 {activeTournament && (
-                  <p className="mt-2 sm:mt-3 text-xs sm:text-base text-[#4A5550] max-w-2xl">
+                  <p className="mt-2 sm:mt-3 text-xs sm:text-base text-[#475569] max-w-2xl">
                     {activeTournament.venue}, {activeTournament.city} · Organiza{' '}
                     {activeTournament.organizerName} · {activeTournament.courts.length} canchas
                     habilitadas · {activeTournament.itfEdition}
@@ -900,17 +980,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               </div>
 
               {/* Selectores reales de Torneo y División */}
-              <div className="mt-5 sm:mt-6 pt-4 sm:pt-5 border-t border-[#E2E7E4] space-y-3.5 sm:space-y-4">
+              <div className="mt-5 sm:mt-6 pt-4 sm:pt-5 border-t border-[#E2E8F0] space-y-3.5 sm:space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor="public-tournament-select" className="block text-xs font-medium text-[#4A5550] mb-1.5">
+                    <label htmlFor="public-tournament-select" className="block text-xs font-medium text-[#475569] mb-1.5">
                       Torneo activo
                     </label>
                     <select
                       id="public-tournament-select"
                       value={activeTournament?.id || ''}
                       onChange={(e) => onSelectTournament(e.target.value)}
-                      className="w-full h-11 px-3.5 rounded-xl border border-[#E2E7E4] bg-[#F8F9F8] text-sm font-medium text-[#0F1A15] focus:outline-none focus:ring-2 focus:ring-[#14532D]"
+                      className="w-full h-11 px-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-sm font-medium text-[#0A1633] focus:outline-none focus:ring-2 focus:ring-[#7C1FA2]"
                     >
                       {tournaments.map((t) => (
                         <option key={t.id} value={t.id}>
@@ -921,14 +1001,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   </div>
 
                   <div>
-                    <label htmlFor="public-division-select" className="block text-xs font-medium text-[#4A5550] mb-1.5">
+                    <label htmlFor="public-division-select" className="block text-xs font-medium text-[#475569] mb-1.5">
                       División (Categoría · Modalidad · Rama)
                     </label>
                     <select
                       id="public-division-select"
                       value={activeDivision?.id || ''}
                       onChange={(e) => onSelectDivision(e.target.value)}
-                      className="w-full h-11 px-3.5 rounded-xl border border-[#E2E7E4] bg-[#F8F9F8] text-sm font-medium text-[#0F1A15] focus:outline-none focus:ring-2 focus:ring-[#14532D]"
+                      className="w-full h-11 px-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-sm font-medium text-[#0A1633] focus:outline-none focus:ring-2 focus:ring-[#7C1FA2]"
                     >
                       {tournamentDivisions.map((d) => (
                         <option key={d.id} value={d.id}>
@@ -945,8 +1025,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     onClick={onRequestPush}
                     className={`inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-lg text-xs font-medium transition-colors min-h-[44px] sm:min-h-[40px] whitespace-nowrap shrink-0 ${
                       pushEnabled
-                        ? 'bg-emerald-50 text-[#14532D] border border-emerald-200'
-                        : 'bg-[#14532D] text-white hover:bg-[#166534]'
+                        ? 'bg-emerald-50 text-[#7C1FA2] border border-emerald-200'
+                        : 'bg-[#7C1FA2] text-white hover:bg-[#6B1A8B]'
                     }`}
                   >
                     {pushEnabled ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
@@ -955,9 +1035,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
                   <button
                     onClick={onOpenItfModal}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50 transition-colors min-h-[44px] sm:min-h-[40px] whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 transition-colors min-h-[44px] sm:min-h-[40px] whitespace-nowrap shrink-0"
                   >
-                    <BookOpen className="w-4 h-4 text-[#14532D]" />
+                    <BookOpen className="w-4 h-4 text-[#7C1FA2]" />
                     Reglas ITF
                   </button>
 
@@ -967,21 +1047,21 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             </div>
 
             {/* Visual hero 16:9 */}
-            <div className="lg:col-span-5 relative rounded-2xl overflow-hidden border border-[#E2E7E4] min-h-[190px] sm:min-h-[240px] bg-[#14532D]">
+            <div className="lg:col-span-5 relative rounded-2xl overflow-hidden border border-[#E2E8F0] min-h-[190px] sm:min-h-[240px] bg-[#7C1FA2]">
               {!heroImgFailed ? (
                 <img
                   src={heroCoverUrl}
                   alt={
                     activeTournament
                       ? `Portada de ${activeTournament.name}`
-                      : 'Cancha principal de torneo TenisCupy'
+                      : 'Cancha principal de torneo PlayPy'
                   }
                   referrerPolicy="no-referrer"
                   onError={() => setHeroImgFailed(true)}
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center p-6 text-white/90 bg-gradient-to-br from-[#14532D] to-[#0F1A15]">
+                <div className="w-full h-full flex flex-col items-center justify-center p-6 text-white/90 bg-gradient-to-br from-[#7C1FA2] to-[#0A1633]">
                   <Trophy className="w-10 h-10 mb-2" />
                   <p className="text-sm font-medium">{activeTournament?.venue}</p>
                 </div>
@@ -999,28 +1079,28 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
           {/* 4-column summary strip below hero split */}
           {activeDivision && (
-            <div className="mt-6 sm:mt-8 grid grid-cols-2 lg:grid-cols-4 border border-[#E2E7E4] rounded-xl divide-y lg:divide-y-0 lg:divide-x divide-[#E2E7E4] bg-[#F8F9F8]">
+            <div className="mt-6 sm:mt-8 grid grid-cols-2 lg:grid-cols-4 border border-[#E2E8F0] rounded-xl divide-y lg:divide-y-0 lg:divide-x divide-[#E2E8F0] bg-[#F8FAFC]">
               <div className="p-3.5 sm:p-4">
-                <p className="text-[11px] sm:text-xs text-[#4A5550]">Inscriptos en división</p>
-                <p className="mt-1 text-lg sm:text-xl font-bold font-mono tabular-nums text-[#0F1A15]">
+                <p className="text-[11px] sm:text-xs text-[#475569]">Inscriptos en división</p>
+                <p className="mt-1 text-lg sm:text-xl font-bold font-mono tabular-nums text-[#0A1633]">
                   {divisionRegistrations.length} / {activeDivision.maxEntries}
                 </p>
               </div>
               <div className="p-3.5 sm:p-4">
-                <p className="text-[11px] sm:text-xs text-[#4A5550]">Partidos programados</p>
-                <p className="mt-1 text-lg sm:text-xl font-bold font-mono tabular-nums text-[#0F1A15]">
+                <p className="text-[11px] sm:text-xs text-[#475569]">Partidos programados</p>
+                <p className="mt-1 text-lg sm:text-xl font-bold font-mono tabular-nums text-[#0A1633]">
                   {upcomingMatches.length}
                 </p>
               </div>
               <div className="p-3.5 sm:p-4">
-                <p className="text-[11px] sm:text-xs text-[#4A5550]">Resultados confirmados</p>
-                <p className="mt-1 text-lg sm:text-xl font-bold font-mono tabular-nums text-[#0F1A15]">
+                <p className="text-[11px] sm:text-xs text-[#475569]">Resultados confirmados</p>
+                <p className="mt-1 text-lg sm:text-xl font-bold font-mono tabular-nums text-[#0A1633]">
                   {recentResults.length}
                 </p>
               </div>
               <div className="p-3.5 sm:p-4">
-                <p className="text-[11px] sm:text-xs text-[#4A5550]">Formato ITF</p>
-                <p className="mt-1 text-xs sm:text-sm font-semibold text-[#0F1A15] truncate">
+                <p className="text-[11px] sm:text-xs text-[#475569]">Formato ITF</p>
+                <p className="mt-1 text-xs sm:text-sm font-semibold text-[#0A1633] truncate">
                   {activeDivision.itfConfig.setsToWin === 2 ? 'Mejor de 3 sets' : activeDivision.itfConfig.setsToWin === 1 ? 'Set único' : 'Mejor de 5 sets'}
                   {activeDivision.itfConfig.setTiebreakPoints === 10 ? ' · TB a 10' : ''}
                   {activeDivision.itfConfig.directTiebreakMatch ? ' · TB directo 10' : ''}
@@ -1037,8 +1117,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       {/* Main Content Container */}
       <main className="max-w-7xl mx-auto px-3 sm:px-6 mt-5 sm:mt-6">
         {/* Segmented Sub-navigation (Desktop md+; en móvil se usa MobileBottomNav) */}
-        <div className="hidden md:flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-[#E2E7E4]">
-          <div className="flex items-center gap-1 p-1 bg-white border border-[#E2E7E4] rounded-xl overflow-x-auto max-w-full">
+        <div className="hidden md:flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-[#E2E8F0]">
+          <div className="flex items-center gap-1 p-1 bg-white border border-[#E2E8F0] rounded-xl overflow-x-auto max-w-full">
             {(
               [
                 { id: 'resumen', label: 'Torneos y Cuadro' },
@@ -1052,8 +1132,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 onClick={() => onSelectTab(tab.id)}
                 className={`px-3.5 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0 min-h-[38px] ${
                   activeTab === tab.id
-                    ? 'bg-[#14532D] text-white'
-                    : 'text-[#4A5550] hover:text-[#0F1A15]'
+                    ? 'bg-[#7C1FA2] text-white'
+                    : 'text-[#475569] hover:text-[#0A1633]'
                 }`}
               >
                 {tab.label}
@@ -1062,7 +1142,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           </div>
 
           {activeDivision && (
-            <p className="text-xs text-[#4A5550]">
+            <p className="text-xs text-[#475569]">
               {activeDivision.category} · {activeDivision.modality} · {activeDivision.gender}
             </p>
           )}
@@ -1070,14 +1150,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
         {/* Encabezado compacto en móvil para identificar sección y división */}
         {activeDivision && (
-          <div className="md:hidden flex items-center justify-between gap-2 pb-3 border-b border-[#E2E7E4]">
-            <p className="text-xs font-semibold text-[#0F1A15] truncate">
+          <div className="md:hidden flex items-center justify-between gap-2 pb-3 border-b border-[#E2E8F0]">
+            <p className="text-xs font-semibold text-[#0A1633] truncate">
               {activeTab === 'resumen' && 'Torneos y Cuadro'}
               {activeTab === 'fixture' && 'Fixture'}
               {activeTab === 'jornadas' && 'Jornadas y Fotos'}
               {activeTab === 'jugadores' && 'Jugadores'}
             </p>
-            <p className="text-[11px] text-[#4A5550] shrink-0">
+            <p className="text-[11px] text-[#475569] shrink-0">
               {activeDivision.category} · {activeDivision.modality}
             </p>
           </div>
@@ -1088,7 +1168,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           <div className="mt-5 sm:mt-6 space-y-6 sm:space-y-8">
             {/* Resumen rápido de Campeones arriba (el detalle de medallas vive en #division-cuadro) */}
             {podiumData && (
-              <section className="bg-white border border-[#E2E7E4] rounded-2xl p-4 sm:px-5 sm:py-4">
+              <section className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:px-5 sm:py-4">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
                     {podiumData.first && (
@@ -1100,7 +1180,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#92400E]">
                             1° Oro · Campeón
                           </p>
-                          <p className="text-sm font-bold text-[#0F1A15] truncate">
+                          <p className="text-sm font-bold text-[#0A1633] truncate">
                             {podiumData.first.name}
                           </p>
                         </div>
@@ -1116,7 +1196,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#475569]">
                             2° Plata · Vicecampeón
                           </p>
-                          <p className="text-sm font-semibold text-[#0F1A15] truncate">
+                          <p className="text-sm font-semibold text-[#0A1633] truncate">
                             {podiumData.second.name}
                           </p>
                         </div>
@@ -1132,7 +1212,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#9A3412]">
                             3° Bronce · Tercer Puesto
                           </p>
-                          <p className="text-sm font-semibold text-[#0F1A15] truncate">
+                          <p className="text-sm font-semibold text-[#0A1633] truncate">
                             {podiumData.third.name}
                           </p>
                         </div>
@@ -1143,7 +1223,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   {(knockoutRounds.length > 0 || thirdPlaceMatch) && (
                     <a
                       href="#division-cuadro"
-                      className="px-3.5 min-h-[44px] sm:min-h-[38px] inline-flex items-center justify-center rounded-xl border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-semibold text-[#0F1A15] hover:bg-slate-100 whitespace-nowrap shrink-0"
+                      className="px-3.5 min-h-[44px] sm:min-h-[38px] inline-flex items-center justify-center rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-semibold text-[#0A1633] hover:bg-slate-100 whitespace-nowrap shrink-0"
                     >
                       Ver medallero y cuadro final
                     </a>
@@ -1154,45 +1234,45 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Próximos Partidos */}
-              <div className="lg:col-span-7 bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-[#E2E7E4] flex items-center justify-between">
+              <div className="lg:col-span-7 bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-center justify-between">
                   <div>
-                    <h2 className="text-base font-semibold text-[#0F1A15]">Próximos partidos</h2>
-                    <p className="text-xs text-[#4A5550]">
+                    <h2 className="text-base font-semibold text-[#0A1633]">Próximos partidos</h2>
+                    <p className="text-xs text-[#475569]">
                       Horarios locales Paraguay (America/Asuncion)
                     </p>
                   </div>
                   <button
                     onClick={() => onSelectTab('fixture')}
-                    className="text-xs font-medium text-[#14532D] hover:underline whitespace-nowrap"
+                    className="text-xs font-medium text-[#7C1FA2] hover:underline whitespace-nowrap"
                   >
                     Ver fixture completo
                   </button>
                 </div>
 
                 {upcomingMatches.length === 0 ? (
-                  <div className="p-8 text-center text-sm text-[#4A5550]">
+                  <div className="p-8 text-center text-sm text-[#475569]">
                     No hay partidos pendientes programados en esta división.
                   </div>
                 ) : (
-                  <div className="divide-y divide-[#E2E7E4]">
+                  <div className="divide-y divide-[#E2E8F0]">
                     {upcomingMatches.slice(0, 6).map((m) => (
                       <div key={m.id} className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-xs text-[#4A5550]">
+                          <p className="text-xs text-[#475569]">
                             {m.roundName} · {m.courtName || 'Cancha por definir'}
                           </p>
-                          <p className="mt-1 text-sm font-semibold text-[#0F1A15]">
-                            {m.entryAName} <span className="text-[#4A5550] font-normal">vs</span> {m.entryBName}
+                          <p className="mt-1 text-sm font-semibold text-[#0A1633]">
+                            {m.entryAName} <span className="text-[#475569] font-normal">vs</span> {m.entryBName}
                           </p>
                         </div>
                         <div className="text-left sm:text-right shrink-0">
-                          <p className="text-xs font-mono tabular-nums font-medium text-[#0F1A15]">
+                          <p className="text-xs font-mono tabular-nums font-medium text-[#0A1633]">
                             {m.scheduledDate
                               ? `${formatAsuncionDate(m.scheduledDate)}${m.scheduledTime ? ` · ${m.scheduledTime} hs` : ''}`
                               : 'Fecha por definir'}
                           </p>
-                          <p className={`text-xs mt-0.5 ${MATCH_STATUS_LABEL[m.status]?.tone || 'text-[#4A5550]'}`}>
+                          <p className={`text-xs mt-0.5 ${MATCH_STATUS_LABEL[m.status]?.tone || 'text-[#475569]'}`}>
                             {MATCH_STATUS_LABEL[m.status]?.label || m.status}
                           </p>
                         </div>
@@ -1204,19 +1284,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
               {/* Últimos Resultados & Alertas en Vivo */}
               <div className="lg:col-span-5 space-y-6">
-                <div className="bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden">
-                  <div className="px-5 py-4 border-b border-[#E2E7E4]">
-                    <h2 className="text-base font-semibold text-[#0F1A15]">Resultados recientes</h2>
+                <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+                  <div className="px-5 py-4 border-b border-[#E2E8F0]">
+                    <h2 className="text-base font-semibold text-[#0A1633]">Resultados recientes</h2>
                   </div>
                   {recentResults.length === 0 ? (
-                    <div className="p-6 text-center text-sm text-[#4A5550]">
+                    <div className="p-6 text-center text-sm text-[#475569]">
                       Aún no se registraron marcadores en esta división.
                     </div>
                   ) : (
-                    <div className="divide-y divide-[#E2E7E4]">
+                    <div className="divide-y divide-[#E2E8F0]">
                       {recentResults.slice(0, 5).map((m) => (
                         <div key={m.id} className="p-4">
-                          <div className="flex items-center justify-between gap-2 text-xs text-[#4A5550]">
+                          <div className="flex items-center justify-between gap-2 text-xs text-[#475569]">
                             <span>{m.roundName}</span>
                             <span className={MATCH_STATUS_LABEL[m.status]?.tone}>
                               {MATCH_STATUS_LABEL[m.status]?.label}
@@ -1224,14 +1304,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           </div>
                           <div className="mt-1.5 flex items-center justify-between gap-3">
                             <div className="text-sm">
-                              <p className={m.winnerEntryId === m.entryAId ? 'font-semibold text-[#0F1A15]' : 'text-[#4A5550]'}>
+                              <p className={m.winnerEntryId === m.entryAId ? 'font-semibold text-[#0A1633]' : 'text-[#475569]'}>
                                 {m.entryAName}
                               </p>
-                              <p className={m.winnerEntryId === m.entryBId ? 'font-semibold text-[#0F1A15]' : 'text-[#4A5550]'}>
+                              <p className={m.winnerEntryId === m.entryBId ? 'font-semibold text-[#0A1633]' : 'text-[#475569]'}>
                                 {m.entryBName}
                               </p>
                             </div>
-                            <div className="font-mono tabular-nums text-sm font-semibold text-[#14532D] text-right">
+                            <div className="font-mono tabular-nums text-sm font-semibold text-[#7C1FA2] text-right">
                               {formatScoreString(m.sets, m.status)}
                             </div>
                           </div>
@@ -1242,16 +1322,16 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
 
                 {/* Últimas alertas push */}
-                <div className="bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden">
-                  <div className="px-5 py-4 border-b border-[#E2E7E4] flex items-center justify-between">
-                    <h2 className="text-base font-semibold text-[#0F1A15]">Avisos en tiempo real</h2>
-                    <span className="text-xs text-[#4A5550]">{notifications.length}</span>
+                <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+                  <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-[#0A1633]">Avisos en tiempo real</h2>
+                    <span className="text-xs text-[#475569]">{notifications.length}</span>
                   </div>
-                  <div className="divide-y divide-[#E2E7E4]">
+                  <div className="divide-y divide-[#E2E8F0]">
                     {notifications.slice(0, 4).map((n) => (
                       <div key={n.id} className="p-4">
-                        <p className="text-xs font-semibold text-[#0F1A15]">{n.title}</p>
-                        <p className="text-xs text-[#4A5550] mt-1">{n.body}</p>
+                        <p className="text-xs font-semibold text-[#0A1633]">{n.title}</p>
+                        <p className="text-xs text-[#475569] mt-1">{n.body}</p>
                       </div>
                     ))}
                   </div>
@@ -1263,10 +1343,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             {divisionGroups.length > 0 && (
               <section className="space-y-4">
                 <div>
-                  <h2 className="text-base sm:text-lg font-semibold text-[#0F1A15]">
+                  <h2 className="text-base sm:text-lg font-semibold text-[#0A1633]">
                     Grupos y cruces de zona · {activeDivision.name}
                   </h2>
-                  <p className="text-xs text-[#4A5550]">
+                  <p className="text-xs text-[#475569]">
                     Criterios de desempate:{' '}
                     {activeDivision.drawConfig.tiebreakers
                       .map((c, idx) => `${idx + 1}. ${TIEBREAKER_LABELS[c] || c}`)
@@ -1275,10 +1355,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
 
                 {divisionGroups.map((grp) => (
-                  <div key={grp.id} className="bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden">
-                    <div className="px-4 sm:px-5 py-3.5 border-b border-[#E2E7E4] flex items-center justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-[#0F1A15]">{grp.name}</h3>
-                      <span className="text-xs text-[#4A5550]">
+                  <div key={grp.id} className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+                    <div className="px-4 sm:px-5 py-3.5 border-b border-[#E2E8F0] flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-[#0A1633]">{grp.name}</h3>
+                      <span className="text-xs text-[#475569]">
                         {activeDivision.format === 'todos_contra_todos'
                           ? 'Todos contra todos'
                           : `Clasifican primeros ${activeDivision.drawConfig.qualifiersPerGroup}`}
@@ -1286,20 +1366,20 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     </div>
 
                     {/* Vista móvil en tarjetas (< md) */}
-                    <div className="md:hidden divide-y divide-[#E2E7E4]">
+                    <div className="md:hidden divide-y divide-[#E2E8F0]">
                       {grp.standings.map((row, idx) => (
                         <div key={row.entryId} className="p-3.5 flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0">
-                            <span className="w-6 text-center font-mono tabular-nums text-xs font-semibold text-[#4A5550] shrink-0">
+                            <span className="w-6 text-center font-mono tabular-nums text-xs font-semibold text-[#475569] shrink-0">
                               {idx + 1}
                             </span>
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-sm font-semibold text-[#0F1A15] truncate">
+                                <span className="text-sm font-semibold text-[#0A1633] truncate">
                                   {row.displayName}
                                 </span>
                                 {row.seed && (
-                                  <span className="text-[11px] text-[#4A5550]">[{row.seed}]</span>
+                                  <span className="text-[11px] text-[#475569]">[{row.seed}]</span>
                                 )}
                                 {row.qualified && (
                                   <span className="text-[11px] font-semibold text-[#15803D]">
@@ -1307,17 +1387,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[11px] text-[#4A5550] font-mono tabular-nums mt-0.5">
+                              <p className="text-[11px] text-[#475569] font-mono tabular-nums mt-0.5">
                                 {row.played} PJ · {row.won}G-{row.lost}P · Sets {row.setsWon}/{row.setsLost} · DG{' '}
                                 {row.gamesDiff >= 0 ? `+${row.gamesDiff}` : row.gamesDiff}
                               </p>
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-base font-bold font-mono tabular-nums text-[#14532D]">
+                            <p className="text-base font-bold font-mono tabular-nums text-[#7C1FA2]">
                               {row.points}
                             </p>
-                            <p className="text-[10px] text-[#4A5550]">PTS</p>
+                            <p className="text-[10px] text-[#475569]">PTS</p>
                           </div>
                         </div>
                       ))}
@@ -1327,7 +1407,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     <div className="hidden md:block overflow-x-auto clean-scroll">
                       <table className="w-full text-left border-collapse min-w-[680px]">
                         <thead>
-                          <tr className="border-b border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium text-[#4A5550]">
+                          <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#475569]">
                             <th className="py-2.5 px-4 w-10">#</th>
                             <th className="py-2.5 px-4">Participante</th>
                             <th className="py-2.5 px-3 text-right">PJ</th>
@@ -1339,17 +1419,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                             <th className="py-2.5 px-4 text-right">PTS</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#E2E7E4] text-sm">
+                        <tbody className="divide-y divide-[#E2E8F0] text-sm">
                           {grp.standings.map((row, idx) => (
-                            <tr key={row.entryId} className="hover:bg-[#F8F9F8]">
-                              <td className="py-3 px-4 font-mono tabular-nums text-xs text-[#4A5550]">
+                            <tr key={row.entryId} className="hover:bg-[#F8FAFC]">
+                              <td className="py-3 px-4 font-mono tabular-nums text-xs text-[#475569]">
                                 {idx + 1}
                               </td>
                               <td className="py-3 px-4">
                                 <div className="flex items-center gap-2">
-                                  <span className="font-medium text-[#0F1A15]">{row.displayName}</span>
+                                  <span className="font-medium text-[#0A1633]">{row.displayName}</span>
                                   {row.seed && (
-                                    <span className="text-xs text-[#4A5550]">[{row.seed}]</span>
+                                    <span className="text-xs text-[#475569]">[{row.seed}]</span>
                                   )}
                                   {row.qualified && (
                                     <span className="text-xs font-medium text-[#15803D]">
@@ -1357,11 +1437,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                     </span>
                                   )}
                                 </div>
-                                {row.club && <p className="text-xs text-[#4A5550]">{row.club}</p>}
+                                {row.club && <p className="text-xs text-[#475569]">{row.club}</p>}
                               </td>
                               <td className="py-3 px-3 text-right font-mono tabular-nums">{row.played}</td>
                               <td className="py-3 px-3 text-right font-mono tabular-nums font-medium text-[#15803D]">{row.won}</td>
-                              <td className="py-3 px-3 text-right font-mono tabular-nums text-[#4A5550]">{row.lost}</td>
+                              <td className="py-3 px-3 text-right font-mono tabular-nums text-[#475569]">{row.lost}</td>
                               <td className="py-3 px-3 text-right font-mono tabular-nums text-xs">
                                 {row.setsWon}/{row.setsLost}
                               </td>
@@ -1371,7 +1451,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                               <td className="py-3 px-3 text-right font-mono tabular-nums text-xs">
                                 {row.gamesDiff >= 0 ? `+${row.gamesDiff}` : row.gamesDiff}
                               </td>
-                              <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-[#0F1A15]">
+                              <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-[#0A1633]">
                                 {row.points}
                               </td>
                             </tr>
@@ -1379,7 +1459,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         </tbody>
                       </table>
                     </div>
-                    <div className="px-4 sm:px-5 py-2.5 bg-[#F8F9F8] border-t border-[#E2E7E4] text-xs text-[#4A5550]">
+                    <div className="px-4 sm:px-5 py-2.5 bg-[#F8FAFC] border-t border-[#E2E8F0] text-xs text-[#475569]">
                       {activeDivision.drawConfig.woHandlingNote}
                     </div>
                   </div>
@@ -1390,18 +1470,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             {/* Cuadro Final: Podio de Medallas + Bracket Eliminatorio + Final y 3er Puesto */}
             <section
               id="division-cuadro"
-              className="bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden"
+              className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden"
             >
-              <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-[#E2E7E4] bg-[#F8F9F8] flex flex-wrap items-center justify-between gap-3">
+              <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-[#E2E8F0] bg-[#F8FAFC] flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#14532D]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7C1FA2]">
                     Fase Eliminatoria · {activeDivision.name}
                   </p>
-                  <h2 className="text-lg sm:text-xl font-bold text-[#0F1A15] mt-0.5">
+                  <h2 className="text-lg sm:text-xl font-bold text-[#0A1633] mt-0.5">
                     Cuadro final y medallero
                   </h2>
                 </div>
-                <p className="text-xs text-[#4A5550]">
+                <p className="text-xs text-[#475569]">
                   Avance automático al confirmar marcadores
                   {activeDivision.hasThirdPlaceMatch ? ' · Incluye definición por el 3er puesto' : ''}
                 </p>
@@ -1409,7 +1489,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
               {/* Podio de Medallas (Oro, Plata, Bronce) integrado al Cuadro Final */}
               {podiumData && (
-                <div className="p-4 sm:p-6 border-b border-[#E2E7E4] bg-gradient-to-b from-[#FAFBF9] to-white">
+                <div className="p-4 sm:p-6 border-b border-[#E2E8F0] bg-gradient-to-b from-[#FAFBF9] to-white">
                   <div
                     className={`grid grid-cols-1 gap-4 items-end ${
                       podiumData.hasThirdPlaceSlot
@@ -1450,7 +1530,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                               toneClass="bg-[#334155] text-[#F1F5F9] ring-2 ring-[#94A3B8]/60"
                             />
                             <div className="min-w-0">
-                              <h3 className="text-base font-bold text-[#0F1A15] leading-snug">
+                              <h3 className="text-base font-bold text-[#0A1633] leading-snug">
                                 {podiumData.second.name}
                               </h3>
                               {podiumData.second.club && (
@@ -1508,11 +1588,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                               toneClass="bg-[#92400E] text-[#FEF3C7] ring-2 ring-[#F59E0B]/70"
                             />
                             <div className="min-w-0">
-                              <h3 className="text-xl font-bold text-[#0F1A15] leading-tight">
+                              <h3 className="text-xl font-bold text-[#0A1633] leading-tight">
                                 {podiumData.first.name}
                               </h3>
                               {podiumData.first.club && (
-                                <p className="text-xs font-medium text-[#4A5550] mt-1">
+                                <p className="text-xs font-medium text-[#475569] mt-1">
                                   {podiumData.first.club}
                                 </p>
                               )}
@@ -1563,11 +1643,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                 toneClass="bg-[#9A3412] text-[#FFEDD5] ring-2 ring-[#EA580C]/55"
                               />
                               <div className="min-w-0">
-                                <h3 className="text-base font-bold text-[#0F1A15] leading-snug">
+                                <h3 className="text-base font-bold text-[#0A1633] leading-snug">
                                   {podiumData.third.name}
                                 </h3>
                                 {podiumData.third.club && (
-                                  <p className="text-xs text-[#4A5550] truncate mt-0.5">
+                                  <p className="text-xs text-[#475569] truncate mt-0.5">
                                     {podiumData.third.club}
                                   </p>
                                 )}
@@ -1575,10 +1655,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                             </div>
                           ) : (
                             <div className="mt-4 py-1.5">
-                              <p className="text-sm font-semibold text-[#0F1A15]">
+                              <p className="text-sm font-semibold text-[#0A1633]">
                                 Por definir en cancha
                               </p>
-                              <p className="text-xs text-[#4A5550] mt-0.5">
+                              <p className="text-xs text-[#475569] mt-0.5">
                                 {thirdPlaceMatch
                                   ? `${thirdPlaceMatch.entryAName} vs ${thirdPlaceMatch.entryBName}`
                                   : 'Partido por el 3er puesto habilitado'}
@@ -1605,7 +1685,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
               <div className="p-4 sm:p-6">
                 {knockoutRounds.length === 0 && !thirdPlaceMatch ? (
-                  <div className="py-10 text-center text-sm text-[#4A5550]">
+                  <div className="py-10 text-center text-sm text-[#475569]">
                     Los cruces de fase final se publicarán al completar el sorteo o la etapa de grupos.
                   </div>
                 ) : (
@@ -1628,8 +1708,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                     ? 'bg-[#92400E] text-[#FEF3C7] border-[#92400E]'
                                     : 'bg-[#FFFBEB] text-[#92400E] border-[#F59E0B]/55'
                                   : isActive
-                                  ? 'bg-[#14532D] text-white border-[#14532D]'
-                                  : 'bg-[#F8F9F8] text-[#4A5550] border-[#E2E7E4]'
+                                  ? 'bg-[#7C1FA2] text-white border-[#7C1FA2]'
+                                  : 'bg-[#F8FAFC] text-[#475569] border-[#E2E8F0]'
                               }`}
                             >
                               {isFinalRound && <Trophy className="w-3.5 h-3.5" />}
@@ -1730,7 +1810,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                         Partido por el 3er Puesto · Bronce
                                       </p>
                                     </div>
-                                    <p className="text-xs text-[#4A5550] mt-2">
+                                    <p className="text-xs text-[#475569] mt-2">
                                       Se programará automáticamente al definirse los cruces de semifinales.
                                     </p>
                                   </div>
@@ -1757,11 +1837,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
                                   return (
                                     <div key={round.roundName} className="w-[272px] shrink-0 flex flex-col">
-                                      <div className="pb-2 mb-3 border-b border-[#E2E7E4] flex items-center justify-between gap-2">
-                                        <span className="text-xs font-semibold text-[#14532D]">
+                                      <div className="pb-2 mb-3 border-b border-[#E2E8F0] flex items-center justify-between gap-2">
+                                        <span className="text-xs font-semibold text-[#7C1FA2]">
                                           {round.roundName}
                                         </span>
-                                        <span className="font-mono tabular-nums text-[11px] text-[#4A5550]">
+                                        <span className="font-mono tabular-nums text-[11px] text-[#475569]">
                                           {round.matches.length} {round.matches.length === 1 ? 'partido' : 'partidos'}
                                         </span>
                                       </div>
@@ -1817,11 +1897,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
                                 return (
                                   <div key={round.roundName} className="w-[264px] shrink-0 flex flex-col">
-                                    <div className="pb-2 mb-3 border-b border-[#E2E7E4] flex items-center justify-between gap-2">
-                                      <span className="text-xs font-semibold text-[#14532D]">
+                                    <div className="pb-2 mb-3 border-b border-[#E2E8F0] flex items-center justify-between gap-2">
+                                      <span className="text-xs font-semibold text-[#7C1FA2]">
                                         {round.roundName}
                                       </span>
-                                      <span className="font-mono tabular-nums text-[11px] text-[#4A5550]">
+                                      <span className="font-mono tabular-nums text-[11px] text-[#475569]">
                                         {round.matches.length} {round.matches.length === 1 ? 'partido' : 'partidos'}
                                       </span>
                                     </div>
@@ -1848,7 +1928,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                       <Trophy className="w-3.5 h-3.5" />
                                       Definición por Medallas
                                     </span>
-                                    <span className="text-[11px] font-medium text-[#4A5550]">
+                                    <span className="text-[11px] font-medium text-[#475569]">
                                       {thirdPlaceMatch || activeDivision.hasThirdPlaceMatch
                                         ? '1° · 2° · 3°'
                                         : '1° · 2°'}
@@ -1882,7 +1962,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                               Partido por el 3er Puesto · Bronce
                                             </p>
                                           </div>
-                                          <p className="text-xs text-[#4A5550] mt-1.5">
+                                          <p className="text-xs text-[#475569] mt-1.5">
                                             Se habilitará con los semifinalistas al completarse la ronda previa.
                                           </p>
                                         </div>
@@ -1908,14 +1988,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           <section className="mt-6 sm:mt-8 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#14532D]">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7C1FA2]">
                   Patrocinadores del certamen
                 </p>
-                <h2 className="text-base sm:text-lg font-bold text-[#0F1A15]">
+                <h2 className="text-base sm:text-lg font-bold text-[#0A1633]">
                   Auspiciantes oficiales · {activeTournament?.name}
                 </h2>
               </div>
-              <span className="text-xs text-[#4A5550]">
+              <span className="text-xs text-[#475569]">
                 {principalAds.length + lateralAds.length}{' '}
                 {principalAds.length + lateralAds.length === 1 ? 'auspiciante activo' : 'auspiciantes activos'}
               </span>
@@ -1942,13 +2022,13 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         {/* TAB 2: FIXTURE (LISTADO Y CALENDARIO) */}
         {activeTab === 'fixture' && (
           <div className="mt-5 sm:mt-6 space-y-4 sm:space-y-5">
-            <div className="bg-white border border-[#E2E7E4] rounded-2xl p-4 sm:p-5">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3 sm:mb-4">
                 <div>
-                  <h2 className="text-base font-semibold text-[#0F1A15]">
+                  <h2 className="text-base font-semibold text-[#0A1633]">
                     Fixture general y programación
                   </h2>
-                  <p className="text-xs text-[#4A5550]">
+                  <p className="text-xs text-[#475569]">
                     Hora local America/Asuncion · {filteredFixtureMatches.length} partidos
                   </p>
                 </div>
@@ -1957,18 +2037,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowMobileFilters((v) => !v)}
-                    className="sm:hidden inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium text-[#0F1A15]"
+                    className="sm:hidden inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633]"
                   >
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-[#14532D]" />
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-[#7C1FA2]" />
                     Filtros {activeFixtureFiltersCount > 0 ? `(${activeFixtureFiltersCount})` : ''}
                   </button>
 
-                  <div className="flex items-center gap-1 p-1 bg-[#F8F9F8] border border-[#E2E7E4] rounded-xl">
+                  <div className="flex items-center gap-1 p-1 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl">
                     <button
                       type="button"
                       onClick={() => setFixtureSortBy('ronda')}
                       className={`px-2.5 min-h-[36px] rounded-lg text-xs font-medium transition-colors ${
-                        fixtureSortBy === 'ronda' ? 'bg-white text-[#0F1A15] shadow-xs' : 'text-[#4A5550]'
+                        fixtureSortBy === 'ronda' ? 'bg-white text-[#0A1633] shadow-xs' : 'text-[#475569]'
                       }`}
                     >
                       Por ronda
@@ -1977,18 +2057,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                       type="button"
                       onClick={() => setFixtureSortBy('fecha')}
                       className={`px-2.5 min-h-[36px] rounded-lg text-xs font-medium transition-colors ${
-                        fixtureSortBy === 'fecha' ? 'bg-white text-[#0F1A15] shadow-xs' : 'text-[#4A5550]'
+                        fixtureSortBy === 'fecha' ? 'bg-white text-[#0A1633] shadow-xs' : 'text-[#475569]'
                       }`}
                     >
                       Por fecha
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-1 p-1 bg-[#F8F9F8] border border-[#E2E7E4] rounded-xl">
+                  <div className="flex items-center gap-1 p-1 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl">
                     <button
                       onClick={() => setFixtureView('list')}
                       className={`inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-lg text-xs font-medium transition-colors ${
-                        fixtureView === 'list' ? 'bg-white text-[#0F1A15] shadow-xs' : 'text-[#4A5550]'
+                        fixtureView === 'list' ? 'bg-white text-[#0A1633] shadow-xs' : 'text-[#475569]'
                       }`}
                     >
                       <List className="w-4 h-4" />
@@ -1997,7 +2077,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     <button
                       onClick={() => setFixtureView('calendar')}
                       className={`inline-flex items-center gap-1.5 px-3 min-h-[36px] rounded-lg text-xs font-medium transition-colors ${
-                        fixtureView === 'calendar' ? 'bg-white text-[#0F1A15] shadow-xs' : 'text-[#4A5550]'
+                        fixtureView === 'calendar' ? 'bg-white text-[#0A1633] shadow-xs' : 'text-[#475569]'
                       }`}
                     >
                       <LayoutGrid className="w-4 h-4" />
@@ -2020,7 +2100,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     setFilterDivisionId('ALL');
                     setFilterMatchdayId('ALL');
                   }}
-                  className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium text-[#0F1A15]"
+                  className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633]"
                 >
                   <option value="ALL">Todos los torneos</option>
                   {tournaments.map((t) => (
@@ -2037,7 +2117,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     setFilterDivisionId(e.target.value);
                     setFilterMatchdayId('ALL');
                   }}
-                  className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium text-[#0F1A15]"
+                  className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633]"
                 >
                   <option value="ALL">Todas las divisiones</option>
                   {divisions
@@ -2053,7 +2133,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   aria-label="Filtrar por jornada"
                   value={filterMatchdayId}
                   onChange={(e) => setFilterMatchdayId(e.target.value)}
-                  className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium text-[#0F1A15]"
+                  className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633]"
                 >
                   <option value="ALL">Todas las jornadas</option>
                   {matchdays
@@ -2070,14 +2150,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   aria-label="Filtrar por fecha"
                   value={filterDate}
                   onChange={(e) => setFilterDate(e.target.value)}
-                  className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs text-[#0F1A15]"
+                  className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs text-[#0A1633]"
                 />
 
                 <select
                   aria-label="Filtrar por cancha"
                   value={filterCourt}
                   onChange={(e) => setFilterCourt(e.target.value)}
-                  className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium text-[#0F1A15]"
+                  className="h-11 sm:h-10 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633]"
                 >
                   <option value="ALL">Todas las canchas</option>
                   {allCourts.map((c) => (
@@ -2088,20 +2168,20 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </select>
 
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-[#4A5550] absolute left-3 top-3.5 sm:top-3" />
+                  <Search className="w-3.5 h-3.5 text-[#475569] absolute left-3 top-3.5 sm:top-3" />
                   <input
                     type="text"
                     placeholder="Buscar jugador..."
                     value={filterPlayerQuery}
                     onChange={(e) => setFilterPlayerQuery(e.target.value)}
-                    className="w-full h-11 sm:h-10 pl-8 pr-3 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs text-[#0F1A15]"
+                    className="w-full h-11 sm:h-10 pl-8 pr-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs text-[#0A1633]"
                   />
                 </div>
               </div>
             </div>
 
             {filteredFixtureMatches.length === 0 ? (
-              <div className="bg-white border border-[#E2E7E4] rounded-2xl p-10 text-center text-sm text-[#4A5550]">
+              <div className="bg-white border border-[#E2E8F0] rounded-2xl p-10 text-center text-sm text-[#475569]">
                 No se encontraron partidos con los filtros seleccionados.
               </div>
             ) : fixtureView === 'list' ? (
@@ -2112,12 +2192,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     const t = tournaments.find((x) => x.id === m.tournamentId);
                     const d = divisions.find((x) => x.id === m.divisionId);
                     return (
-                      <div key={m.id} className="bg-white border border-[#E2E7E4] rounded-2xl p-4 space-y-2.5">
-                        <div className="flex items-center justify-between gap-2 text-xs text-[#4A5550]">
-                          <span className="truncate font-medium text-[#14532D]">
+                      <div key={m.id} className="bg-white border border-[#E2E8F0] rounded-2xl p-4 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2 text-xs text-[#475569]">
+                          <span className="truncate font-medium text-[#7C1FA2]">
                             {d?.name} · {m.roundName}
                           </span>
-                          <span className="font-mono tabular-nums shrink-0 font-semibold text-[#0F1A15]">
+                          <span className="font-mono tabular-nums shrink-0 font-semibold text-[#0A1633]">
                             {m.scheduledDate
                               ? `${formatAsuncionDate(m.scheduledDate)}${m.scheduledTime ? ` · ${m.scheduledTime} hs` : ''}`
                               : 'Fecha por definir'}
@@ -2125,16 +2205,16 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         </div>
 
                         <div className="space-y-1 text-sm">
-                          <p className={m.winnerEntryId === m.entryAId ? 'font-bold text-[#14532D]' : 'font-medium text-[#0F1A15]'}>
+                          <p className={m.winnerEntryId === m.entryAId ? 'font-bold text-[#7C1FA2]' : 'font-medium text-[#0A1633]'}>
                             {m.entryAName}
                           </p>
-                          <p className={m.winnerEntryId === m.entryBId ? 'font-bold text-[#14532D]' : 'font-medium text-[#0F1A15]'}>
+                          <p className={m.winnerEntryId === m.entryBId ? 'font-bold text-[#7C1FA2]' : 'font-medium text-[#0A1633]'}>
                             {m.entryBName}
                           </p>
                         </div>
 
-                        <div className="pt-2 border-t border-[#E2E7E4] flex items-center justify-between gap-2 text-xs">
-                          <span className="text-[#4A5550] truncate">
+                        <div className="pt-2 border-t border-[#E2E8F0] flex items-center justify-between gap-2 text-xs">
+                          <span className="text-[#475569] truncate">
                             {m.courtName || 'Cancha por definir'} · {t?.name}
                           </span>
                           <div className="shrink-0 text-right">
@@ -2142,7 +2222,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                               {MATCH_STATUS_LABEL[m.status]?.label}
                             </span>
                             {m.sets.length > 0 && (
-                              <span className="ml-2 font-mono tabular-nums font-semibold text-[#14532D]">
+                              <span className="ml-2 font-mono tabular-nums font-semibold text-[#7C1FA2]">
                                 {formatScoreString(m.sets, m.status)}
                               </span>
                             )}
@@ -2154,10 +2234,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
 
                 {/* Tabla escritorio para Fixture (md+) */}
-                <div className="hidden md:block bg-white border border-[#E2E7E4] rounded-2xl overflow-x-auto clean-scroll">
+                <div className="hidden md:block bg-white border border-[#E2E8F0] rounded-2xl overflow-x-auto clean-scroll">
                   <table className="w-full text-left border-collapse min-w-[760px]">
                     <thead>
-                      <tr className="border-b border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium text-[#4A5550]">
+                      <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#475569]">
                         <th className="py-3 px-4">Fecha / Hora</th>
                         <th className="py-3 px-4">Torneo / División</th>
                         <th className="py-3 px-4">Fase y Ronda</th>
@@ -2166,37 +2246,37 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         <th className="py-3 px-4">Estado / Marcador</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#E2E7E4] text-sm">
+                    <tbody className="divide-y divide-[#E2E8F0] text-sm">
                       {filteredFixtureMatches.map((m) => {
                         const t = tournaments.find((x) => x.id === m.tournamentId);
                         const d = divisions.find((x) => x.id === m.divisionId);
                         return (
-                          <tr key={m.id} className="hover:bg-[#F8F9F8] transition-colors">
+                          <tr key={m.id} className="hover:bg-[#F8FAFC] transition-colors">
                             <td className="py-3 px-4 font-mono tabular-nums text-xs">
-                              <div className="font-medium text-[#0F1A15]">
+                              <div className="font-medium text-[#0A1633]">
                                 {m.scheduledDate ? formatAsuncionDate(m.scheduledDate) : 'Fecha por definir'}
                               </div>
-                              <div className="text-[#4A5550]">
+                              <div className="text-[#475569]">
                                 {m.scheduledTime ? `${m.scheduledTime} hs` : 'Opcional'}
                               </div>
                             </td>
                             <td className="py-3 px-4 text-xs">
-                              <div className="font-medium text-[#0F1A15]">{d?.name}</div>
-                              <div className="text-[#4A5550]">{t?.name}</div>
+                              <div className="font-medium text-[#0A1633]">{d?.name}</div>
+                              <div className="text-[#475569]">{t?.name}</div>
                             </td>
-                            <td className="py-3 px-4 text-xs text-[#4A5550]">
+                            <td className="py-3 px-4 text-xs text-[#475569]">
                               <span className="capitalize">{m.phase}</span> · {m.roundName}
                             </td>
                             <td className="py-3 px-4">
-                              <span className={m.winnerEntryId === m.entryAId ? 'font-semibold text-[#0F1A15]' : 'text-[#0F1A15]'}>
+                              <span className={m.winnerEntryId === m.entryAId ? 'font-semibold text-[#0A1633]' : 'text-[#0A1633]'}>
                                 {m.entryAName}
                               </span>
-                              <span className="text-[#4A5550] mx-1.5">vs</span>
-                              <span className={m.winnerEntryId === m.entryBId ? 'font-semibold text-[#0F1A15]' : 'text-[#0F1A15]'}>
+                              <span className="text-[#475569] mx-1.5">vs</span>
+                              <span className={m.winnerEntryId === m.entryBId ? 'font-semibold text-[#0A1633]' : 'text-[#0A1633]'}>
                                 {m.entryBName}
                               </span>
                             </td>
-                            <td className="py-3 px-4 text-xs text-[#4A5550]">
+                            <td className="py-3 px-4 text-xs text-[#475569]">
                               {m.courtName || 'Sin asignar'}
                             </td>
                             <td className="py-3 px-4 text-xs">
@@ -2204,7 +2284,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                 {MATCH_STATUS_LABEL[m.status]?.label}
                               </span>
                               {m.sets.length > 0 && (
-                                <span className="ml-2 font-mono tabular-nums font-semibold text-[#14532D]">
+                                <span className="ml-2 font-mono tabular-nums font-semibold text-[#7C1FA2]">
                                   {formatScoreString(m.sets, m.status)}
                                 </span>
                               )}
@@ -2227,29 +2307,29 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     return acc;
                   }, new Map<string, Match[]>())
                 ).map(([dateKey, dayMatches]) => (
-                  <div key={dateKey} className="bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden">
-                    <div className="px-5 py-3 bg-[#F8F9F8] border-b border-[#E2E7E4] flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-[#14532D]" />
-                      <h3 className="text-sm font-semibold text-[#0F1A15]">
+                  <div key={dateKey} className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+                    <div className="px-5 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-[#7C1FA2]" />
+                      <h3 className="text-sm font-semibold text-[#0A1633]">
                         {dateKey === 'Sin fecha' ? 'Partidos por programar' : formatAsuncionDate(dateKey)}
                       </h3>
-                      <span className="text-xs text-[#4A5550]">· {dayMatches.length} partidos</span>
+                      <span className="text-xs text-[#475569]">· {dayMatches.length} partidos</span>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[#E2E7E4]">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-[#E2E8F0]">
                       {dayMatches.map((m) => {
                         const d = divisions.find((x) => x.id === m.divisionId);
                         return (
                           <div key={m.id} className="bg-white p-4">
-                            <div className="flex items-center justify-between text-xs text-[#4A5550]">
-                              <span className="font-mono tabular-nums font-semibold text-[#0F1A15]">
+                            <div className="flex items-center justify-between text-xs text-[#475569]">
+                              <span className="font-mono tabular-nums font-semibold text-[#0A1633]">
                                 {m.scheduledTime ? `${m.scheduledTime} hs` : 'TBC'}
                               </span>
                               <span>{m.courtName || 'Sin cancha'}</span>
                             </div>
-                            <p className="text-xs text-[#14532D] mt-1 font-medium">
+                            <p className="text-xs text-[#7C1FA2] mt-1 font-medium">
                               {d?.name} · {m.roundName}
                             </p>
-                            <p className="text-sm font-semibold text-[#0F1A15] mt-1.5">
+                            <p className="text-sm font-semibold text-[#0A1633] mt-1.5">
                               {m.entryAName} vs {m.entryBName}
                             </p>
                             <div className="mt-2 flex items-center justify-between text-xs">
@@ -2257,7 +2337,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                 {MATCH_STATUS_LABEL[m.status]?.label}
                               </span>
                               {m.sets.length > 0 && (
-                                <span className="font-mono tabular-nums font-semibold text-[#14532D]">
+                                <span className="font-mono tabular-nums font-semibold text-[#7C1FA2]">
                                   {formatScoreString(m.sets, m.status)}
                                 </span>
                               )}
@@ -2277,7 +2357,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         {activeTab === 'jornadas' && activeDivision && (
           <div className="mt-6 space-y-6">
             {divisionMatchdays.length === 0 ? (
-              <div className="bg-white border border-[#E2E7E4] rounded-2xl p-10 text-center text-sm text-[#4A5550]">
+              <div className="bg-white border border-[#E2E8F0] rounded-2xl p-10 text-center text-sm text-[#475569]">
                 Aún no se crearon jornadas en esta división.
               </div>
             ) : (
@@ -2294,50 +2374,50 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 return (
                   <article
                     key={md.id}
-                    className="bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden"
+                    className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden"
                   >
-                    <div className="p-5 border-b border-[#E2E7E4] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="p-5 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
-                        <p className="text-xs text-[#14532D] font-medium">
+                        <p className="text-xs text-[#7C1FA2] font-medium">
                           {md.date ? `${formatAsuncionDate(md.date)} · ` : ''}Jornada {md.order}
                         </p>
-                        <h2 className="text-lg font-semibold text-[#0F1A15] mt-0.5">{md.name}</h2>
+                        <h2 className="text-lg font-semibold text-[#0A1633] mt-0.5">{md.name}</h2>
                         {md.description && (
-                          <p className="text-sm text-[#4A5550] mt-1">{md.description}</p>
+                          <p className="text-sm text-[#475569] mt-1">{md.description}</p>
                         )}
                       </div>
-                      <p className="text-xs text-[#4A5550] shrink-0">
+                      <p className="text-xs text-[#475569] shrink-0">
                         {mdMatches.length} partidos · {mdPhotos.length} fotos publicadas
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-[#E2E7E4]">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-[#E2E8F0]">
                       {/* Partidos de la jornada */}
                       <div className="lg:col-span-6 p-5">
-                        <h3 className="text-xs font-semibold text-[#4A5550] mb-3">
+                        <h3 className="text-xs font-semibold text-[#475569] mb-3">
                           Partidos y resultados de la jornada
                         </h3>
                         {mdMatches.length === 0 ? (
-                          <p className="text-sm text-[#4A5550]">Sin partidos asignados aún.</p>
+                          <p className="text-sm text-[#475569]">Sin partidos asignados aún.</p>
                         ) : (
-                          <div className="divide-y divide-[#E2E7E4]">
+                          <div className="divide-y divide-[#E2E8F0]">
                             {mdMatches.map((m) => (
                               <div key={m.id} className="py-2.5 flex items-center justify-between gap-3">
                                 <div className="min-w-0">
-                                  <p className="text-xs text-[#4A5550]">
+                                  <p className="text-xs text-[#475569]">
                                     {m.scheduledTime ? `${m.scheduledTime} hs` : 'TBC'} · {m.courtName || 'Sin cancha'}
                                   </p>
-                                  <p className="text-sm font-medium text-[#0F1A15] truncate">
+                                  <p className="text-sm font-medium text-[#0A1633] truncate">
                                     {m.entryAName} vs {m.entryBName}
                                   </p>
                                 </div>
                                 <div className="text-right shrink-0">
                                   {m.sets.length > 0 ? (
-                                    <span className="font-mono tabular-nums text-xs font-semibold text-[#14532D]">
+                                    <span className="font-mono tabular-nums text-xs font-semibold text-[#7C1FA2]">
                                       {formatScoreString(m.sets, m.status)}
                                     </span>
                                   ) : (
-                                    <span className="text-xs text-[#4A5550]">
+                                    <span className="text-xs text-[#475569]">
                                       {MATCH_STATUS_LABEL[m.status]?.label}
                                     </span>
                                   )}
@@ -2351,17 +2431,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                       {/* Galería publicada */}
                       <div className="lg:col-span-6 p-5">
                         <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-xs font-semibold text-[#4A5550]">
+                          <h3 className="text-xs font-semibold text-[#475569]">
                             Galería de fotos
                           </h3>
                           {coverPhoto && (
-                            <span className="text-xs text-[#14532D] font-medium">
+                            <span className="text-xs text-[#7C1FA2] font-medium">
                               Portada destacada
                             </span>
                           )}
                         </div>
                         {mdPhotos.length === 0 ? (
-                          <div className="rounded-xl border border-dashed border-[#E2E7E4] p-6 text-center text-xs text-[#4A5550]">
+                          <div className="rounded-xl border border-dashed border-[#E2E8F0] p-6 text-center text-xs text-[#475569]">
                             <Images className="w-6 h-6 mx-auto mb-2 text-slate-400" />
                             La galería de esta jornada aún no fue publicada.
                           </div>
@@ -2371,7 +2451,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                               <button
                                 key={ph.id}
                                 onClick={() => openLightbox(mdPhotos, idx)}
-                                className="group relative aspect-[4/3] rounded-xl overflow-hidden border border-[#E2E7E4] bg-slate-100 text-left focus-visible:outline-2 focus-visible:outline-[#14532D]"
+                                className="group relative aspect-[4/3] rounded-xl overflow-hidden border border-[#E2E8F0] bg-slate-100 text-left focus-visible:outline-2 focus-visible:outline-[#7C1FA2]"
                               >
                                 <img
                                   src={ph.thumbUrl}
@@ -2401,35 +2481,35 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         {/* TAB 5: JUGADORES, PERFILES Y ESTADÍSTICAS */}
         {activeTab === 'jugadores' && (
           <div className="mt-6 space-y-5">
-            <div className="bg-white border border-[#E2E7E4] rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-[#0F1A15]">
+                <h2 className="text-base font-semibold text-[#0A1633]">
                   Jugadores del torneo · {activeTournament?.name || 'Certamen activo'}
                 </h2>
-                <p className="text-xs text-[#4A5550]">
+                <p className="text-xs text-[#475569]">
                   Plantel privado de este torneo. Tocá un jugador para ver su ficha y estadísticas.
                 </p>
               </div>
               <div className="relative w-full sm:w-72">
-                <Search className="w-4 h-4 text-[#4A5550] absolute left-3 top-3" />
+                <Search className="w-4 h-4 text-[#475569] absolute left-3 top-3" />
                 <input
                   type="text"
                   placeholder="Buscar por nombre, club o categoría..."
                   value={playerSearch}
                   onChange={(e) => setPlayerSearch(e.target.value)}
-                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-[#E2E7E4] bg-[#F8F9F8] text-sm text-[#0F1A15]"
+                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-sm text-[#0A1633]"
                 />
               </div>
             </div>
 
             {filteredPlayers.length === 0 ? (
-              <div className="bg-white border border-[#E2E7E4] rounded-2xl p-8 text-center">
-                <p className="text-sm font-medium text-[#0F1A15]">
+              <div className="bg-white border border-[#E2E8F0] rounded-2xl p-8 text-center">
+                <p className="text-sm font-medium text-[#0A1633]">
                   {playerSearch.trim()
                     ? 'No se encontraron jugadores que coincidan con tu búsqueda en este torneo.'
                     : 'Este torneo todavía no tiene jugadores cargados.'}
                 </p>
-                <p className="text-xs text-[#4A5550] mt-1">
+                <p className="text-xs text-[#475569] mt-1">
                   Cada torneo gestiona su propio registro de jugadores de forma independiente.
                 </p>
               </div>
@@ -2444,15 +2524,15 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 return (
                   <div
                     key={p.id}
-                    className="bg-white border border-[#E2E7E4] rounded-2xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition-colors"
+                    className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition-colors"
                   >
                     <div>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <PlayerAvatar player={p} sizeClass="w-12 h-12 text-sm" />
                           <div className="min-w-0">
-                            <h3 className="text-base font-semibold text-[#0F1A15] truncate">{p.fullName}</h3>
-                            <p className="text-xs text-[#4A5550] mt-0.5 truncate">
+                            <h3 className="text-base font-semibold text-[#0A1633] truncate">{p.fullName}</h3>
+                            <p className="text-xs text-[#475569] mt-0.5 truncate">
                               {p.club} · Cat. {p.habitualCategory} · {p.dominantHand}
                             </p>
                           </div>
@@ -2462,30 +2542,30 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           title="Seguir notificaciones de este jugador"
                           className={`min-h-[40px] sm:min-h-[36px] px-3 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
                             isFollowing
-                              ? 'bg-emerald-50 border-emerald-200 text-[#14532D]'
-                              : 'bg-white border-[#E2E7E4] text-[#4A5550] hover:text-[#0F1A15]'
+                              ? 'bg-emerald-50 border-emerald-200 text-[#7C1FA2]'
+                              : 'bg-white border-[#E2E8F0] text-[#475569] hover:text-[#0A1633]'
                           }`}
                         >
                           {isFollowing ? 'Siguiendo' : 'Seguir'}
                         </button>
                       </div>
 
-                      <div className="mt-4 grid grid-cols-3 gap-2 pt-3 border-t border-[#E2E7E4] text-center">
+                      <div className="mt-4 grid grid-cols-3 gap-2 pt-3 border-t border-[#E2E8F0] text-center">
                         <div>
-                          <p className="text-[11px] text-[#4A5550]">Partidos</p>
-                          <p className="text-sm font-bold font-mono tabular-nums text-[#0F1A15]">
+                          <p className="text-[11px] text-[#475569]">Partidos</p>
+                          <p className="text-sm font-bold font-mono tabular-nums text-[#0A1633]">
                             {p.stats.matchesPlayed}
                           </p>
                         </div>
                         <div>
-                          <p className="text-[11px] text-[#4A5550]">Victorias</p>
+                          <p className="text-[11px] text-[#475569]">Victorias</p>
                           <p className="text-sm font-bold font-mono tabular-nums text-[#15803D]">
                             {p.stats.wins} ({winRate}%)
                           </p>
                         </div>
                         <div>
-                          <p className="text-[11px] text-[#4A5550]">Títulos</p>
-                          <p className="text-sm font-bold font-mono tabular-nums text-[#0F1A15]">
+                          <p className="text-[11px] text-[#475569]">Títulos</p>
+                          <p className="text-sm font-bold font-mono tabular-nums text-[#0A1633]">
                             {p.stats.titles}
                           </p>
                         </div>
@@ -2494,7 +2574,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
                     <button
                       onClick={() => setSelectedPlayer(p)}
-                      className="mt-4 w-full min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#F8F9F8] hover:bg-slate-100 border border-[#E2E7E4] text-xs font-medium text-[#0F1A15] transition-colors"
+                      className="mt-4 w-full min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#F8FAFC] hover:bg-slate-100 border border-[#E2E8F0] text-xs font-medium text-[#0A1633] transition-colors"
                     >
                       Ver ficha y estadísticas
                     </button>
@@ -2509,9 +2589,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
       {/* Pie con publicidades personalizadas asignadas a pie de página */}
       {pieAds.length > 0 && (
-        <section className="max-w-7xl mx-auto px-3 sm:px-6 mt-8 pt-6 border-t border-[#E2E7E4]">
+        <section className="max-w-7xl mx-auto px-3 sm:px-6 mt-8 pt-6 border-t border-[#E2E8F0]">
           <div className="flex items-center justify-between gap-2 mb-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#4A5550]">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#475569]">
               Acompañan {activeTournament?.name}
             </p>
           </div>
@@ -2604,15 +2684,15 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             role="dialog"
             aria-modal="true"
           >
-            <div className="bg-white border border-[#E2E7E4] rounded-t-3xl sm:rounded-2xl max-w-2xl w-full max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden">
-              <div className="px-4 sm:px-6 py-4 border-b border-[#E2E7E4] flex items-center justify-between gap-3">
+            <div className="bg-white border border-[#E2E8F0] rounded-t-3xl sm:rounded-2xl max-w-2xl w-full max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden">
+              <div className="px-4 sm:px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3.5 min-w-0">
                   <PlayerAvatar player={selectedPlayer} sizeClass="w-12 h-12 text-base" />
                   <div className="min-w-0">
-                    <h2 className="text-base sm:text-lg font-semibold text-[#0F1A15] truncate">
+                    <h2 className="text-base sm:text-lg font-semibold text-[#0A1633] truncate">
                       {selectedPlayer.fullName}
                     </h2>
-                    <p className="text-xs text-[#4A5550] truncate">
+                    <p className="text-xs text-[#475569] truncate">
                       {selectedPlayer.club} · Cat. {selectedPlayer.habitualCategory} · {selectedPlayer.gender}
                     </p>
                   </div>
@@ -2620,7 +2700,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 <button
                   onClick={() => setSelectedPlayer(null)}
                   aria-label="Cerrar perfil"
-                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-[#4A5550] hover:bg-slate-100 shrink-0"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-[#475569] hover:bg-slate-100 shrink-0"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -2628,36 +2708,36 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
               <div className="p-4 sm:p-6 overflow-y-auto space-y-5 sm:space-y-6">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="p-3.5 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4]">
-                    <p className="text-xs text-[#4A5550]">Partidos</p>
-                    <p className="text-xl font-bold font-mono tabular-nums text-[#0F1A15]">
+                  <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <p className="text-xs text-[#475569]">Partidos</p>
+                    <p className="text-xl font-bold font-mono tabular-nums text-[#0A1633]">
                       {selectedPlayer.stats.matchesPlayed}
                     </p>
                   </div>
-                  <div className="p-3.5 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4]">
-                    <p className="text-xs text-[#4A5550]">G / P</p>
+                  <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <p className="text-xs text-[#475569]">G / P</p>
                     <p className="text-xl font-bold font-mono tabular-nums text-[#15803D]">
                       {selectedPlayer.stats.wins} - {selectedPlayer.stats.losses}
                     </p>
                   </div>
-                  <div className="p-3.5 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4]">
-                    <p className="text-xs text-[#4A5550]">Sets (G/P)</p>
-                    <p className="text-xl font-bold font-mono tabular-nums text-[#0F1A15]">
+                  <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <p className="text-xs text-[#475569]">Sets (G/P)</p>
+                    <p className="text-xl font-bold font-mono tabular-nums text-[#0A1633]">
                       {selectedPlayer.stats.setsWon}/{selectedPlayer.stats.setsLost}
                     </p>
                   </div>
-                  <div className="p-3.5 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4]">
-                    <p className="text-xs text-[#4A5550]">Games (G/P)</p>
-                    <p className="text-xl font-bold font-mono tabular-nums text-[#0F1A15]">
+                  <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <p className="text-xs text-[#475569]">Games (G/P)</p>
+                    <p className="text-xl font-bold font-mono tabular-nums text-[#0A1633]">
                       {selectedPlayer.stats.gamesWon}/{selectedPlayer.stats.gamesLost}
                     </p>
                   </div>
                 </div>
 
-                <div className="text-sm text-[#4A5550] space-y-1">
+                <div className="text-sm text-[#475569] space-y-1">
                   <p>
-                    <strong className="text-[#0F1A15]">Perfil técnico:</strong> {selectedPlayer.dominantHand} · Revés a {selectedPlayer.backhand.toLowerCase()} · Racha actual:{' '}
-                    <span className="font-mono tabular-nums font-semibold text-[#0F1A15]">
+                    <strong className="text-[#0A1633]">Perfil técnico:</strong> {selectedPlayer.dominantHand} · Revés a {selectedPlayer.backhand.toLowerCase()} · Racha actual:{' '}
+                    <span className="font-mono tabular-nums font-semibold text-[#0A1633]">
                       {selectedPlayer.stats.currentStreak > 0
                         ? `+${selectedPlayer.stats.currentStreak}`
                         : selectedPlayer.stats.currentStreak}
@@ -2667,7 +2747,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
 
               <div>
-                <h3 className="text-sm font-semibold text-[#0F1A15] mb-2.5">
+                <h3 className="text-sm font-semibold text-[#0A1633] mb-2.5">
                   Historial de partidos recientes
                 </h3>
                 {(() => {
@@ -2679,10 +2759,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         m.playerIdsB.includes(selectedPlayer.id))
                   );
                   if (history.length === 0) {
-                    return <p className="text-xs text-[#4A5550]">Sin partidos registrados.</p>;
+                    return <p className="text-xs text-[#475569]">Sin partidos registrados.</p>;
                   }
                   return (
-                    <div className="divide-y divide-[#E2E7E4] border border-[#E2E7E4] rounded-xl">
+                    <div className="divide-y divide-[#E2E8F0] border border-[#E2E8F0] rounded-xl">
                       {history.map((m) => {
                         const div = divisions.find((d) => d.id === m.divisionId);
                         const isA = m.playerIdsA.includes(selectedPlayer.id);
@@ -2693,10 +2773,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         return (
                           <div key={m.id} className="p-3 flex items-center justify-between gap-3 text-xs">
                             <div>
-                              <p className="text-[#4A5550]">
+                              <p className="text-[#475569]">
                                 {div?.name} · {m.roundName}
                               </p>
-                              <p className="font-medium text-[#0F1A15] mt-0.5">
+                              <p className="font-medium text-[#0A1633] mt-0.5">
                                 {m.entryAName} vs {m.entryBName}
                               </p>
                             </div>
@@ -2706,7 +2786,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                   {won ? 'Victoria' : 'Derrota'} · {formatScoreString(m.sets, m.status)}
                                 </span>
                               ) : (
-                                <span className="text-[#4A5550]">
+                                <span className="text-[#475569]">
                                   {formatAsuncionDate(m.scheduledDate)} {m.scheduledTime || ''}
                                 </span>
                               )}

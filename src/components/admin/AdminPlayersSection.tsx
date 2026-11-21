@@ -314,11 +314,11 @@ export const AdminPlayersSection: React.FC<Props> = ({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-xs font-medium text-[#14532D]">
+          <p className="text-xs font-medium text-[#7C1FA2]">
             Torneo activo · {tournament?.name || 'Sin torneo seleccionado'}
           </p>
-          <h2 className="text-xl font-bold text-[#0F1A15]">Padrón Privado de Jugadores del Torneo</h2>
-          <p className="text-xs text-[#4A5550]">
+          <h2 className="text-xl font-bold text-[#0A1633]">Padrón Privado de Jugadores del Torneo</h2>
+          <p className="text-xs text-[#475569]">
             Cada torneo carga y administra su propio padrón privado de jugadores. El documento y contacto quedan aislados del portal público.
           </p>
         </div>
@@ -326,14 +326,14 @@ export const AdminPlayersSection: React.FC<Props> = ({
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => downloadCsvTemplate(enabledCategories)}
-            className="inline-flex items-center gap-1.5 px-3 min-h-[44px] sm:min-h-[38px] rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 px-3 min-h-[44px] sm:min-h-[38px] rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
           >
             <Download className="w-3.5 h-3.5" />
             Plantilla CSV
           </button>
 
-          <label className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50 cursor-pointer">
-            <Upload className="w-3.5 h-3.5 text-[#14532D]" />
+          <label className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 cursor-pointer">
+            <Upload className="w-3.5 h-3.5 text-[#7C1FA2]" />
             Importar Excel / CSV
             <input
               type="file"
@@ -348,7 +348,7 @@ export const AdminPlayersSection: React.FC<Props> = ({
               resetForm();
               setShowForm(true);
             }}
-            className="inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[38px] rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+            className="inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[38px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
           >
             <Plus className="w-4 h-4" />
             Nuevo jugador
@@ -357,29 +357,29 @@ export const AdminPlayersSection: React.FC<Props> = ({
       </div>
 
       {feedback && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-medium text-[#14532D]">
+        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-medium text-[#7C1FA2]">
           {feedback}
         </div>
       )}
 
       {/* Vista previa de importación Excel/CSV */}
       {importRows.length > 0 && (
-        <div className="bg-white border border-[#E2E7E4] rounded-2xl p-5 space-y-4">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <FileSpreadsheet className="w-5 h-5 text-[#14532D]" />
+              <FileSpreadsheet className="w-5 h-5 text-[#7C1FA2]" />
               <div>
-                <h3 className="text-sm font-semibold text-[#0F1A15]">
+                <h3 className="text-sm font-semibold text-[#0A1633]">
                   Vista previa de importación ({importRows.length} filas)
                 </h3>
-                <p className="text-xs text-[#4A5550]">
+                <p className="text-xs text-[#475569]">
                   Válidos: {importRows.filter((r) => r.status === 'valid').length} · Duplicados:{' '}
                   {importRows.filter((r) => r.status === 'duplicate').length} · Errores:{' '}
                   {importRows.filter((r) => r.status === 'error').length}
                 </p>
               </div>
             </div>
-            <label className="inline-flex items-center gap-2 text-xs text-[#0F1A15]">
+            <label className="inline-flex items-center gap-2 text-xs text-[#0A1633]">
               <input
                 type="checkbox"
                 checked={skipDuplicates}
@@ -389,9 +389,9 @@ export const AdminPlayersSection: React.FC<Props> = ({
             </label>
           </div>
 
-          <div className="overflow-x-auto max-h-64 border border-[#E2E7E4] rounded-xl">
+          <div className="overflow-x-auto max-h-64 border border-[#E2E8F0] rounded-xl">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-[#F8F9F8] border-b border-[#E2E7E4] text-[#4A5550]">
+              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#475569]">
                 <tr>
                   <th className="py-2 px-3">Fila</th>
                   <th className="py-2 px-3">Jugador</th>
@@ -401,11 +401,11 @@ export const AdminPlayersSection: React.FC<Props> = ({
                   <th className="py-2 px-3">Detalle</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E2E7E4]">
+              <tbody className="divide-y divide-[#E2E8F0]">
                 {importRows.map((row) => (
                   <tr key={row.rowIndex}>
                     <td className="py-2 px-3 font-mono">{row.rowIndex}</td>
-                    <td className="py-2 px-3 font-medium text-[#0F1A15]">
+                    <td className="py-2 px-3 font-medium text-[#0A1633]">
                       {row.firstName} {row.lastName}
                     </td>
                     <td className="py-2 px-3 font-mono">{row.documentNumber || '—'}</td>
@@ -425,7 +425,7 @@ export const AdminPlayersSection: React.FC<Props> = ({
                         {row.status === 'valid' ? 'Válido' : row.status === 'duplicate' ? 'Duplicado' : 'Error'}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-[#4A5550]">{row.messages.join(' · ') || 'Listo para importar'}</td>
+                    <td className="py-2 px-3 text-[#475569]">{row.messages.join(' · ') || 'Listo para importar'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -435,14 +435,14 @@ export const AdminPlayersSection: React.FC<Props> = ({
           <div className="flex justify-end gap-2">
             <button
               onClick={() => setImportRows([])}
-              className="px-4 py-2 rounded-lg border border-[#E2E7E4] text-xs font-medium text-[#4A5550]"
+              className="px-4 py-2 rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#475569]"
             >
               Cancelar
             </button>
             <button
               onClick={handleConfirmImport}
               disabled={importing}
-              className="px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+              className="px-4 py-2 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
             >
               {importing ? 'Importando...' : 'Confirmar importación'}
             </button>
@@ -454,14 +454,14 @@ export const AdminPlayersSection: React.FC<Props> = ({
       {showForm && (
         <form
           onSubmit={handleSavePlayer}
-          className="bg-white border border-[#E2E7E4] rounded-2xl p-5 space-y-4"
+          className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4"
         >
-          <h3 className="text-sm font-semibold text-[#0F1A15]">
+          <h3 className="text-sm font-semibold text-[#0A1633]">
             {editingId ? 'Editar ficha de jugador' : 'Registrar nuevo jugador'}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Nombres *
               </label>
               <input
@@ -469,11 +469,11 @@ export const AdminPlayersSection: React.FC<Props> = ({
                 placeholder="Ej. Martín"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Apellidos *
               </label>
               <input
@@ -481,44 +481,44 @@ export const AdminPlayersSection: React.FC<Props> = ({
                 placeholder="Ej. Benítez"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Documento CI / DNI (opcional)
               </label>
               <input
                 placeholder="Ej. 4589120"
                 value={documentNumber}
                 onChange={(e) => setDocumentNumber(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm font-mono"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm font-mono"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Fecha de nacimiento (opcional)
               </label>
               <input
                 type="date"
                 value={birthDate}
                 onChange={(e) => setBirthDate(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Teléfono
               </label>
               <input
                 placeholder="+595 981 ..."
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Correo electrónico
               </label>
               <input
@@ -526,28 +526,28 @@ export const AdminPlayersSection: React.FC<Props> = ({
                 placeholder="correo@ejemplo.py"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Club
               </label>
               <input
                 placeholder="Club o academia"
                 value={club}
                 onChange={(e) => setClub(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Categoría del torneo *
               </label>
               <select
                 value={habitualCategory}
                 onChange={(e) => setHabitualCategory(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] bg-white text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm"
               >
                 {selectableCategories.map((cat) => (
                   <option key={cat} value={cat}>
@@ -555,89 +555,89 @@ export const AdminPlayersSection: React.FC<Props> = ({
                   </option>
                 ))}
               </select>
-              <p className="text-[10px] text-[#4A5550] mt-1">
+              <p className="text-[10px] text-[#475569] mt-1">
                 {enabledCategories.length > 0
                   ? `Categorías habilitadas en ${tournament?.name}: ${enabledCategories.join(', ')}`
                   : 'Sin divisiones creadas aún en este torneo; mostrando categorías estándar.'}
               </p>
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Rama
               </label>
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value as Gender)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] bg-white text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm"
               >
                 <option value="Masculino">Masculino</option>
                 <option value="Femenino">Femenino</option>
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Mano hábil
               </label>
               <select
                 value={dominantHand}
                 onChange={(e) => setDominantHand(e.target.value as 'Diestro' | 'Zurdo')}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] bg-white text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm"
               >
                 <option value="Diestro">Mano: Diestro</option>
                 <option value="Zurdo">Mano: Zurdo</option>
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Revés
               </label>
               <select
                 value={backhand}
                 onChange={(e) => setBackhand(e.target.value as 'Una mano' | 'Dos manos')}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] bg-white text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] bg-white text-sm"
               >
                 <option value="Dos manos">Revés: Dos manos</option>
                 <option value="Una mano">Revés: Una mano</option>
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-[#4A5550] mb-1">
+              <label className="block text-[11px] font-medium text-[#475569] mb-1">
                 Biografía / Perfil público
               </label>
               <input
                 placeholder="Notas deportivas opcionales"
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg border border-[#E2E7E4] text-sm"
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm"
               />
             </div>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-[#F8F9F8] border border-[#E2E7E4] flex flex-wrap items-center justify-between gap-4">
+          <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               {photoUrl ? (
                 <img
                   src={photoUrl}
                   alt="Vista previa foto de jugador"
                   referrerPolicy="no-referrer"
-                  className="w-12 h-12 rounded-xl object-cover border border-[#E2E7E4]"
+                  className="w-12 h-12 rounded-xl object-cover border border-[#E2E8F0]"
                 />
               ) : (
-                <div className="w-12 h-12 rounded-xl bg-[#14532D] text-white flex items-center justify-center font-bold text-sm">
+                <div className="w-12 h-12 rounded-xl bg-[#7C1FA2] text-white flex items-center justify-center font-bold text-sm">
                   {(firstName[0] || 'J').toUpperCase()}
                   {(lastName[0] || 'T').toUpperCase()}
                 </div>
               )}
               <div>
-                <p className="text-xs font-semibold text-[#0F1A15]">Foto del jugador (opcional)</p>
-                <p className="text-[11px] text-[#4A5550]">
+                <p className="text-xs font-semibold text-[#0A1633]">Foto del jugador (opcional)</p>
+                <p className="text-[11px] text-[#475569]">
                   JPG, PNG o WebP · Se muestra en perfiles, ranking y podio público.
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50 cursor-pointer">
-                <Camera className="w-3.5 h-3.5 text-[#14532D]" />
+              <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 cursor-pointer">
+                <Camera className="w-3.5 h-3.5 text-[#7C1FA2]" />
                 {uploadingPhoto ? 'Subiendo foto...' : photoUrl ? 'Cambiar foto' : 'Subir foto'}
                 <input
                   type="file"
@@ -651,7 +651,7 @@ export const AdminPlayersSection: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => setPhotoUrl('')}
-                  className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg border border-[#E2E7E4] bg-white text-xs text-red-700 hover:bg-red-50"
+                  className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs text-red-700 hover:bg-red-50"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Quitar
@@ -664,13 +664,13 @@ export const AdminPlayersSection: React.FC<Props> = ({
             <button
               type="button"
               onClick={resetForm}
-              className="px-4 py-2 rounded-lg border border-[#E2E7E4] text-xs font-medium"
+              className="px-4 py-2 rounded-lg border border-[#E2E8F0] text-xs font-medium"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+              className="px-4 py-2 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
             >
               {editingId ? 'Guardar cambios' : 'Registrar jugador'}
             </button>
@@ -679,23 +679,23 @@ export const AdminPlayersSection: React.FC<Props> = ({
       )}
 
       {/* Buscador y Tabla Privada */}
-      <div className="bg-white border border-[#E2E7E4] rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-[#E2E7E4] flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-[#E2E8F0] flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto flex-1">
             <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 text-[#4A5550] absolute left-3 top-2.5" />
+              <Search className="w-4 h-4 text-[#475569] absolute left-3 top-2.5" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar por nombre, documento, club o correo..."
-                className="w-full h-9 pl-9 pr-3 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs"
+                className="w-full h-9 pl-9 pr-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
               />
             </div>
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               aria-label="Filtrar por categoría"
-              className="h-9 px-3 rounded-lg border border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium text-[#0F1A15]"
+              className="h-9 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633]"
             >
               <option value="ALL">Todas las categorías</option>
               {filterCategoryOptions.map((cat) => (
@@ -705,19 +705,19 @@ export const AdminPlayersSection: React.FC<Props> = ({
               ))}
             </select>
           </div>
-          <span className="text-xs text-[#4A5550] font-mono tabular-nums">
+          <span className="text-xs text-[#475569] font-mono tabular-nums">
             {filtered.length} jugadores registrados
           </span>
         </div>
 
         {filtered.length === 0 ? (
-          <div className="p-8 text-center text-xs text-[#4A5550]">
+          <div className="p-8 text-center text-xs text-[#475569]">
             Este torneo todavía no tiene jugadores cargados. Registrá jugadores manualmente o importalos desde Excel / CSV.
           </div>
         ) : (
           <>
             {/* Vista móvil en tarjetas (< md) */}
-            <div className="md:hidden divide-y divide-[#E2E7E4]">
+            <div className="md:hidden divide-y divide-[#E2E8F0]">
               {filtered.map((p) => {
                 const priv = playersPrivate[p.id];
                 const activeRegCount = registrations.filter(
@@ -732,40 +732,40 @@ export const AdminPlayersSection: React.FC<Props> = ({
                             src={p.photoUrl}
                             alt={p.fullName}
                             referrerPolicy="no-referrer"
-                            className="w-11 h-11 rounded-xl object-cover border border-[#E2E7E4] shrink-0"
+                            className="w-11 h-11 rounded-xl object-cover border border-[#E2E8F0] shrink-0"
                           />
                         ) : (
-                          <div className="w-11 h-11 rounded-xl bg-[#14532D]/10 text-[#14532D] flex items-center justify-center font-bold text-xs shrink-0">
+                          <div className="w-11 h-11 rounded-xl bg-[#7C1FA2]/10 text-[#7C1FA2] flex items-center justify-center font-bold text-xs shrink-0">
                             {p.firstName[0]}
                             {p.lastName[0]}
                           </div>
                         )}
                         <div className="min-w-0">
-                          <p className="font-semibold text-[#0F1A15] text-sm truncate">{p.fullName}</p>
-                          <p className="text-xs text-[#4A5550] truncate">
+                          <p className="font-semibold text-[#0A1633] text-sm truncate">{p.fullName}</p>
+                          <p className="text-xs text-[#475569] truncate">
                             {p.club} · Cat. {p.habitualCategory}
                           </p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-xs bg-[#F8F9F8] border border-[#E2E7E4] rounded-xl p-2.5">
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-2.5">
                       <div>
-                        <p className="text-[11px] text-[#4A5550]">Doc. / Nac.</p>
-                        <p className="font-mono tabular-nums text-[#0F1A15] truncate">
+                        <p className="text-[11px] text-[#475569]">Doc. / Nac.</p>
+                        <p className="font-mono tabular-nums text-[#0A1633] truncate">
                           {priv ? (priv.documentNumber && priv.documentNumber !== 'S/D' ? priv.documentNumber : 'Sin documento') : '—'}
                           {priv?.birthDate ? ` · ${priv.birthDate}` : ''}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[11px] text-[#4A5550]">Récord</p>
-                        <p className="font-mono tabular-nums text-[#0F1A15]">
+                        <p className="text-[11px] text-[#475569]">Récord</p>
+                        <p className="font-mono tabular-nums text-[#0A1633]">
                           {p.stats.wins}G - {p.stats.losses}P
                         </p>
                       </div>
                       <div className="col-span-2">
-                        <p className="text-[11px] text-[#4A5550]">Contacto</p>
-                        <p className="text-[#0F1A15] truncate">
+                        <p className="text-[11px] text-[#475569]">Contacto</p>
+                        <p className="text-[#0A1633] truncate">
                           {priv?.phone || '—'} · {priv?.email || '—'}
                         </p>
                       </div>
@@ -781,7 +781,7 @@ export const AdminPlayersSection: React.FC<Props> = ({
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteId(null)}
-                            className="flex-1 min-h-[40px] rounded-lg border border-red-200 bg-white font-medium text-[#0F1A15]"
+                            className="flex-1 min-h-[40px] rounded-lg border border-red-200 bg-white font-medium text-[#0A1633]"
                           >
                             Cancelar
                           </button>
@@ -798,7 +798,7 @@ export const AdminPlayersSection: React.FC<Props> = ({
                       <div className="flex gap-2">
                         <button
                           onClick={() => startEdit(p)}
-                          className="flex-1 min-h-[44px] rounded-xl border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+                          className="flex-1 min-h-[44px] rounded-xl border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
                         >
                           Editar ficha
                         </button>
@@ -822,7 +822,7 @@ export const AdminPlayersSection: React.FC<Props> = ({
             <div className="hidden md:block overflow-x-auto clean-scroll">
               <table className="w-full text-left border-collapse min-w-[820px]">
                 <thead>
-                  <tr className="border-b border-[#E2E7E4] bg-[#F8F9F8] text-xs font-medium text-[#4A5550]">
+                  <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#475569]">
                     <th className="py-2.5 px-4">Jugador</th>
                     <th className="py-2.5 px-4">Documento (PII)</th>
                     <th className="py-2.5 px-4">Contacto (PII)</th>
@@ -831,14 +831,14 @@ export const AdminPlayersSection: React.FC<Props> = ({
                     <th className="py-2.5 px-4 text-right">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#E2E7E4] text-xs">
+                <tbody className="divide-y divide-[#E2E8F0] text-xs">
                   {filtered.map((p) => {
                     const priv = playersPrivate[p.id];
                     const activeRegCount = registrations.filter(
                       (r) => r.tournamentId === p.tournamentId && r.status !== 'retirada' && r.playerIds.includes(p.id)
                     ).length;
                     return (
-                      <tr key={p.id} className="hover:bg-[#F8F9F8]">
+                      <tr key={p.id} className="hover:bg-[#F8FAFC]">
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3">
                             {p.photoUrl ? (
@@ -846,23 +846,23 @@ export const AdminPlayersSection: React.FC<Props> = ({
                                 src={p.photoUrl}
                                 alt={p.fullName}
                                 referrerPolicy="no-referrer"
-                                className="w-9 h-9 rounded-lg object-cover border border-[#E2E7E4] shrink-0"
+                                className="w-9 h-9 rounded-lg object-cover border border-[#E2E8F0] shrink-0"
                               />
                             ) : (
-                              <div className="w-9 h-9 rounded-lg bg-[#14532D]/10 text-[#14532D] flex items-center justify-center font-bold text-xs shrink-0">
+                              <div className="w-9 h-9 rounded-lg bg-[#7C1FA2]/10 text-[#7C1FA2] flex items-center justify-center font-bold text-xs shrink-0">
                                 {p.firstName[0]}
                                 {p.lastName[0]}
                               </div>
                             )}
                             <div>
-                              <p className="font-semibold text-[#0F1A15] text-sm">{p.fullName}</p>
-                              <p className="text-[#4A5550]">
+                              <p className="font-semibold text-[#0A1633] text-sm">{p.fullName}</p>
+                              <p className="text-[#475569]">
                                 {p.gender} · {p.dominantHand}
                               </p>
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-4 font-mono tabular-nums text-[#0F1A15]">
+                        <td className="py-3 px-4 font-mono tabular-nums text-[#0A1633]">
                           <div>
                             {priv
                               ? priv.documentNumber && priv.documentNumber !== 'S/D'
@@ -870,15 +870,15 @@ export const AdminPlayersSection: React.FC<Props> = ({
                                 : 'Sin documento'
                               : '—'}
                           </div>
-                          <div className="text-[#4A5550]">{priv?.birthDate || '—'}</div>
+                          <div className="text-[#475569]">{priv?.birthDate || '—'}</div>
                         </td>
-                        <td className="py-3 px-4 text-[#4A5550]">
+                        <td className="py-3 px-4 text-[#475569]">
                           <div>{priv?.phone || '—'}</div>
                           <div>{priv?.email || '—'}</div>
                         </td>
                         <td className="py-3 px-4">
-                          <div className="text-[#0F1A15] font-medium">{p.club}</div>
-                          <div className="text-[#4A5550]">Cat. {p.habitualCategory}</div>
+                          <div className="text-[#0A1633] font-medium">{p.club}</div>
+                          <div className="text-[#475569]">Cat. {p.habitualCategory}</div>
                         </td>
                         <td className="py-3 px-4 text-right font-mono tabular-nums">
                           {p.stats.wins}G - {p.stats.losses}P
@@ -894,7 +894,7 @@ export const AdminPlayersSection: React.FC<Props> = ({
                               <button
                                 type="button"
                                 onClick={() => setConfirmDeleteId(null)}
-                                className="px-2.5 py-1 rounded border border-[#E2E7E4] bg-white text-[11px]"
+                                className="px-2.5 py-1 rounded border border-[#E2E8F0] bg-white text-[11px]"
                               >
                                 No
                               </button>
@@ -910,7 +910,7 @@ export const AdminPlayersSection: React.FC<Props> = ({
                             <div className="inline-flex items-center gap-1.5">
                               <button
                                 onClick={() => startEdit(p)}
-                                className="px-3 py-1.5 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
+                                className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
                               >
                                 Editar
                               </button>

@@ -244,7 +244,7 @@
     },
     "TournamentAd": {
       "title": "TournamentAd",
-      "description": "Publicidad o auspiciante personalizado asociado a un torneo.",
+      "description": "Publicidad o auspiciante personalizado asociado a un torneo con soporte horizontal y vertical.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
@@ -253,6 +253,9 @@
         "title": { "type": "string", "minLength": 1, "maxLength": 120 },
         "subtitle": { "type": "string", "maxLength": 240 },
         "imageUrl": { "type": "string", "minLength": 1, "maxLength": 250000 },
+        "horizontalImageUrl": { "type": "string", "maxLength": 250000 },
+        "verticalImageUrl": { "type": "string", "maxLength": 250000 },
+        "aiPrompt": { "type": "string", "maxLength": 500 },
         "targetUrl": { "type": "string", "maxLength": 2000 },
         "placement": { "type": "string", "enum": ["banner_principal", "lateral", "pie"] },
         "order": { "type": "number" },
