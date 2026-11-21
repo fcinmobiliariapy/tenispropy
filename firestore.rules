@@ -166,7 +166,7 @@ service cloud.firestore {
         && data.minRestMinutes is number && data.minRestMinutes >= 0 && data.minRestMinutes <= 480
         && isNonEmptyStr(data.itfEdition, 60)
         && data.status in ['borrador', 'inscripciones', 'en_curso', 'finalizado']
-        && (!('coverImageUrl' in data) || isOptionalStr(data.coverImageUrl, 2000))
+        && (!('coverImageUrl' in data) || isOptionalStr(data.coverImageUrl, 250000))
         && (!('isDemo' in data) || data.isDemo is bool)
         && isNonEmptyStr(data.createdAt, 40)
         && isNonEmptyStr(data.updatedAt, 40);
@@ -355,8 +355,8 @@ service cloud.firestore {
         && isNonEmptyStr(data.sponsorName, 120)
         && isNonEmptyStr(data.title, 120)
         && (!('subtitle' in data) || isOptionalStr(data.subtitle, 240))
-        && isNonEmptyStr(data.imageUrl, 2000)
-        && (!('targetUrl' in data) || isOptionalStr(data.targetUrl, 1000))
+        && isNonEmptyStr(data.imageUrl, 250000)
+        && (!('targetUrl' in data) || isOptionalStr(data.targetUrl, 2000))
         && data.placement in ['banner_principal', 'lateral', 'pie']
         && data.order is number && data.order >= 0 && data.order <= 500
         && data.active is bool

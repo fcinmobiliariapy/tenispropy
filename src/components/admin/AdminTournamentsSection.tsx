@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -33,7 +33,7 @@ import {
   TournamentStatus,
 } from '../../types/tennis';
 import { ITF_EDITION_LABEL } from '../../utils/itfRules';
-import { optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
+import { compressImageDataUrl, optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
 import { makeId } from '../../utils/tournamentEngine';
 import {
   deleteDivisionCascade,
@@ -80,6 +80,59 @@ const PLACEMENT_LABELS: Record<AdPlacement, string> = {
   lateral: 'Espacio destacado / Lateral',
   pie: 'Pie de sección pública',
 };
+
+const DEFAULT_COVER_IMAGE = '/src/assets/images/hero_clay_court_1795134987256.jpg';
+const MAX_STORED_IMAGE_CHARS = 250000;
+
+function formatFirestoreError(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : String(err || '');
+  let detail = raw;
+  try {
+    const parsed = JSON.parse(raw) as { error?: string };
+    if (parsed?.error) detail = parsed.error;
+  } catch {
+    // No era JSON estructurado
+  }
+  const lower = detail.toLowerCase();
+  if (lower.includes('permission_denied') || lower.includes('insufficient permissions')) {
+    return 'No se pudo guardar en Firestore por permisos o validación de campos. Verificá tu sesión de Google y que los textos, fechas o enlaces cumplan el formato válido.';
+  }
+  if (lower.includes('unavailable') || lower.includes('offline')) {
+    return 'No hay conexión con Firestore en este momento. Verificá tu conexión e intentá nuevamente.';
+  }
+  return detail || fallback;
+}
+
+async function normalizeImageInputValue(rawValue: string): Promise<string> {
+  const trimmed = rawValue.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('data:image/')) {
+    return compressImageDataUrl(trimmed, 220000);
+  }
+  if (trimmed.length > MAX_STORED_IMAGE_CHARS) {
+    throw new Error('La URL de la imagen supera el tamaño máximo permitido.');
+  }
+  return trimmed;
+}
+
+function normalizeOptionalTargetUrl(rawValue: string): string | null {
+  const trimmed = rawValue.trim();
+  if (!trimmed) return null;
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(candidate);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Protocolo no válido');
+    }
+    const finalUrl = parsed.toString();
+    if (finalUrl.length > 2000) {
+      throw new Error('El enlace destino no puede superar los 2000 caracteres.');
+    }
+    return finalUrl;
+  } catch {
+    throw new Error('El enlace destino no es una URL válida (ej. https://ejemplo.com).');
+  }
+}
 
 export const AdminTournamentsSection: React.FC<Props> = ({
   tournaments,
@@ -128,9 +181,13 @@ export const AdminTournamentsSection: React.FC<Props> = ({
   const [tEditableCourts, setTEditableCourts] = useState<Court[]>([]);
   const [tCoverImageUrl, setTCoverImageUrl] = useState('');
   const [uploadingCoverImg, setUploadingCoverImg] = useState(false);
+  const [formCoverPreviewError, setFormCoverPreviewError] = useState(false);
   const [showQuickCover, setShowQuickCover] = useState(false);
   const [quickCoverUrl, setQuickCoverUrl] = useState('');
   const [uploadingQuickCover, setUploadingQuickCover] = useState(false);
+  const [quickCoverPreviewError, setQuickCoverPreviewError] = useState(false);
+  const [quickCoverError, setQuickCoverError] = useState<string | null>(null);
+  const [tournamentError, setTournamentError] = useState<string | null>(null);
   const [confirmDeleteTournamentId, setConfirmDeleteTournamentId] = useState<string | null>(null);
 
   // Form División (Crear o Editar)
@@ -175,11 +232,25 @@ export const AdminTournamentsSection: React.FC<Props> = ({
   const [adPlacement, setAdPlacement] = useState<AdPlacement>('banner_principal');
   const [adActive, setAdActive] = useState(true);
   const [uploadingAdImg, setUploadingAdImg] = useState(false);
+  const [adPreviewError, setAdPreviewError] = useState(false);
+  const [adError, setAdError] = useState<string | null>(null);
+  const [brokenAdThumbIds, setBrokenAdThumbIds] = useState<Record<string, boolean>>({});
   const [confirmDeleteAdId, setConfirmDeleteAdId] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setShowQuickCover(false);
+    setQuickCoverUrl(activeTournament?.coverImageUrl || '');
+    setQuickCoverError(null);
+    setQuickCoverPreviewError(false);
+    setShowAdForm(false);
+    setEditingAdId(null);
+    setAdError(null);
+    setConfirmDeleteAdId(null);
+  }, [activeTournament?.id]);
 
   const openNewTournamentForm = () => {
     setEditingTournamentId(null);
@@ -196,6 +267,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setTCourtsText('Cancha Central, Cancha 2, Cancha 3');
     setTEditableCourts([]);
     setTCoverImageUrl('');
+    setFormCoverPreviewError(false);
+    setTournamentError(null);
     setShowTournamentForm(true);
   };
 
@@ -205,14 +278,23 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setTOrg(t.organizerName);
     setTVenue(t.venue);
     setTCity(t.city);
-    setTStart(t.startDate);
-    setTEnd(t.endDate);
-    setTRegStart(t.regStartDate);
-    setTRegEnd(t.regEndDate);
+    setTStart(t.startDate || '2026-12-01');
+    setTEnd(t.endDate || '2026-12-10');
+    setTRegStart(t.regStartDate || '2026-11-19');
+    setTRegEnd(t.regEndDate || '2026-11-30');
     setTRest(t.minRestMinutes);
     setTStatus(t.status);
-    setTEditableCourts(t.courts.map((c) => ({ ...c })));
+    setTEditableCourts(
+      t.courts.map((c) => ({
+        id: c.id,
+        name: c.name,
+        surface: c.surface,
+        lights: Boolean(c.lights),
+      }))
+    );
     setTCoverImageUrl(t.coverImageUrl || '');
+    setFormCoverPreviewError(false);
+    setTournamentError(null);
     setShowTournamentForm(true);
   };
 
@@ -222,15 +304,25 @@ export const AdminTournamentsSection: React.FC<Props> = ({
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (mode === 'form') setUploadingCoverImg(true);
-    else setUploadingQuickCover(true);
+    if (mode === 'form') {
+      setUploadingCoverImg(true);
+      setTournamentError(null);
+      setFormCoverPreviewError(false);
+    } else {
+      setUploadingQuickCover(true);
+      setQuickCoverError(null);
+      setQuickCoverPreviewError(false);
+    }
     setErrorMsg(null);
     try {
       const url = await optimizeAndUploadAdBanner(file);
       if (mode === 'form') setTCoverImageUrl(url);
       else setQuickCoverUrl(url);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'No se pudo procesar la foto de portada.');
+      const msg = formatFirestoreError(err, 'No se pudo procesar la foto de portada.');
+      setErrorMsg(msg);
+      if (mode === 'form') setTournamentError(msg);
+      else setQuickCoverError(msg);
     } finally {
       if (mode === 'form') setUploadingCoverImg(false);
       else setUploadingQuickCover(false);
@@ -243,21 +335,41 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setSaving(true);
     setFeedback(null);
     setErrorMsg(null);
+    setQuickCoverError(null);
     try {
+      const normalizedCover = newUrl ? await normalizeImageInputValue(newUrl) : null;
+      const sanitizedCourts = activeTournament.courts
+        .filter((c) => c.name?.trim())
+        .map((c) => ({
+          id: c.id,
+          name: c.name.trim(),
+          surface: c.surface,
+          lights: Boolean(c.lights),
+        }));
       const updated: Tournament = {
         ...activeTournament,
-        coverImageUrl: newUrl,
+        courts:
+          sanitizedCourts.length > 0
+            ? sanitizedCourts
+            : [{ id: makeId('crt'), name: 'Cancha 1', surface: 'Polvo de ladrillo', lights: true }],
+        startDate: activeTournament.startDate || '2026-12-01',
+        endDate: activeTournament.endDate || '2026-12-10',
+        regStartDate: activeTournament.regStartDate || '2026-11-19',
+        regEndDate: activeTournament.regEndDate || '2026-11-30',
+        coverImageUrl: normalizedCover || null,
         updatedAt: new Date().toISOString(),
       };
       await saveEntity('tournaments', updated);
       setShowQuickCover(false);
       setFeedback(
-        newUrl
+        normalizedCover
           ? `Foto de portada de "${activeTournament.name}" actualizada.`
           : `Portada predeterminada restaurada en "${activeTournament.name}".`
       );
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'No se pudo actualizar la foto de portada.');
+      const msg = formatFirestoreError(err, 'No se pudo actualizar la foto de portada.');
+      setQuickCoverError(msg);
+      setErrorMsg(msg);
     } finally {
       setSaving(false);
     }
@@ -265,31 +377,48 @@ export const AdminTournamentsSection: React.FC<Props> = ({
 
   const handleSaveTournament = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tName.trim() || !tVenue.trim()) return;
+    if (!tName.trim() || !tVenue.trim()) {
+      setTournamentError('Completá el nombre del torneo y la sede.');
+      return;
+    }
     setSaving(true);
     setFeedback(null);
     setErrorMsg(null);
+    setTournamentError(null);
     try {
       const now = new Date().toISOString();
+      const normalizedCover = tCoverImageUrl.trim()
+        ? await normalizeImageInputValue(tCoverImageUrl)
+        : null;
+      const validStart = tStart || '2026-12-01';
+      const validEnd = tEnd || validStart;
+      const validRegStart = tRegStart || validStart;
+      const validRegEnd = tRegEnd || validEnd;
+
       if (editingTournamentId) {
         const existing = tournaments.find((t) => t.id === editingTournamentId);
         if (!existing) return;
         const cleanedCourts = tEditableCourts
           .filter((c) => c.name.trim())
-          .map((c) => ({ ...c, name: c.name.trim() }));
+          .map((c) => ({
+            id: c.id,
+            name: c.name.trim(),
+            surface: c.surface,
+            lights: Boolean(c.lights),
+          }));
         const updated: Tournament = {
           ...existing,
           name: tName.trim(),
           organizerName: tOrg.trim() || existing.organizerName,
           venue: tVenue.trim(),
           city: tCity.trim() || 'Asunción',
-          startDate: tStart,
-          endDate: tEnd,
-          regStartDate: tRegStart,
-          regEndDate: tRegEnd,
+          startDate: validStart,
+          endDate: validEnd,
+          regStartDate: validRegStart,
+          regEndDate: validRegEnd,
           minRestMinutes: Number(tRest) || 60,
           status: tStatus,
-          coverImageUrl: tCoverImageUrl.trim() || null,
+          coverImageUrl: normalizedCover,
           courts:
             cleanedCourts.length > 0
               ? cleanedCourts
@@ -315,20 +444,20 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         const newT: Tournament = {
           id: makeId('tor'),
           name: tName.trim(),
-          organizerName: tOrg.trim() || 'Organización TenisCupy',
+          organizerName: tOrg.trim() || 'Organización TenisPro',
           organizerUid: currentUid,
           venue: tVenue.trim(),
           city: tCity.trim() || 'Asunción',
           timezone: 'America/Asuncion',
-          coverImageUrl: tCoverImageUrl.trim() || null,
+          coverImageUrl: normalizedCover,
           courts:
             courts.length > 0
               ? courts
               : [{ id: makeId('crt'), name: 'Cancha 1', surface: 'Polvo de ladrillo', lights: true }],
-          startDate: tStart,
-          endDate: tEnd,
-          regStartDate: tRegStart,
-          regEndDate: tRegEnd,
+          startDate: validStart,
+          endDate: validEnd,
+          regStartDate: validRegStart,
+          regEndDate: validRegEnd,
           minRestMinutes: Number(tRest) || 60,
           itfEdition: ITF_EDITION_LABEL,
           status: tStatus,
@@ -343,6 +472,10 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         setTCoverImageUrl('');
         setFeedback(`Torneo "${newT.name}" creado correctamente.`);
       }
+    } catch (err) {
+      const msg = formatFirestoreError(err, 'No se pudo guardar el torneo.');
+      setTournamentError(msg);
+      setErrorMsg(msg);
     } finally {
       setSaving(false);
     }
@@ -560,16 +693,21 @@ export const AdminTournamentsSection: React.FC<Props> = ({
 
   const handleAddCourt = async () => {
     if (!activeTournament) return;
-    const name = `Cancha ${activeTournament.courts.length + 1}`;
-    const updated: Tournament = {
-      ...activeTournament,
-      courts: [
-        ...activeTournament.courts,
-        { id: makeId('crt'), name, surface: 'Polvo de ladrillo', lights: true },
-      ],
-      updatedAt: new Date().toISOString(),
-    };
-    await saveEntity('tournaments', updated);
+    setErrorMsg(null);
+    try {
+      const name = `Cancha ${activeTournament.courts.length + 1}`;
+      const updated: Tournament = {
+        ...activeTournament,
+        courts: [
+          ...activeTournament.courts,
+          { id: makeId('crt'), name, surface: 'Polvo de ladrillo', lights: true },
+        ],
+        updatedAt: new Date().toISOString(),
+      };
+      await saveEntity('tournaments', updated);
+    } catch (err) {
+      setErrorMsg(formatFirestoreError(err, 'No se pudo agregar la cancha.'));
+    }
   };
 
   const moveTiebreaker = (idx: number, dir: -1 | 1) => {
@@ -647,6 +785,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setAdTargetUrl('');
     setAdPlacement('banner_principal');
     setAdActive(true);
+    setAdPreviewError(false);
+    setAdError(null);
     setShowAdForm(true);
   };
 
@@ -659,6 +799,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setAdTargetUrl(ad.targetUrl || '');
     setAdPlacement(ad.placement);
     setAdActive(ad.active);
+    setAdPreviewError(false);
+    setAdError(null);
     setShowAdForm(true);
   };
 
@@ -667,11 +809,15 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     if (!file) return;
     setUploadingAdImg(true);
     setErrorMsg(null);
+    setAdError(null);
+    setAdPreviewError(false);
     try {
       const url = await optimizeAndUploadAdBanner(file);
       setAdImageUrl(url);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'No se pudo procesar la imagen publicitaria.');
+      const msg = formatFirestoreError(err, 'No se pudo procesar la imagen publicitaria.');
+      setAdError(msg);
+      setErrorMsg(msg);
     } finally {
       setUploadingAdImg(false);
       e.target.value = '';
@@ -682,26 +828,32 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     e.preventDefault();
     if (!activeTournament) return;
     if (!adSponsor.trim() || !adTitle.trim() || !adImageUrl.trim()) {
-      setErrorMsg('Completá el nombre del sponsor, título y cargá una imagen para la publicidad.');
+      const msg = 'Completá el nombre del sponsor, título y cargá una imagen para la publicidad.';
+      setAdError(msg);
+      setErrorMsg(msg);
       return;
     }
     setSaving(true);
     setFeedback(null);
     setErrorMsg(null);
+    setAdError(null);
     try {
+      const normalizedImageUrl = await normalizeImageInputValue(adImageUrl);
+      const normalizedTargetUrl = normalizeOptionalTargetUrl(adTargetUrl);
       const now = new Date().toISOString();
       const existing = editingAdId ? activeAds.find((a) => a.id === editingAdId) : null;
       const maxOrder = activeAds.reduce((acc, a) => Math.max(acc, a.order), 0);
+      const safeOrder = Math.min(500, Math.max(0, existing ? existing.order : maxOrder + 1));
       const adDoc: TournamentAd = {
         id: existing ? existing.id : makeId('ad'),
         tournamentId: activeTournament.id,
-        sponsorName: adSponsor.trim(),
-        title: adTitle.trim(),
-        subtitle: adSubtitle.trim() || null,
-        imageUrl: adImageUrl.trim(),
-        targetUrl: adTargetUrl.trim() || null,
+        sponsorName: adSponsor.trim().slice(0, 120),
+        title: adTitle.trim().slice(0, 120),
+        subtitle: adSubtitle.trim().slice(0, 240) || null,
+        imageUrl: normalizedImageUrl,
+        targetUrl: normalizedTargetUrl,
         placement: adPlacement,
-        order: existing ? existing.order : maxOrder + 1,
+        order: safeOrder,
         active: adActive,
         createdAt: existing ? existing.createdAt : now,
         updatedAt: now,
@@ -709,38 +861,88 @@ export const AdminTournamentsSection: React.FC<Props> = ({
       await saveEntity('tournament_ads', adDoc);
       setShowAdForm(false);
       setEditingAdId(null);
+      setBrokenAdThumbIds((prev) => {
+        const next = { ...prev };
+        delete next[adDoc.id];
+        return next;
+      });
       setFeedback(
         existing
           ? `Publicidad de "${adDoc.sponsorName}" actualizada.`
           : `Publicidad de "${adDoc.sponsorName}" agregada a ${activeTournament.name}.`
       );
+    } catch (err) {
+      const msg = formatFirestoreError(err, 'No se pudo guardar la publicidad.');
+      setAdError(msg);
+      setErrorMsg(msg);
     } finally {
       setSaving(false);
     }
   };
 
   const handleToggleAdActive = async (ad: TournamentAd) => {
-    await saveEntity('tournament_ads', {
-      ...ad,
-      active: !ad.active,
-      updatedAt: new Date().toISOString(),
-    });
+    setSaving(true);
+    setErrorMsg(null);
+    setAdError(null);
+    try {
+      await saveEntity('tournament_ads', {
+        ...ad,
+        active: !ad.active,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      const msg = formatFirestoreError(err, 'No se pudo cambiar el estado de la publicidad.');
+      setAdError(msg);
+      setErrorMsg(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReorderAd = async (idx: number, dir: -1 | 1) => {
     const targetIdx = idx + dir;
     if (targetIdx < 0 || targetIdx >= activeAds.length) return;
-    const now = new Date().toISOString();
-    const a = activeAds[idx];
-    const b = activeAds[targetIdx];
-    await saveEntity('tournament_ads', { ...a, order: b.order, updatedAt: now });
-    await saveEntity('tournament_ads', { ...b, order: a.order, updatedAt: now });
+    setSaving(true);
+    setErrorMsg(null);
+    setAdError(null);
+    try {
+      const now = new Date().toISOString();
+      const reordered = [...activeAds];
+      [reordered[idx], reordered[targetIdx]] = [reordered[targetIdx], reordered[idx]];
+      for (let i = 0; i < reordered.length; i++) {
+        const desiredOrder = i + 1;
+        if (reordered[i].order !== desiredOrder || i === idx || i === targetIdx) {
+          await saveEntity('tournament_ads', {
+            ...reordered[i],
+            order: desiredOrder,
+            updatedAt: now,
+          });
+        }
+      }
+    } catch (err) {
+      const msg = formatFirestoreError(err, 'No se pudo reordenar la publicidad.');
+      setAdError(msg);
+      setErrorMsg(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDeleteAd = async (adId: string) => {
-    await removeEntity('tournament_ads', adId);
-    setConfirmDeleteAdId(null);
-    setFeedback('Publicidad eliminada del torneo.');
+    setSaving(true);
+    setErrorMsg(null);
+    setAdError(null);
+    try {
+      await removeEntity('tournament_ads', adId);
+      setConfirmDeleteAdId(null);
+      setFeedback('Publicidad eliminada del torneo.');
+    } catch (err) {
+      const msg = formatFirestoreError(err, 'No se pudo eliminar la publicidad.');
+      setAdError(msg);
+      setErrorMsg(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -851,8 +1053,9 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Inicio torneo</label>
+              <label className="block text-xs font-medium text-[#4A5550] mb-1">Inicio torneo *</label>
               <input
+                required
                 type="date"
                 value={tStart}
                 onChange={(e) => setTStart(e.target.value)}
@@ -860,8 +1063,9 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Fin torneo</label>
+              <label className="block text-xs font-medium text-[#4A5550] mb-1">Fin torneo *</label>
               <input
+                required
                 type="date"
                 value={tEnd}
                 onChange={(e) => setTEnd(e.target.value)}
@@ -869,8 +1073,9 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Inicio inscripciones</label>
+              <label className="block text-xs font-medium text-[#4A5550] mb-1">Inicio inscripciones *</label>
               <input
+                required
                 type="date"
                 value={tRegStart}
                 onChange={(e) => setTRegStart(e.target.value)}
@@ -878,8 +1083,9 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#4A5550] mb-1">Cierre inscripciones</label>
+              <label className="block text-xs font-medium text-[#4A5550] mb-1">Cierre inscripciones *</label>
               <input
+                required
                 type="date"
                 value={tRegEnd}
                 onChange={(e) => setTRegEnd(e.target.value)}
@@ -924,7 +1130,10 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <input
                 value={tCoverImageUrl}
-                onChange={(e) => setTCoverImageUrl(e.target.value)}
+                onChange={(e) => {
+                  setTCoverImageUrl(e.target.value);
+                  setFormCoverPreviewError(false);
+                }}
                 placeholder="Pegá URL de imagen o subí una foto desde tu dispositivo..."
                 className="flex-1 h-9 px-3 rounded-lg border border-[#E2E7E4] bg-white text-xs min-w-0"
               />
@@ -933,7 +1142,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 {uploadingCoverImg ? 'Optimizando...' : 'Subir portada'}
                 <input
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept="image/*"
                   onChange={(e) => handleUploadCoverImage(e, 'form')}
                   disabled={uploadingCoverImg}
                   className="hidden"
@@ -943,13 +1152,16 @@ export const AdminTournamentsSection: React.FC<Props> = ({
 
             <div className="flex items-center gap-3">
               <img
-                src={tCoverImageUrl || '/src/assets/images/hero_clay_court_1795134987256.jpg'}
+                src={tCoverImageUrl || DEFAULT_COVER_IMAGE}
                 alt="Vista previa de portada del torneo"
                 referrerPolicy="no-referrer"
+                onError={() => setFormCoverPreviewError(true)}
                 className="w-36 aspect-[16/9] rounded-lg object-cover border border-[#E2E7E4] bg-slate-100 shrink-0"
               />
               <p className="text-[11px] text-[#4A5550]">
-                {tCoverImageUrl
+                {formCoverPreviewError && tCoverImageUrl
+                  ? 'No se pudo cargar la vista previa de esa imagen. Subí otro archivo o verificá la URL.'
+                  : tCoverImageUrl
                   ? 'Portada personalizada activa.'
                   : 'Usando portada predeterminada de polvo de ladrillo.'}
               </p>
@@ -1038,12 +1250,19 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             </div>
           )}
 
+          {tournamentError && (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-medium text-red-800">
+              {tournamentError}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={() => {
                 setShowTournamentForm(false);
                 setEditingTournamentId(null);
+                setTournamentError(null);
               }}
               className="px-4 py-2 rounded-lg border border-[#E2E7E4] text-xs font-medium text-[#4A5550]"
             >
@@ -1051,11 +1270,17 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             </button>
             <button
               type="submit"
-              disabled={saving}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+              disabled={saving || uploadingCoverImg}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534] disabled:opacity-60"
             >
               <Save className="w-4 h-4" />
-              {editingTournamentId ? 'Guardar cambios' : 'Guardar torneo'}
+              {uploadingCoverImg
+                ? 'Procesando portada...'
+                : saving
+                ? 'Guardando...'
+                : editingTournamentId
+                ? 'Guardar cambios'
+                : 'Guardar torneo'}
             </button>
           </div>
         </form>
@@ -1081,6 +1306,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 type="button"
                 onClick={() => {
                   setQuickCoverUrl(activeTournament.coverImageUrl || '');
+                  setQuickCoverError(null);
+                  setQuickCoverPreviewError(false);
                   setShowQuickCover((v) => !v);
                 }}
                 className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E7E4] text-xs font-medium text-[#0F1A15] hover:bg-slate-50"
@@ -1136,22 +1363,37 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 </button>
               </div>
 
+              {quickCoverError && (
+                <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs font-medium text-red-800">
+                  {quickCoverError}
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <img
-                  src={
-                    quickCoverUrl ||
-                    activeTournament.coverImageUrl ||
-                    '/src/assets/images/hero_clay_court_1795134987256.jpg'
-                  }
-                  alt="Portada del torneo"
-                  referrerPolicy="no-referrer"
-                  className="w-full sm:w-44 aspect-[16/9] rounded-xl object-cover border border-[#E2E7E4] bg-slate-100 shrink-0"
-                />
+                <div className="w-full sm:w-44 aspect-[16/9] rounded-xl overflow-hidden border border-[#E2E7E4] bg-slate-100 shrink-0 relative">
+                  <img
+                    src={
+                      quickCoverPreviewError
+                        ? DEFAULT_COVER_IMAGE
+                        : quickCoverUrl ||
+                          activeTournament.coverImageUrl ||
+                          DEFAULT_COVER_IMAGE
+                    }
+                    alt="Portada del torneo"
+                    referrerPolicy="no-referrer"
+                    onError={() => setQuickCoverPreviewError(true)}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
                 <div className="flex-1 space-y-2.5 min-w-0">
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       value={quickCoverUrl}
-                      onChange={(e) => setQuickCoverUrl(e.target.value)}
+                      onChange={(e) => {
+                        setQuickCoverUrl(e.target.value);
+                        setQuickCoverPreviewError(false);
+                        setQuickCoverError(null);
+                      }}
                       placeholder="https://... o subí archivo desde tu dispositivo"
                       className="flex-1 h-9 px-3 rounded-lg border border-[#E2E7E4] bg-white text-xs min-w-0"
                     />
@@ -1160,32 +1402,42 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       {uploadingQuickCover ? 'Optimizando...' : 'Elegir imagen'}
                       <input
                         type="file"
-                        accept="image/jpeg,image/png,image/webp"
+                        accept="image/*"
                         onChange={(e) => handleUploadCoverImage(e, 'quick')}
                         disabled={uploadingQuickCover}
                         className="hidden"
                       />
                     </label>
                   </div>
+                  {quickCoverPreviewError && quickCoverUrl && (
+                    <p className="text-[11px] text-amber-800">
+                      No se pudo cargar esa imagen para vista previa. Probá subir un archivo nuevo o verificar la URL.
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      disabled={saving}
+                      disabled={saving || uploadingQuickCover}
                       onClick={() => handleSaveQuickCover(quickCoverUrl.trim() || null)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534] disabled:opacity-60"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      Guardar portada
+                      {uploadingQuickCover
+                        ? 'Procesando...'
+                        : saving
+                        ? 'Guardando...'
+                        : 'Guardar portada'}
                     </button>
                     {activeTournament.coverImageUrl && (
                       <button
                         type="button"
-                        disabled={saving}
+                        disabled={saving || uploadingQuickCover}
                         onClick={() => {
                           setQuickCoverUrl('');
+                          setQuickCoverPreviewError(false);
                           handleSaveQuickCover(null);
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#4A5550] hover:text-[#0F1A15]"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium text-[#4A5550] hover:text-[#0F1A15] disabled:opacity-60"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         Restaurar predeterminada
@@ -1654,6 +1906,12 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               </button>
             </div>
 
+            {adError && !showAdForm && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-medium text-red-800">
+                {adError}
+              </div>
+            )}
+
             {showAdForm && (
               <form
                 onSubmit={handleSaveAd}
@@ -1662,11 +1920,19 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                 <h5 className="text-xs font-semibold text-[#0F1A15]">
                   {editingAdId ? 'Editar publicidad' : `Nueva publicidad para ${activeTournament.name}`}
                 </h5>
+
+                {adError && (
+                  <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs font-medium text-red-800">
+                    {adError}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-[#4A5550] mb-1">Sponsor / Marca *</label>
                     <input
                       required
+                      maxLength={120}
                       value={adSponsor}
                       onChange={(e) => setAdSponsor(e.target.value)}
                       placeholder="Ej. Asunción Pro Shop"
@@ -1677,6 +1943,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     <label className="block text-xs font-medium text-[#4A5550] mb-1">Título del anuncio *</label>
                     <input
                       required
+                      maxLength={120}
                       value={adTitle}
                       onChange={(e) => setAdTitle(e.target.value)}
                       placeholder="Ej. 20% off en encordado oficial"
@@ -1686,6 +1953,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   <div>
                     <label className="block text-xs font-medium text-[#4A5550] mb-1">Subtítulo (opcional)</label>
                     <input
+                      maxLength={240}
                       value={adSubtitle}
                       onChange={(e) => setAdSubtitle(e.target.value)}
                       placeholder="Detalle o promoción vigente"
@@ -1707,10 +1975,10 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   <div>
                     <label className="block text-xs font-medium text-[#4A5550] mb-1">Enlace destino (opcional)</label>
                     <input
-                      type="url"
+                      type="text"
                       value={adTargetUrl}
                       onChange={(e) => setAdTargetUrl(e.target.value)}
-                      placeholder="https://..."
+                      placeholder="https://... o www.sponsor.com"
                       className="w-full h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs"
                     />
                   </div>
@@ -1719,7 +1987,11 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     <div className="flex items-center gap-2">
                       <input
                         value={adImageUrl}
-                        onChange={(e) => setAdImageUrl(e.target.value)}
+                        onChange={(e) => {
+                          setAdImageUrl(e.target.value);
+                          setAdPreviewError(false);
+                          setAdError(null);
+                        }}
                         placeholder="https://... o subir"
                         className="flex-1 h-9 px-2.5 rounded-lg border border-[#E2E7E4] bg-white text-xs min-w-0"
                       />
@@ -1728,7 +2000,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                         {uploadingAdImg ? 'Subiendo...' : 'Subir'}
                         <input
                           type="file"
-                          accept="image/jpeg,image/png,image/webp"
+                          accept="image/*"
                           onChange={handleUploadAdImage}
                           disabled={uploadingAdImg}
                           className="hidden"
@@ -1740,13 +2012,24 @@ export const AdminTournamentsSection: React.FC<Props> = ({
 
                 {adImageUrl && (
                   <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white border border-[#E2E7E4]">
-                    <img
-                      src={adImageUrl}
-                      alt="Vista previa banner publicitario"
-                      referrerPolicy="no-referrer"
-                      className="w-28 aspect-[16/9] rounded-lg object-cover border border-[#E2E7E4] shrink-0"
-                    />
-                    <p className="text-xs text-[#4A5550] truncate">Vista previa del banner ({adSponsor || 'Sponsor'})</p>
+                    {!adPreviewError ? (
+                      <img
+                        src={adImageUrl}
+                        alt="Vista previa banner publicitario"
+                        referrerPolicy="no-referrer"
+                        onError={() => setAdPreviewError(true)}
+                        className="w-28 aspect-[16/9] rounded-lg object-cover border border-[#E2E7E4] shrink-0"
+                      />
+                    ) : (
+                      <div className="w-28 aspect-[16/9] rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-[10px] text-amber-800 text-center px-1.5 shrink-0">
+                        Vista previa no disponible
+                      </div>
+                    )}
+                    <p className="text-xs text-[#4A5550] truncate">
+                      {adPreviewError
+                        ? 'No se pudo cargar la imagen desde esa ruta. Subí un archivo nuevo o pegá otro enlace.'
+                        : `Vista previa del banner (${adSponsor || 'Sponsor'})`}
+                    </p>
                   </div>
                 )}
 
@@ -1766,6 +2049,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       onClick={() => {
                         setShowAdForm(false);
                         setEditingAdId(null);
+                        setAdError(null);
                       }}
                       className="px-3.5 py-2 rounded-lg border border-[#E2E7E4] bg-white text-xs font-medium"
                     >
@@ -1773,11 +2057,17 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     </button>
                     <button
                       type="submit"
-                      disabled={saving}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534]"
+                      disabled={saving || uploadingAdImg}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#14532D] text-white text-xs font-medium hover:bg-[#166534] disabled:opacity-60"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      {editingAdId ? 'Guardar publicidad' : 'Publicar anuncio'}
+                      {uploadingAdImg
+                        ? 'Procesando imagen...'
+                        : saving
+                        ? 'Guardando...'
+                        : editingAdId
+                        ? 'Guardar publicidad'
+                        : 'Publicar anuncio'}
                     </button>
                   </div>
                 </div>
@@ -1798,12 +2088,21 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <img
-                        src={ad.imageUrl}
-                        alt={ad.sponsorName}
-                        referrerPolicy="no-referrer"
-                        className="w-24 aspect-[16/9] rounded-lg object-cover border border-[#E2E7E4] shrink-0 bg-slate-100"
-                      />
+                      {!brokenAdThumbIds[ad.id] && ad.imageUrl ? (
+                        <img
+                          src={ad.imageUrl}
+                          alt={ad.sponsorName}
+                          referrerPolicy="no-referrer"
+                          onError={() =>
+                            setBrokenAdThumbIds((prev) => ({ ...prev, [ad.id]: true }))
+                          }
+                          className="w-24 aspect-[16/9] rounded-lg object-cover border border-[#E2E7E4] shrink-0 bg-slate-100"
+                        />
+                      ) : (
+                        <div className="w-24 aspect-[16/9] rounded-lg bg-gradient-to-br from-[#14532D] to-[#0F3D21] text-white flex items-center justify-center text-xs font-bold shrink-0">
+                          {ad.sponsorName.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#14532D] truncate">

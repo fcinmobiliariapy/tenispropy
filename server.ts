@@ -29,6 +29,9 @@ app.use(
     etag: true,
   })
 );
+app.use('/uploads', (_req, res) => {
+  res.status(404).json({ error: 'Imagen no encontrada.' });
+});
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -41,6 +44,10 @@ app.get('/api/health', (_req, res) => {
 // Endpoint de carga de fotos optimizadas (JPG, PNG, WebP -> miniaturas y versión web)
 app.post('/api/uploads', (req, res) => {
   try {
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+
     const { thumbDataUrl, fullDataUrl, baseName } = req.body as {
       thumbDataUrl?: string;
       fullDataUrl?: string;
@@ -53,11 +60,14 @@ app.post('/api/uploads', (req, res) => {
     }
 
     const decodeDataUrl = (dataUrl: string): { ext: string; buffer: Buffer } | null => {
-      const match = /^data:(image\/(jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+      const cleaned = String(dataUrl).trim();
+      const match = /^data:(image\/(jpeg|jpg|png|webp));base64,([\s\S]+)$/.exec(cleaned);
       if (!match) return null;
       const mime = match[1];
       const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
-      const buffer = Buffer.from(match[3], 'base64');
+      const base64Body = match[3].replace(/\s+/g, '');
+      const buffer = Buffer.from(base64Body, 'base64');
+      if (buffer.length === 0) return null;
       return { ext, buffer };
     };
 
@@ -77,7 +87,7 @@ app.post('/api/uploads', (req, res) => {
     const safeSlug = (baseName || 'foto')
       .toLowerCase()
       .replace(/[^a-z0-9_-]/g, '_')
-      .slice(0, 32);
+      .slice(0, 32) || 'foto';
     const uniqueId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     const thumbFilename = `${safeSlug}_${uniqueId}_thumb.${thumbParsed.ext}`;
