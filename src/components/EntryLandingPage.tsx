@@ -1,11 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   Award,
   BookOpen,
   Calendar,
+  ExternalLink,
   MapPin,
   Search,
+  Shield,
   Sparkles,
   Trophy,
   Users,
@@ -14,17 +16,26 @@ import {
   Division,
   Match,
   PlayerPublic,
+  SiteLandingConfig,
+  SitePillarIcon,
   Tournament,
-  TournamentAd,
+  TournamentAd as TournamentAdModel,
 } from '../types/tennis';
+import {
+  DEFAULT_SITE_LANDING_CONFIG,
+  DEFAULT_TOURNAMENT_COVER,
+  OFFICIAL_PLAYPY_LOGO,
+} from '../data/siteConfigDefaults';
 import { PWAInstallButton } from './TopBarAndPWA';
+import { TournamentAd } from './TournamentAd';
 
 interface EntryLandingPageProps {
   tournaments: Tournament[];
   divisions: Division[];
   players: PlayerPublic[];
   matches: Match[];
-  tournamentAds: TournamentAd[];
+  tournamentAds: TournamentAdModel[];
+  siteConfig?: SiteLandingConfig;
   selectedTournamentId: string;
   onEnterTournament: (tournamentId: string) => void;
   onOpenItfModal: () => void;
@@ -56,7 +67,35 @@ const STATUS_META: Record<
   },
 };
 
-const DEFAULT_COVER = '/src/assets/images/hero_clay_court_1795134987256.jpg';
+const PILLAR_STYLES: Record<
+  SitePillarIcon,
+  { icon: React.ReactNode; boxClass: string }
+> = {
+  award: {
+    icon: <Award className="w-5 h-5" />,
+    boxClass: 'bg-[#7C1FA2]/10 text-[#7C1FA2]',
+  },
+  calendar: {
+    icon: <Calendar className="w-5 h-5" />,
+    boxClass: 'bg-[#0284C7]/10 text-[#0284C7]',
+  },
+  sparkles: {
+    icon: <Sparkles className="w-5 h-5" />,
+    boxClass: 'bg-[#0A1633]/10 text-[#0A1633]',
+  },
+  trophy: {
+    icon: <Trophy className="w-5 h-5" />,
+    boxClass: 'bg-[#7C1FA2]/10 text-[#7C1FA2]',
+  },
+  users: {
+    icon: <Users className="w-5 h-5" />,
+    boxClass: 'bg-[#0284C7]/10 text-[#0284C7]',
+  },
+  shield: {
+    icon: <Shield className="w-5 h-5" />,
+    boxClass: 'bg-[#0A1633]/10 text-[#0A1633]',
+  },
+};
 
 export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
   tournaments,
@@ -64,6 +103,7 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
   players,
   matches,
   tournamentAds,
+  siteConfig = DEFAULT_SITE_LANDING_CONFIG,
   selectedTournamentId,
   onEnterTournament,
   onOpenItfModal,
@@ -71,6 +111,28 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | Tournament['status']>('ALL');
   const [brokenCoverIds, setBrokenCoverIds] = useState<Record<string, boolean>>({});
+  const [logoBroken, setLogoBroken] = useState(false);
+  const [bannerImgBroken, setBannerImgBroken] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 639px)').matches : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 639px)');
+    const sync = () => setIsMobileViewport(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  useEffect(() => {
+    setLogoBroken(false);
+  }, [siteConfig.logoUrl]);
+
+  useEffect(() => {
+    setBannerImgBroken(false);
+  }, [siteConfig.bannerImageHorizontalUrl, siteConfig.bannerImageVerticalUrl]);
 
   const visibleTournaments = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -95,6 +157,14 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
     );
   }, [tournamentAds]);
 
+  const featuredTournament = useMemo(
+    () =>
+      featuredSpotlightAd
+        ? tournaments.find((t) => t.id === featuredSpotlightAd.tournamentId) || null
+        : null,
+    [featuredSpotlightAd, tournaments]
+  );
+
   const totalConfirmedMatches = useMemo(
     () => matches.filter((m) => m.published && !m.isBye).length,
     [matches]
@@ -105,42 +175,113 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const resolvedLogo = logoBroken
+    ? OFFICIAL_PLAYPY_LOGO
+    : siteConfig.logoUrl?.trim() || OFFICIAL_PLAYPY_LOGO;
+  const resolvedDefaultCover =
+    siteConfig.defaultTournamentCoverUrl?.trim() || DEFAULT_TOURNAMENT_COVER;
+  const hasBannerImages = Boolean(
+    !bannerImgBroken &&
+      (siteConfig.bannerImageHorizontalUrl?.trim() ||
+        siteConfig.bannerImageVerticalUrl?.trim())
+  );
+  const bannerHoriz =
+    siteConfig.bannerImageHorizontalUrl?.trim() ||
+    siteConfig.bannerImageVerticalUrl?.trim() ||
+    '';
+  const bannerVert =
+    siteConfig.bannerImageVerticalUrl?.trim() ||
+    siteConfig.bannerImageHorizontalUrl?.trim() ||
+    '';
+
+  const statItems = [
+    {
+      label: siteConfig.stat1Label || 'Torneos en PlayPy',
+      value:
+        !siteConfig.useAutoMetrics && siteConfig.stat1CustomValue?.trim()
+          ? siteConfig.stat1CustomValue.trim()
+          : tournaments.length,
+      tone: 'text-[#0A1633]',
+    },
+    {
+      label: siteConfig.stat2Label || 'Categorías y divisiones',
+      value:
+        !siteConfig.useAutoMetrics && siteConfig.stat2CustomValue?.trim()
+          ? siteConfig.stat2CustomValue.trim()
+          : divisions.length,
+      tone: 'text-[#7C1FA2]',
+    },
+    {
+      label: siteConfig.stat3Label || 'Jugadores en competencia',
+      value:
+        !siteConfig.useAutoMetrics && siteConfig.stat3CustomValue?.trim()
+          ? siteConfig.stat3CustomValue.trim()
+          : players.length,
+      tone: 'text-[#0284C7]',
+    },
+    {
+      label: siteConfig.stat4Label || 'Partidos publicados',
+      value:
+        !siteConfig.useAutoMetrics && siteConfig.stat4CustomValue?.trim()
+          ? siteConfig.stat4CustomValue.trim()
+          : totalConfirmedMatches,
+      tone: 'text-[#0A1633]',
+    },
+  ];
+
   return (
     <div className="pb-24 md:pb-12">
-      {/* Hero + Banner Publicitario Oficial de PlayPy */}
-      <section className="bg-white border-b border-[#E2E8F0]">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-7 sm:py-12">
+      {/* Hero + Banner Publicitario Oficial Configurable */}
+      <section className="relative bg-white border-b border-[#E2E8F0] overflow-hidden">
+        {siteConfig.heroBackgroundImageUrl && (
+          <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
+            <img
+              src={siteConfig.heroBackgroundImageUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover opacity-15"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-white/75 via-white/90 to-white" />
+          </div>
+        )}
+
+        <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-6 py-7 sm:py-12">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            {/* Columna izquierda: Identidad PlayPy y CTA */}
-            <div className="lg:col-span-6 space-y-5">
+            {/* Columna izquierda: Identidad y CTA */}
+            <div className={siteConfig.bannerEnabled ? 'lg:col-span-6 space-y-5' : 'lg:col-span-12 space-y-5 max-w-3xl'}>
               <div className="flex items-center gap-3.5">
                 <img
-                  src="/assets/aistudio/1BDAB541-40D5-45D3-AE92-EFF59F03FA01_81898b58.png"
-                  alt="Logo oficial de PlayPy"
+                  src={resolvedLogo}
+                  alt={`Logo oficial de ${siteConfig.brandFirst}${siteConfig.brandSecond}`}
+                  referrerPolicy="no-referrer"
+                  onError={() => setLogoBroken(true)}
                   className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-contain bg-white border border-[#E2E8F0] p-1.5 shrink-0"
                 />
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#7C1FA2]">
-                    Plataforma Oficial
+                    {siteConfig.platformBadge}
                   </p>
                   <p className="text-2xl sm:text-3xl font-bold font-display tracking-tight leading-none mt-0.5">
-                    <span className="text-[#0A1633]">Play</span>
-                    <span className="text-[#7C1FA2]">Py</span>
+                    <span className="text-[#0A1633]">{siteConfig.brandFirst}</span>
+                    <span className="text-[#7C1FA2]">{siteConfig.brandSecond}</span>
                   </p>
-                  <p className="text-xs font-medium text-[#475569] mt-1">
-                    Tu App de Torneos y Competencias
-                  </p>
+                  {siteConfig.brandSubtitle && (
+                    <p className="text-xs font-medium text-[#475569] mt-1">
+                      {siteConfig.brandSubtitle}
+                    </p>
+                  )}
                 </div>
               </div>
 
               <h1 className="text-3xl sm:text-4xl lg:text-[44px] font-bold tracking-tight text-[#0A1633] leading-[1.1] [text-wrap:balance]">
-                Elegí tu torneo y seguí cada punto en vivo
+                {siteConfig.heroTitle}
               </h1>
 
-              <p className="text-sm sm:text-base text-[#475569] max-w-xl leading-relaxed">
-                Centralizamos múltiples torneos simultáneos con reglamento ITF, fixture por ronda,
-                posiciones de grupos, cuadros finales con medallero y galerías de fotos por jornada.
-              </p>
+              {siteConfig.heroDescription && (
+                <p className="text-sm sm:text-base text-[#475569] max-w-xl leading-relaxed">
+                  {siteConfig.heroDescription}
+                </p>
+              )}
 
               <div className="flex flex-wrap items-center gap-3 pt-1">
                 <button
@@ -148,155 +289,232 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
                   onClick={scrollToSelector}
                   className="inline-flex items-center gap-2 px-5 min-h-[44px] rounded-xl bg-gradient-to-r from-[#7C1FA2] to-[#0284C7] text-white text-sm font-semibold hover:opacity-95 transition-opacity shadow-sm"
                 >
-                  Seleccionar torneo
+                  {siteConfig.primaryCtaLabel || 'Seleccionar torneo'}
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
-                <button
-                  type="button"
-                  onClick={onOpenItfModal}
-                  className="inline-flex items-center gap-2 px-4 min-h-[44px] rounded-xl border border-[#E2E8F0] bg-white text-sm font-medium text-[#0A1633] hover:bg-slate-50 transition-colors"
-                >
-                  <BookOpen className="w-4 h-4 text-[#7C1FA2]" />
-                  Reglas ITF 2026
-                </button>
+                {siteConfig.showItfButton && (
+                  <button
+                    type="button"
+                    onClick={onOpenItfModal}
+                    className="inline-flex items-center gap-2 px-4 min-h-[44px] rounded-xl border border-[#E2E8F0] bg-white text-sm font-medium text-[#0A1633] hover:bg-slate-50 transition-colors"
+                  >
+                    <BookOpen className="w-4 h-4 text-[#7C1FA2]" />
+                    {siteConfig.secondaryCtaLabel || 'Reglas ITF 2026'}
+                  </button>
+                )}
 
                 <PWAInstallButton />
               </div>
             </div>
 
-            {/* Columna derecha: Banner Publicitario de la Aplicación PlayPy */}
-            <div className="lg:col-span-6">
-              <div className="relative overflow-hidden rounded-3xl bg-[#0A1633] text-white p-6 sm:p-8 border border-[#1E293B]">
-                {/* Luces de acento con los colores exactos del logo PlayPy */}
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-[#0095FF]/25 blur-3xl"
-                />
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute -bottom-24 -left-16 w-72 h-72 rounded-full bg-[#7C1FA2]/30 blur-3xl"
-                />
-
-                <div className="relative z-10 flex flex-col justify-between gap-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#38BDF8]">
-                        Banner Oficial · Espacio Publicitario PlayPy
-                      </p>
-                      <h2 className="text-xl sm:text-2xl font-bold font-display text-white mt-1.5 leading-snug [text-wrap:balance]">
-                        Potenciá tu torneo, tus auspiciantes y la experiencia de cada jugador
-                      </h2>
-                    </div>
-                    <img
-                      src="/assets/aistudio/1BDAB541-40D5-45D3-AE92-EFF59F03FA01_81898b58.png"
-                      alt="PlayPy"
-                      className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-white p-1 object-contain shrink-0"
-                    />
-                  </div>
-
-                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                    Publicá resultados al instante, organizá categorías y activá banners
-                    publicitarios inteligentes generados con IA en formato vertical y horizontal
-                    para los sponsors de cada sede.
-                  </p>
-
-                  {featuredSpotlightAd ? (
-                    <div className="pt-4 border-t border-white/15 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#E879F9]">
-                          Sponsor destacado · {featuredSpotlightAd.sponsorName}
-                        </p>
-                        <p className="text-sm font-semibold text-white truncate mt-0.5">
-                          {featuredSpotlightAd.title}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onEnterTournament(featuredSpotlightAd.tournamentId)}
-                        className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-white text-[#0A1633] text-xs font-bold hover:bg-slate-100 transition-colors shrink-0"
+            {/* Columna derecha: Banner Publicitario Principal Configurable (incluye soporte adaptativo Horizontal + Vertical) */}
+            {siteConfig.bannerEnabled && (
+              <div className="lg:col-span-6">
+                <div className="relative overflow-hidden rounded-3xl bg-[#0A1633] text-white border border-[#1E293B]">
+                  {hasBannerImages ? (
+                    <div className="relative">
+                      <div
+                        className={
+                          isMobileViewport && siteConfig.bannerImageVerticalUrl
+                            ? 'aspect-[3/4] max-h-[420px] mx-auto bg-[#0A1633]'
+                            : 'aspect-[16/9] bg-[#0A1633]'
+                        }
                       >
-                        Ir al torneo
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
+                        <picture className="block w-full h-full">
+                          {siteConfig.bannerImageVerticalUrl && (
+                            <source media="(max-width: 639px)" srcSet={bannerVert} />
+                          )}
+                          {siteConfig.bannerImageHorizontalUrl && (
+                            <source media="(min-width: 640px)" srcSet={bannerHoriz} />
+                          )}
+                          <img
+                            src={isMobileViewport ? bannerVert : bannerHoriz}
+                            alt={siteConfig.bannerTitle || 'Banner publicitario'}
+                            referrerPolicy="no-referrer"
+                            onError={() => setBannerImgBroken(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        </picture>
+                      </div>
+                      <div className="p-5 sm:p-6 bg-[#0A1633] border-t border-white/10 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#38BDF8]">
+                              {siteConfig.bannerKicker}
+                            </p>
+                            <h2 className="text-lg sm:text-xl font-bold font-display text-white mt-1 leading-snug">
+                              {siteConfig.bannerTitle}
+                            </h2>
+                          </div>
+                          {siteConfig.bannerCtaUrl ? (
+                            <a
+                              href={siteConfig.bannerCtaUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3.5 min-h-[38px] rounded-xl bg-white text-[#0A1633] text-xs font-bold hover:bg-slate-100 shrink-0"
+                            >
+                              {siteConfig.bannerCtaLabel || 'Conocer más'}
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          ) : null}
+                        </div>
+                        {siteConfig.bannerDescription && (
+                          <p className="text-xs text-slate-300 leading-relaxed">
+                            {siteConfig.bannerDescription}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   ) : (
-                    <div className="pt-4 border-t border-white/15 flex items-center justify-between gap-3 text-xs text-slate-300">
-                      <span>Cobertura multi-sede · Hora oficial America/Asuncion</span>
-                      <span className="font-semibold text-[#38BDF8] shrink-0">PlayPy 2026</span>
+                    <div className="relative p-6 sm:p-8">
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-[#0095FF]/25 blur-3xl"
+                      />
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute -bottom-24 -left-16 w-72 h-72 rounded-full bg-[#7C1FA2]/30 blur-3xl"
+                      />
+
+                      <div className="relative z-10 flex flex-col justify-between gap-6">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#38BDF8]">
+                              {siteConfig.bannerKicker}
+                            </p>
+                            <h2 className="text-xl sm:text-2xl font-bold font-display text-white mt-1.5 leading-snug [text-wrap:balance]">
+                              {siteConfig.bannerTitle}
+                            </h2>
+                          </div>
+                          {siteConfig.bannerBadgeUrl && (
+                            <img
+                              src={siteConfig.bannerBadgeUrl}
+                              alt={`${siteConfig.brandFirst}${siteConfig.brandSecond}`}
+                              referrerPolicy="no-referrer"
+                              className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-white p-1 object-contain shrink-0"
+                            />
+                          )}
+                        </div>
+
+                        {siteConfig.bannerDescription && (
+                          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                            {siteConfig.bannerDescription}
+                          </p>
+                        )}
+
+                        {siteConfig.bannerCtaUrl && (
+                          <div>
+                            <a
+                              href={siteConfig.bannerCtaUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-gradient-to-r from-[#7C1FA2] to-[#0284C7] text-white text-xs font-bold hover:opacity-95"
+                            >
+                              {siteConfig.bannerCtaLabel || 'Conocer más'}
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        )}
+
+                        {siteConfig.bannerShowSpotlightAd && featuredSpotlightAd ? (
+                          <div className="pt-4 border-t border-white/15 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#E879F9]">
+                                Sponsor destacado · {featuredSpotlightAd.sponsorName}
+                              </p>
+                              <p className="text-sm font-semibold text-white truncate mt-0.5">
+                                {featuredSpotlightAd.title}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => onEnterTournament(featuredSpotlightAd.tournamentId)}
+                              className="inline-flex items-center justify-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-white text-[#0A1633] text-xs font-bold hover:bg-slate-100 transition-colors shrink-0"
+                            >
+                              Ir al torneo
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="pt-4 border-t border-white/15 flex items-center justify-between gap-3 text-xs text-slate-300">
+                            <span>{siteConfig.bannerFooterLeft}</span>
+                            <span className="font-semibold text-[#38BDF8] shrink-0">
+                              {siteConfig.bannerFooterRight}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Datos de la aplicación */}
+          {/* Datos / métricas de la aplicación */}
           <div className="mt-8 sm:mt-10 grid grid-cols-2 lg:grid-cols-4 border border-[#E2E8F0] rounded-2xl divide-y lg:divide-y-0 lg:divide-x divide-[#E2E8F0] bg-[#F8FAFC]">
-            <div className="p-4 sm:p-5">
-              <p className="text-xs text-[#475569]">Torneos en PlayPy</p>
-              <p className="mt-1 text-2xl font-bold font-mono tabular-nums text-[#0A1633]">
-                {tournaments.length}
-              </p>
-            </div>
-            <div className="p-4 sm:p-5">
-              <p className="text-xs text-[#475569]">Categorías y divisiones</p>
-              <p className="mt-1 text-2xl font-bold font-mono tabular-nums text-[#7C1FA2]">
-                {divisions.length}
-              </p>
-            </div>
-            <div className="p-4 sm:p-5">
-              <p className="text-xs text-[#475569]">Jugadores en competencia</p>
-              <p className="mt-1 text-2xl font-bold font-mono tabular-nums text-[#0284C7]">
-                {players.length}
-              </p>
-            </div>
-            <div className="p-4 sm:p-5">
-              <p className="text-xs text-[#475569]">Partidos publicados</p>
-              <p className="mt-1 text-2xl font-bold font-mono tabular-nums text-[#0A1633]">
-                {totalConfirmedMatches}
-              </p>
-            </div>
+            {statItems.map((st, idx) => (
+              <div key={idx} className="p-4 sm:p-5">
+                <p className="text-xs text-[#475569]">{st.label}</p>
+                <p className={`mt-1 text-2xl font-bold font-mono tabular-nums ${st.tone}`}>
+                  {st.value}
+                </p>
+              </div>
+            ))}
           </div>
 
           {/* Pilares de la plataforma */}
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
-            <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-[#7C1FA2]/10 text-[#7C1FA2] flex items-center justify-center shrink-0">
-                <Award className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-[#0A1633]">Cuadros y medallero oficial</h2>
-                <p className="text-xs text-[#475569] mt-1 leading-relaxed">
-                  Seguimiento de grupos, cruces eliminatorios y podio Oro, Plata y Bronce en tiempo real.
-                </p>
-              </div>
+          {siteConfig.pillars.length > 0 && (
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+              {siteConfig.pillars.map((pillar, idx) => {
+                const style = PILLAR_STYLES[pillar.icon] || PILLAR_STYLES.award;
+                return (
+                  <div key={idx} className="flex items-start gap-3.5">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${style.boxClass}`}
+                    >
+                      {style.icon}
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-bold text-[#0A1633]">{pillar.title}</h2>
+                      <p className="text-xs text-[#475569] mt-1 leading-relaxed">
+                        {pillar.description}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+          )}
 
-            <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-[#0284C7]/10 text-[#0284C7] flex items-center justify-center shrink-0">
-                <Calendar className="w-5 h-5" />
+          {/* Sponsor destacado usando TournamentAd adaptativo cuando el banner superior tiene imagen */}
+          {siteConfig.bannerEnabled &&
+            hasBannerImages &&
+            siteConfig.bannerShowSpotlightAd &&
+            featuredSpotlightAd && (
+              <div className="mt-8 pt-6 border-t border-[#E2E8F0] space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#7C1FA2]">
+                    Auspiciante destacado del circuito
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onEnterTournament(featuredSpotlightAd.tournamentId)}
+                    className="text-xs font-semibold text-[#0284C7] hover:underline"
+                  >
+                    Ver torneo ({featuredTournament?.name || 'Ir al portal'}) →
+                  </button>
+                </div>
+                <TournamentAd
+                  ad={featuredSpotlightAd}
+                  variant="featured"
+                  tournamentName={featuredTournament?.name}
+                  tournamentVenue={featuredTournament?.venue}
+                  tournamentCity={featuredTournament?.city}
+                />
               </div>
-              <div>
-                <h2 className="text-sm font-bold text-[#0A1633]">Fixture ordenado y flexible</h2>
-                <p className="text-xs text-[#475569] mt-1 leading-relaxed">
-                  Consultá partidos por ronda o fecha, tie-breaks a 7 o 10 puntos y galerías por jornada.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-[#0A1633]/10 text-[#0A1633] flex items-center justify-center shrink-0">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-[#0A1633]">Banners IA vertical y horizontal</h2>
-                <p className="text-xs text-[#475569] mt-1 leading-relaxed">
-                  Cada torneo genera y adapta sus publicidades automáticamente para móviles y pantallas grandes.
-                </p>
-              </div>
-            </div>
-          </div>
+            )}
         </div>
       </section>
 
@@ -305,14 +523,14 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#7C1FA2]">
-              Portal de Competencias
+              {siteConfig.selectorKicker}
             </p>
             <h2 className="text-2xl sm:text-3xl font-bold text-[#0A1633] mt-1">
-              Seleccioná el torneo donde querés ingresar
+              {siteConfig.selectorTitle}
             </h2>
-            <p className="text-sm text-[#475569] mt-1">
-              Tocá cualquier torneo para abrir su fixture, tabla de posiciones, cuadro final y galería.
-            </p>
+            {siteConfig.selectorSubtitle && (
+              <p className="text-sm text-[#475569] mt-1">{siteConfig.selectorSubtitle}</p>
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
@@ -367,7 +585,7 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
               const isCurrent = t.id === selectedTournamentId;
               const coverSrc =
                 brokenCoverIds[t.id] || !t.coverImageUrl
-                  ? DEFAULT_COVER
+                  ? resolvedDefaultCover
                   : t.coverImageUrl;
 
               return (

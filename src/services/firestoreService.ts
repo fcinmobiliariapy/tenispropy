@@ -22,6 +22,7 @@ import {
   PlayerPrivate,
   PlayerPublic,
   Registration,
+  SiteLandingConfig,
   StaffRole,
   Tournament,
   TournamentAd,
@@ -319,4 +320,5 @@ export type CollectionEntityMap = {
   photos: MatchdayPhoto;
   notifications: NotificationAlert;
   tournament_ads: TournamentAd;
+  site_settings: SiteLandingConfig;
 };

@@ -42,6 +42,7 @@ import {
   removeEntity,
   saveEntity,
 } from '../../services/firestoreService';
+import { generateAdaptiveTournamentAdBanners } from '../TournamentAd';
 
 interface Props {
   tournaments: Tournament[];
@@ -878,31 +879,17 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setErrorMsg(null);
     setFeedback(null);
     try {
-      const res = await fetch('/api/ai/generate-banner', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tournamentName: activeTournament.name,
-          venue: activeTournament.venue,
-          city: activeTournament.city,
-          sponsorName: adSponsor.trim(),
-          title: adTitle.trim() || adSponsor.trim(),
-          subtitle: adSubtitle.trim(),
-          placement: adPlacement,
-          stylePreset: adAiStyle,
-          customPrompt: adAiPrompt.trim(),
-        }),
+      const data = await generateAdaptiveTournamentAdBanners({
+        tournamentName: activeTournament.name,
+        venue: activeTournament.venue,
+        city: activeTournament.city,
+        sponsorName: adSponsor.trim(),
+        title: adTitle.trim() || adSponsor.trim(),
+        subtitle: adSubtitle.trim(),
+        placement: adPlacement,
+        stylePreset: adAiStyle,
+        customPrompt: adAiPrompt.trim(),
       });
-      const data = (await res.json()) as {
-        error?: string;
-        horizontalUrl?: string;
-        verticalUrl?: string;
-        headline?: string;
-        subheadline?: string;
-      };
-      if (!res.ok || !data.horizontalUrl || !data.verticalUrl) {
-        throw new Error(data.error || 'No se pudieron generar los banners con IA.');
-      }
 
       setAdHorizontalUrl(data.horizontalUrl);
       setAdVerticalUrl(data.verticalUrl);

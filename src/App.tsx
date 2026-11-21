@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth, testConnection } from './firebase';
 import { buildDemoBundle } from './data/demoSeed';
+import { mergeSiteLandingConfig, SITE_LANDING_DOC_ID } from './data/siteConfigDefaults';
 import { subscribeCollection } from './services/firestoreService';
 import {
   Division,
@@ -16,6 +17,7 @@ import {
   NotificationAlert,
   PlayerPublic,
   Registration,
+  SiteLandingConfig,
   Tournament,
   TournamentAd,
 } from './types/tennis';
@@ -53,6 +55,7 @@ export default function App() {
   const [fsPhotos, setFsPhotos] = useState<MatchdayPhoto[]>([]);
   const [fsNotifications, setFsNotifications] = useState<NotificationAlert[]>([]);
   const [fsTournamentAds, setFsTournamentAds] = useState<TournamentAd[]>([]);
+  const [fsSiteSettings, setFsSiteSettings] = useState<SiteLandingConfig[]>([]);
   const [firestoreLoaded, setFirestoreLoaded] = useState(false);
 
   // Seguimiento de jugadores para notificaciones push
@@ -88,6 +91,7 @@ export default function App() {
       subscribeCollection<MatchdayPhoto>('photos', setFsPhotos, true),
       subscribeCollection<NotificationAlert>('notifications', setFsNotifications),
       subscribeCollection<TournamentAd>('tournament_ads', setFsTournamentAds),
+      subscribeCollection<SiteLandingConfig>('site_settings', setFsSiteSettings),
     ];
 
     return () => {
@@ -110,6 +114,13 @@ export default function App() {
     ? demoFallback.notifications
     : [...fsNotifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const tournamentAds = useSeededFallback ? demoFallback.tournamentAds : fsTournamentAds;
+  const siteConfig = useMemo(
+    () =>
+      mergeSiteLandingConfig(
+        fsSiteSettings.find((s) => s.id === SITE_LANDING_DOC_ID) || fsSiteSettings[0]
+      ),
+    [fsSiteSettings]
+  );
 
   const [selectedTournamentId, setSelectedTournamentId] = useState<string>(
     'torneo_copa_asuncion_2026'
@@ -171,6 +182,9 @@ export default function App() {
           }}
           onToggleAdmin={() => setView((v) => (v === 'admin' ? 'landing' : 'admin'))}
           isAuthenticated={Boolean(user)}
+          logoUrl={siteConfig.logoUrl}
+          brandFirst={siteConfig.brandFirst}
+          brandSecond={siteConfig.brandSecond}
         />
 
         <div className="flex-1">
@@ -181,6 +195,7 @@ export default function App() {
               players={players}
               matches={matches}
               tournamentAds={tournamentAds}
+              siteConfig={siteConfig}
               selectedTournamentId={effectiveTournamentId}
               onEnterTournament={handleEnterTournament}
               onOpenItfModal={() => setItfModalOpen(true)}
@@ -214,6 +229,7 @@ export default function App() {
               onRequestPush={requestPushPermission}
               followedPlayerIds={followedPlayerIds}
               onToggleFollowPlayer={handleToggleFollowPlayer}
+              defaultTournamentCoverUrl={siteConfig.defaultTournamentCoverUrl}
             />
           )}
 
@@ -230,6 +246,7 @@ export default function App() {
               publishedPhotos={photos}
               notifications={notifications}
               tournamentAds={tournamentAds}
+              siteConfig={siteConfig}
               selectedTournamentId={effectiveTournamentId}
               onSelectTournament={handleSelectTournament}
               selectedDivisionId={effectiveDivisionId}
@@ -243,13 +260,12 @@ export default function App() {
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="font-bold font-display text-[#0A1633]">
-                Play<span className="text-[#7C1FA2]">Py</span>
+                {siteConfig.brandFirst}
+                <span className="text-[#7C1FA2]">{siteConfig.brandSecond}</span>
               </span>
-              <span>· Tu App de Torneos y Competencias</span>
+              {siteConfig.footerTagline && <span>· {siteConfig.footerTagline}</span>}
             </div>
-            <span>
-              Zona horaria America/Asuncion · Reglas ITF 2026
-            </span>
+            <span>{siteConfig.footerRightText}</span>
           </div>
         </footer>
 

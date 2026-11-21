@@ -3,6 +3,7 @@ import {
   Calendar,
   ClipboardCheck,
   Database,
+  LayoutTemplate,
   LogIn,
   LogOut,
   Shield,
@@ -23,6 +24,7 @@ import {
   PlayerPrivate,
   PlayerPublic,
   Registration,
+  SiteLandingConfig,
   StaffRole,
   Tournament,
   TournamentAd,
@@ -39,8 +41,15 @@ import { AdminPlayersSection } from './admin/AdminPlayersSection';
 import { AdminRegistrationsDrawSection } from './admin/AdminRegistrationsDrawSection';
 import { AdminMatchdaysAndPhotosSection } from './admin/AdminMatchdaysAndPhotosSection';
 import { AdminScoringAndRolesSection } from './admin/AdminScoringAndRolesSection';
+import { AdminLandingPageSection } from './admin/AdminLandingPageSection';
 
-type AdminTab = 'torneos' | 'jugadores' | 'inscripciones' | 'jornadas' | 'marcadores';
+type AdminTab =
+  | 'torneos'
+  | 'jugadores'
+  | 'inscripciones'
+  | 'jornadas'
+  | 'marcadores'
+  | 'pagina_principal';
 
 interface AdminDashboardProps {
   user: FirebaseUser | null;
@@ -54,6 +63,7 @@ interface AdminDashboardProps {
   publishedPhotos: MatchdayPhoto[];
   notifications: NotificationAlert[];
   tournamentAds: TournamentAd[];
+  siteConfig: SiteLandingConfig;
   selectedTournamentId: string;
   onSelectTournament: (id: string) => void;
   selectedDivisionId: string;
@@ -73,6 +83,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   publishedPhotos,
   notifications,
   tournamentAds,
+  siteConfig,
   selectedTournamentId,
   onSelectTournament,
   selectedDivisionId,
@@ -245,6 +256,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'inscripciones', label: 'Inscripciones y sorteo', icon: <Shuffle className="w-4 h-4" />, show: isOrganizerOrAbove },
     { id: 'jornadas', label: 'Jornadas y fotos', icon: <Calendar className="w-4 h-4" />, show: isOrganizerOrAbove },
     { id: 'marcadores', label: 'Marcadores y roles', icon: <ClipboardCheck className="w-4 h-4" />, show: isOperatorOrAbove },
+    { id: 'pagina_principal', label: 'Página principal', icon: <LayoutTemplate className="w-4 h-4" />, show: isOrganizerOrAbove },
   ];
 
   // Si es solo operador, llevar directo a marcadores
@@ -517,6 +529,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 const snap = await getDocs(collection(db, 'staff_roles'));
                 setAllStaffRoles(snap.docs.map((d) => d.data() as StaffRole));
               }}
+            />
+          )}
+
+          {currentTab === 'pagina_principal' && (
+            <AdminLandingPageSection
+              siteConfig={siteConfig}
+              tournaments={tournaments}
+              userEmail={user.email || 'staff'}
+              isSuperAdmin={isSuperAdmin}
             />
           )}
         </div>

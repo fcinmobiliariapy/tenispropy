@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Bell, Calendar, Download, Home, Images, Trophy, Users, WifiOff, X } from 'lucide-react';
 import { LiveToast, useOnlineStatus, usePWAInstall } from '../hooks/usePWA';
+import { OFFICIAL_PLAYPY_LOGO } from '../data/siteConfigDefaults';
 
 export type PublicTab = 'resumen' | 'fixture' | 'jornadas' | 'jugadores';
 export type AppView = 'landing' | 'portal' | 'admin';
@@ -12,6 +13,9 @@ interface TopBarProps {
   onSelectPublicTab: (tab: PublicTab) => void;
   onToggleAdmin: () => void;
   isAuthenticated: boolean;
+  logoUrl?: string;
+  brandFirst?: string;
+  brandSecond?: string;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -21,6 +25,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSelectPublicTab,
   onToggleAdmin,
   isAuthenticated,
+  logoUrl,
+  brandFirst = 'Play',
+  brandSecond = 'Py',
 }) => {
   const navItems: Array<{ id: PublicTab; label: string }> = [
     { id: 'resumen', label: 'Competencia' },
@@ -29,22 +36,25 @@ export const TopBar: React.FC<TopBarProps> = ({
     { id: 'jugadores', label: 'Jugadores' },
   ];
 
+  const resolvedLogo = logoUrl?.trim() || OFFICIAL_PLAYPY_LOGO;
+
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#E2E8F0]">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-3 sm:gap-8">
-        {/* Zona 1: Logo oficial + Wordmark PlayPy limpio */}
+        {/* Zona 1: Logo oficial + Wordmark limpio */}
         <button
           onClick={onGoLanding}
           className="flex items-center gap-2.5 text-lg sm:text-xl font-bold tracking-tight whitespace-nowrap shrink-0 font-display focus-visible:outline-2 focus-visible:outline-[#7C1FA2] rounded min-h-[44px]"
         >
           <img
-            src="/assets/aistudio/1BDAB541-40D5-45D3-AE92-EFF59F03FA01_81898b58.png"
-            alt="PlayPy"
+            src={resolvedLogo}
+            alt={`${brandFirst}${brandSecond}`}
+            referrerPolicy="no-referrer"
             className="w-8 h-8 rounded-lg object-contain bg-white border border-[#E2E8F0] p-0.5 shrink-0"
           />
           <span>
-            <span className="text-[#0A1633]">Play</span>
-            <span className="text-[#7C1FA2]">Py</span>
+            <span className="text-[#0A1633]">{brandFirst}</span>
+            <span className="text-[#7C1FA2]">{brandSecond}</span>
           </span>
         </button>
 

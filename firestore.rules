@@ -367,6 +367,69 @@ service cloud.firestore {
         && isNonEmptyStr(data.updatedAt, 40);
     }
 
+    function isValidSiteLandingConfig(data, settingId) {
+      return data.keys().hasAll(['id', 'logoUrl', 'platformBadge', 'brandFirst', 'heroTitle', 'primaryCtaLabel', 'bannerEnabled', 'defaultTournamentCoverUrl', 'useAutoMetrics', 'pillars', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'logoUrl', 'platformBadge', 'brandFirst', 'brandSecond', 'brandSubtitle',
+          'heroTitle', 'heroDescription', 'heroBackgroundImageUrl', 'primaryCtaLabel', 'secondaryCtaLabel', 'showItfButton',
+          'bannerEnabled', 'bannerKicker', 'bannerTitle', 'bannerDescription', 'bannerImageHorizontalUrl', 'bannerImageVerticalUrl',
+          'bannerBadgeUrl', 'bannerCtaLabel', 'bannerCtaUrl', 'bannerShowSpotlightAd', 'bannerFooterLeft', 'bannerFooterRight',
+          'defaultTournamentCoverUrl', 'useAutoMetrics',
+          'stat1Label', 'stat1CustomValue', 'stat2Label', 'stat2CustomValue', 'stat3Label', 'stat3CustomValue', 'stat4Label', 'stat4CustomValue',
+          'pillars', 'selectorKicker', 'selectorTitle', 'selectorSubtitle', 'footerTagline', 'footerRightText', 'updatedAt', 'updatedBy'
+        ])
+        && isValidId(data.id) && data.id == settingId
+        && isNonEmptyStr(data.logoUrl, 250000)
+        && isNonEmptyStr(data.platformBadge, 80)
+        && isNonEmptyStr(data.brandFirst, 40)
+        && (!('brandSecond' in data) || isOptionalStr(data.brandSecond, 40))
+        && (!('brandSubtitle' in data) || isOptionalStr(data.brandSubtitle, 120))
+        && isNonEmptyStr(data.heroTitle, 160)
+        && (!('heroDescription' in data) || isOptionalStr(data.heroDescription, 500))
+        && (!('heroBackgroundImageUrl' in data) || isOptionalStr(data.heroBackgroundImageUrl, 250000))
+        && isNonEmptyStr(data.primaryCtaLabel, 60)
+        && (!('secondaryCtaLabel' in data) || isOptionalStr(data.secondaryCtaLabel, 60))
+        && (!('showItfButton' in data) || data.showItfButton is bool)
+        && data.bannerEnabled is bool
+        && (!('bannerKicker' in data) || isOptionalStr(data.bannerKicker, 120))
+        && (!('bannerTitle' in data) || isOptionalStr(data.bannerTitle, 180))
+        && (!('bannerDescription' in data) || isOptionalStr(data.bannerDescription, 500))
+        && (!('bannerImageHorizontalUrl' in data) || isOptionalStr(data.bannerImageHorizontalUrl, 250000))
+        && (!('bannerImageVerticalUrl' in data) || isOptionalStr(data.bannerImageVerticalUrl, 250000))
+        && (!('bannerBadgeUrl' in data) || isOptionalStr(data.bannerBadgeUrl, 250000))
+        && (!('bannerCtaLabel' in data) || isOptionalStr(data.bannerCtaLabel, 60))
+        && (!('bannerCtaUrl' in data) || isOptionalStr(data.bannerCtaUrl, 2000))
+        && (!('bannerShowSpotlightAd' in data) || data.bannerShowSpotlightAd is bool)
+        && (!('bannerFooterLeft' in data) || isOptionalStr(data.bannerFooterLeft, 140))
+        && (!('bannerFooterRight' in data) || isOptionalStr(data.bannerFooterRight, 80))
+        && isNonEmptyStr(data.defaultTournamentCoverUrl, 250000)
+        && data.useAutoMetrics is bool
+        && (!('stat1Label' in data) || isOptionalStr(data.stat1Label, 80))
+        && (!('stat1CustomValue' in data) || isOptionalStr(data.stat1CustomValue, 40))
+        && (!('stat2Label' in data) || isOptionalStr(data.stat2Label, 80))
+        && (!('stat2CustomValue' in data) || isOptionalStr(data.stat2CustomValue, 40))
+        && (!('stat3Label' in data) || isOptionalStr(data.stat3Label, 80))
+        && (!('stat3CustomValue' in data) || isOptionalStr(data.stat3CustomValue, 40))
+        && (!('stat4Label' in data) || isOptionalStr(data.stat4Label, 80))
+        && (!('stat4CustomValue' in data) || isOptionalStr(data.stat4CustomValue, 40))
+        && isValidList(data.pillars, 6)
+        && (data.pillars.size() == 0 || (
+          data.pillars[0] is map
+          && data.pillars[0].keys().hasAll(['title', 'description', 'icon'])
+          && data.pillars[0].keys().hasOnly(['title', 'description', 'icon'])
+          && isNonEmptyStr(data.pillars[0].title, 100)
+          && isOptionalStr(data.pillars[0].description, 280)
+          && data.pillars[0].icon in ['award', 'calendar', 'sparkles', 'trophy', 'users', 'shield']
+        ))
+        && (!('selectorKicker' in data) || isOptionalStr(data.selectorKicker, 100))
+        && (!('selectorTitle' in data) || isOptionalStr(data.selectorTitle, 160))
+        && (!('selectorSubtitle' in data) || isOptionalStr(data.selectorSubtitle, 300))
+        && (!('footerTagline' in data) || isOptionalStr(data.footerTagline, 140))
+        && (!('footerRightText' in data) || isOptionalStr(data.footerRightText, 140))
+        && isNonEmptyStr(data.updatedAt, 40)
+        && (!('updatedBy' in data) || isOptionalStr(data.updatedBy, 160));
+    }
+
     // 4. Reglas por colección
     match /test/connection {
       allow get: if true;
@@ -558,6 +621,15 @@ service cloud.firestore {
         && (isSuperAdmin() || incoming().tournamentId == existing().tournamentId)
         && incoming().createdAt == existing().createdAt;
       allow delete: if isValidId(adId) && isSuperAdmin();
+    }
+
+    match /site_settings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if true;
+      allow create: if isValidId(settingId) && isValidSiteLandingConfig(incoming(), settingId) && isAnyStaff();
+      allow update: if isValidId(settingId) && isValidSiteLandingConfig(incoming(), settingId) && isAnyStaff()
+        && incoming().id == existing().id;
+      allow delete: if isValidId(settingId) && isSuperAdmin();
     }
   }
 }

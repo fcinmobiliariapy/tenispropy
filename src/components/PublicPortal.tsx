@@ -7,7 +7,6 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  ExternalLink,
   Images,
   LayoutGrid,
   List,
@@ -32,6 +31,7 @@ import {
 import { formatScoreString } from '../utils/itfRules';
 import { compareMatchesByRound, formatAsuncionDate } from '../utils/tournamentEngine';
 import { PublicTab, PWAInstallButton } from './TopBarAndPWA';
+import { TournamentAd as TournamentAdCard } from './TournamentAd';
 
 interface PublicPortalProps {
   tournaments: Tournament[];
@@ -56,6 +56,7 @@ interface PublicPortalProps {
   onRequestPush: () => Promise<boolean>;
   followedPlayerIds: string[];
   onToggleFollowPlayer: (playerId: string) => void;
+  defaultTournamentCoverUrl?: string;
 }
 
 const MATCH_STATUS_LABEL: Record<string, { label: string; tone: string }> = {
@@ -410,182 +411,6 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
   );
 };
 
-const SponsorAdCard: React.FC<{
-  ad: TournamentAd;
-  variant?: 'featured' | 'compact' | 'footer';
-}> = ({ ad, variant = 'compact' }) => {
-  const [horizontalErr, setHorizontalErr] = useState(false);
-  const [verticalErr, setVerticalErr] = useState(false);
-
-  const horizontalSrc = ad.horizontalImageUrl || ad.imageUrl;
-  const verticalSrc = ad.verticalImageUrl || ad.imageUrl;
-  const hasDedicatedVertical = Boolean(ad.verticalImageUrl);
-
-  useEffect(() => {
-    setHorizontalErr(false);
-    setVerticalErr(false);
-  }, [ad.imageUrl, ad.horizontalImageUrl, ad.verticalImageUrl]);
-
-  const sponsorInitials = useMemo(() => {
-    const parts = ad.sponsorName.trim().split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    return (parts[0]?.slice(0, 2) || 'SP').toUpperCase();
-  }, [ad.sponsorName]);
-
-  const isFeatured = variant === 'featured';
-  const isFooter = variant === 'footer';
-
-  const renderFallback = (compactLabel = false) => (
-    <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center text-white bg-gradient-to-br from-[#0A1633] via-[#7C1FA2] to-[#0284C7]">
-      <span className="font-mono tabular-nums text-base font-bold tracking-wider">
-        {sponsorInitials}
-      </span>
-      {!compactLabel && (
-        <span className="text-[11px] text-white/85 mt-1 line-clamp-1">
-          {ad.sponsorName}
-        </span>
-      )}
-    </div>
-  );
-
-  const cardBody = (
-    <div
-      className={`group h-full bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden flex ${
-        isFeatured
-          ? 'flex-col md:flex-row'
-          : isFooter
-          ? 'flex-row items-center gap-3.5 p-3'
-          : 'flex-col'
-      } hover:border-[#7C1FA2]/50 transition-colors`}
-    >
-      {/* Bloque multimedia adaptativo: Horizontal en desktop/pie y Vertical en lateral/móvil retrato */}
-      {isFeatured ? (
-        <div className="relative overflow-hidden bg-[#0A1633] shrink-0 w-full md:w-[46%]">
-          {/* Móvil retrato (< sm): formato vertical automático si está disponible */}
-          <div className={`sm:hidden ${hasDedicatedVertical ? 'aspect-[3/4] max-h-[380px] mx-auto' : 'aspect-[16/9]'}`}>
-            {verticalSrc && !verticalErr ? (
-              <img
-                src={verticalSrc}
-                alt={`${ad.sponsorName} - ${ad.title}`}
-                referrerPolicy="no-referrer"
-                onError={() => setVerticalErr(true)}
-                className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-              />
-            ) : (
-              renderFallback()
-            )}
-          </div>
-          {/* Tablet y escritorio (>= sm): formato horizontal 16:9 */}
-          <div className="hidden sm:block w-full h-full aspect-[16/9] md:aspect-auto md:min-h-[210px]">
-            {horizontalSrc && !horizontalErr ? (
-              <img
-                src={horizontalSrc}
-                alt={`${ad.sponsorName} - ${ad.title}`}
-                referrerPolicy="no-referrer"
-                onError={() => setHorizontalErr(true)}
-                className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-              />
-            ) : (
-              renderFallback()
-            )}
-          </div>
-        </div>
-      ) : isFooter ? (
-        <div className="relative overflow-hidden bg-[#0A1633] shrink-0 w-24 aspect-[16/9] rounded-xl">
-          {horizontalSrc && !horizontalErr ? (
-            <img
-              src={horizontalSrc}
-              alt={`${ad.sponsorName} - ${ad.title}`}
-              referrerPolicy="no-referrer"
-              onError={() => setHorizontalErr(true)}
-              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-            />
-          ) : (
-            renderFallback(true)
-          )}
-        </div>
-      ) : (
-        <div
-          className={`relative overflow-hidden bg-[#0A1633] shrink-0 w-full ${
-            hasDedicatedVertical ? 'aspect-[3/4] max-h-[340px]' : 'aspect-[16/9]'
-          }`}
-        >
-          {verticalSrc && !verticalErr ? (
-            <img
-              src={verticalSrc}
-              alt={`${ad.sponsorName} - ${ad.title}`}
-              referrerPolicy="no-referrer"
-              onError={() => setVerticalErr(true)}
-              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-            />
-          ) : horizontalSrc && !horizontalErr ? (
-            <img
-              src={horizontalSrc}
-              alt={`${ad.sponsorName} - ${ad.title}`}
-              referrerPolicy="no-referrer"
-              onError={() => setHorizontalErr(true)}
-              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-            />
-          ) : (
-            renderFallback()
-          )}
-        </div>
-      )}
-
-      <div
-        className={`flex-1 min-w-0 flex flex-col justify-between ${
-          isFooter ? 'py-0.5' : isFeatured ? 'p-5 sm:p-6' : 'p-4'
-        }`}
-      >
-        <div>
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7C1FA2] truncate">
-              {ad.sponsorName}
-            </p>
-            <span className="text-[10px] text-[#475569] shrink-0">Auspiciante</span>
-          </div>
-          <h3
-            className={`font-bold text-[#0A1633] leading-snug mt-1 ${
-              isFeatured ? 'text-base sm:text-lg' : isFooter ? 'text-xs sm:text-sm truncate' : 'text-sm sm:text-base'
-            }`}
-          >
-            {ad.title}
-          </h3>
-          {ad.subtitle && !isFooter && (
-            <p className="text-xs sm:text-sm text-[#475569] mt-1.5 line-clamp-2">
-              {ad.subtitle}
-            </p>
-          )}
-        </div>
-
-        {ad.targetUrl && (
-          <div className={isFooter ? 'mt-1' : 'mt-3 pt-2.5 border-t border-[#E2E8F0]'}>
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0284C7] group-hover:underline">
-              Visitar sitio oficial
-              <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  if (ad.targetUrl) {
-    return (
-      <a
-        href={ad.targetUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7C1FA2] rounded-2xl"
-      >
-        {cardBody}
-      </a>
-    );
-  }
-
-  return cardBody;
-};
-
 export const PublicPortal: React.FC<PublicPortalProps> = ({
   tournaments,
   divisions,
@@ -609,6 +434,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   onRequestPush,
   followedPlayerIds,
   onToggleFollowPlayer,
+  defaultTournamentCoverUrl,
 }) => {
   const [heroImgFailed, setHeroImgFailed] = useState(false);
 
@@ -641,6 +467,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
   const heroCoverUrl =
     activeTournament?.coverImageUrl ||
+    defaultTournamentCoverUrl ||
     '/src/assets/images/hero_clay_court_1795134987256.jpg';
 
   useEffect(() => {
@@ -2004,7 +1831,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             {principalAds.length > 0 && (
               <div className="space-y-4">
                 {principalAds.map((ad) => (
-                  <SponsorAdCard key={ad.id} ad={ad} variant="featured" />
+                  <TournamentAdCard
+                    key={ad.id}
+                    ad={ad}
+                    variant="featured"
+                    tournamentName={activeTournament?.name}
+                    tournamentVenue={activeTournament?.venue}
+                    tournamentCity={activeTournament?.city}
+                  />
                 ))}
               </div>
             )}
@@ -2012,7 +1846,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             {lateralAds.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {lateralAds.map((ad) => (
-                  <SponsorAdCard key={ad.id} ad={ad} variant="compact" />
+                  <TournamentAdCard
+                    key={ad.id}
+                    ad={ad}
+                    variant="compact"
+                    tournamentName={activeTournament?.name}
+                    tournamentVenue={activeTournament?.venue}
+                    tournamentCity={activeTournament?.city}
+                  />
                 ))}
               </div>
             )}
@@ -2597,7 +2438,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {pieAds.map((ad) => (
-              <SponsorAdCard key={ad.id} ad={ad} variant="footer" />
+              <TournamentAdCard
+                key={ad.id}
+                ad={ad}
+                variant="footer"
+                tournamentName={activeTournament?.name}
+                tournamentVenue={activeTournament?.venue}
+                tournamentCity={activeTournament?.city}
+              />
             ))}
           </div>
         </section>

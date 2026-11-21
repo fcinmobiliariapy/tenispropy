@@ -331,3 +331,57 @@ export interface TournamentAd {
   updatedAt: string;
 }
 
+export type SitePillarIcon = 'award' | 'calendar' | 'sparkles' | 'trophy' | 'users' | 'shield';
+
+export interface SitePillar {
+  title: string;
+  description: string;
+  icon: SitePillarIcon;
+}
+
+export interface SiteLandingConfig {
+  id: string;
+  logoUrl: string;
+  platformBadge: string;
+  brandFirst: string;
+  brandSecond: string;
+  brandSubtitle: string;
+  heroTitle: string;
+  heroDescription: string;
+  heroBackgroundImageUrl?: string | null;
+  primaryCtaLabel: string;
+  secondaryCtaLabel: string;
+  showItfButton: boolean;
+  bannerEnabled: boolean;
+  bannerKicker: string;
+  bannerTitle: string;
+  bannerDescription: string;
+  bannerImageHorizontalUrl?: string | null;
+  bannerImageVerticalUrl?: string | null;
+  bannerBadgeUrl?: string | null;
+  bannerCtaLabel: string;
+  bannerCtaUrl?: string | null;
+  bannerShowSpotlightAd: boolean;
+  bannerFooterLeft: string;
+  bannerFooterRight: string;
+  defaultTournamentCoverUrl: string;
+  useAutoMetrics: boolean;
+  stat1Label: string;
+  stat1CustomValue?: string | null;
+  stat2Label: string;
+  stat2CustomValue?: string | null;
+  stat3Label: string;
+  stat3CustomValue?: string | null;
+  stat4Label: string;
+  stat4CustomValue?: string | null;
+  pillars: SitePillar[];
+  selectorKicker: string;
+  selectorTitle: string;
+  selectorSubtitle: string;
+  footerTagline: string;
+  footerRightText: string;
+  updatedAt: string;
+  updatedBy?: string | null;
+}
+
+

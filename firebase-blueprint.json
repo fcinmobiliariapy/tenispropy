@@ -264,6 +264,56 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "tournamentId", "sponsorName", "title", "imageUrl", "placement", "order", "active", "createdAt", "updatedAt"]
+    },
+    "SiteLandingConfig": {
+      "title": "SiteLandingConfig",
+      "description": "Configuración editable de la página principal de PlayPy (identidad, imágenes, banner y textos).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "logoUrl": { "type": "string", "minLength": 1, "maxLength": 250000 },
+        "platformBadge": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "brandFirst": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "brandSecond": { "type": "string", "maxLength": 40 },
+        "brandSubtitle": { "type": "string", "maxLength": 120 },
+        "heroTitle": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "heroDescription": { "type": "string", "maxLength": 500 },
+        "heroBackgroundImageUrl": { "type": "string", "maxLength": 250000 },
+        "primaryCtaLabel": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "secondaryCtaLabel": { "type": "string", "maxLength": 60 },
+        "showItfButton": { "type": "boolean" },
+        "bannerEnabled": { "type": "boolean" },
+        "bannerKicker": { "type": "string", "maxLength": 120 },
+        "bannerTitle": { "type": "string", "maxLength": 180 },
+        "bannerDescription": { "type": "string", "maxLength": 500 },
+        "bannerImageHorizontalUrl": { "type": "string", "maxLength": 250000 },
+        "bannerImageVerticalUrl": { "type": "string", "maxLength": 250000 },
+        "bannerBadgeUrl": { "type": "string", "maxLength": 250000 },
+        "bannerCtaLabel": { "type": "string", "maxLength": 60 },
+        "bannerCtaUrl": { "type": "string", "maxLength": 2000 },
+        "bannerShowSpotlightAd": { "type": "boolean" },
+        "bannerFooterLeft": { "type": "string", "maxLength": 140 },
+        "bannerFooterRight": { "type": "string", "maxLength": 80 },
+        "defaultTournamentCoverUrl": { "type": "string", "minLength": 1, "maxLength": 250000 },
+        "useAutoMetrics": { "type": "boolean" },
+        "stat1Label": { "type": "string", "maxLength": 80 },
+        "stat1CustomValue": { "type": "string", "maxLength": 40 },
+        "stat2Label": { "type": "string", "maxLength": 80 },
+        "stat2CustomValue": { "type": "string", "maxLength": 40 },
+        "stat3Label": { "type": "string", "maxLength": 80 },
+        "stat3CustomValue": { "type": "string", "maxLength": 40 },
+        "stat4Label": { "type": "string", "maxLength": 80 },
+        "stat4CustomValue": { "type": "string", "maxLength": 40 },
+        "pillars": { "type": "array" },
+        "selectorKicker": { "type": "string", "maxLength": 100 },
+        "selectorTitle": { "type": "string", "maxLength": 160 },
+        "selectorSubtitle": { "type": "string", "maxLength": 300 },
+        "footerTagline": { "type": "string", "maxLength": 140 },
+        "footerRightText": { "type": "string", "maxLength": 140 },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string", "maxLength": 160 }
+      },
+      "required": ["id", "logoUrl", "platformBadge", "brandFirst", "heroTitle", "primaryCtaLabel", "bannerEnabled", "defaultTournamentCoverUrl", "useAutoMetrics", "pillars", "updatedAt"]
     }
   },
   "firestore": {
@@ -318,6 +368,10 @@
     "/tournament_ads/{adId}": {
       "schema": { "$ref": "#/entities/TournamentAd" },
       "description": "Publicidades y auspiciantes personalizados por torneo."
+    },
+    "/site_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SiteLandingConfig" },
+      "description": "Configuración global editable de la página principal y portada."
     }
   }
 }
