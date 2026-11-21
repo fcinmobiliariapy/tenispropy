@@ -169,3 +169,41 @@ export function buildTrophyWhatsAppMessage(params: {
   }
   return lines.join('\n');
 }
+
+export function buildHeadToHeadWhatsAppMessage(params: {
+  match: Match;
+  winsA: number;
+  winsB: number;
+  totalMeetings: number;
+  tournamentName?: string;
+  divisionName?: string;
+  appUrl?: string;
+}): string {
+  const { match, winsA, winsB, totalMeetings, tournamentName, divisionName, appUrl } = params;
+  const url = appUrl || getAppBaseUrl();
+  const lines: string[] = [
+    `⚔️ *Cara a Cara · ${tournamentName || 'PlayPy'}*${divisionName ? ` · ${divisionName}` : ''}`,
+    `📌 *${match.roundName}*`,
+    `🆚 *${match.entryAName}* vs *${match.entryBName}*`,
+    totalMeetings > 0
+      ? `📊 Historial previo en PlayPy: *${winsA} - ${winsB}* (${totalMeetings} ${totalMeetings === 1 ? 'cruce' : 'cruces'})`
+      : `✨ *Primer enfrentamiento oficial registrado*`,
+  ];
+
+  const hasResult = Boolean(
+    match.winnerEntryId &&
+      ['finalizado', 'wo', 'retiro', 'descalificado'].includes(match.status)
+  );
+  if (hasResult) {
+    lines.push(`🏆 Resultado actual: *${formatScoreString(match.sets, match.status)}*${match.winnerName ? ` (${match.winnerName})` : ''}`);
+  } else if (match.scheduledDate) {
+    lines.push(
+      `📅 ${formatAsuncionDate(match.scheduledDate)}${match.scheduledTime ? ` · ${match.scheduledTime} hs` : ''}${match.courtName ? ` · ${match.courtName}` : ''}`
+    );
+  }
+
+  if (url) {
+    lines.push(`🔗 Seguilo en PlayPy: ${url}`);
+  }
+  return lines.join('\n');
+}

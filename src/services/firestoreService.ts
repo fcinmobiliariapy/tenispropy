@@ -259,6 +259,17 @@ export async function fetchDraftPhotosForAdmin(): Promise<MatchdayPhoto[]> {
   }
 }
 
+export async function fetchPublishedMatchesFromFirestore(): Promise<Match[]> {
+  try {
+    const q = query(collection(db, 'matches'), where('published', '==', true));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.data() as Match);
+  } catch (err) {
+    console.warn('No se pudieron consultar partidos desde Firestore:', err);
+    return [];
+  }
+}
+
 export async function seedDemoTournamentsToFirestore(adminUid: string, force = false): Promise<boolean> {
   try {
     const existing = await getDocs(collection(db, 'tournaments'));

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowLeftRight,
   Award,
   Bell,
   BellRing,
@@ -40,6 +41,7 @@ import {
   buildTournamentWhatsAppMessage,
 } from '../utils/whatsappShare';
 import { WhatsAppShareButton } from './WhatsAppShareButton';
+import { HeadToHeadModal } from './HeadToHeadModal';
 
 interface PublicPortalProps {
   tournaments: Tournament[];
@@ -184,6 +186,7 @@ interface BracketMatchCardProps {
   divisionName?: string;
   getSidePlayers: (playerIds: string[], entryId?: string | null) => PlayerPublic[];
   getSideSeed: (entryId?: string | null) => number | null;
+  onSelectMatch?: (match: Match) => void;
 }
 
 const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
@@ -193,9 +196,13 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
   divisionName,
   getSidePlayers,
   getSideSeed,
+  onSelectMatch,
 }) => {
   const isFinal = variant === 'final';
   const isThird = variant === 'third_place';
+  const canInspectH2H = Boolean(
+    onSelectMatch && !match.isBye && (match.entryAId || match.entryBId)
+  );
   const hasWinner = Boolean(match.winnerEntryId && !match.isBye);
   const statusInfo = MATCH_STATUS_LABEL[match.status];
 
@@ -210,11 +217,17 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
     ? `${formatAsuncionDate(match.scheduledDate)}${match.scheduledTime ? ` · ${match.scheduledTime} hs` : ''}`
     : 'Por programar';
 
-  const containerClass = isFinal
-    ? 'rounded-2xl border border-[#F59E0B]/60 bg-gradient-to-b from-[#FFFBEB] via-white to-[#F8FAFC] p-3.5 sm:p-4 shadow-[0_10px_28px_-14px_rgba(180,83,9,0.28)]'
-    : isThird
-    ? 'rounded-2xl border border-[#EA580C]/45 bg-gradient-to-b from-[#FFF7ED] via-white to-white p-3.5 sm:p-4 shadow-[0_10px_28px_-14px_rgba(194,65,12,0.18)]'
-    : 'rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3';
+  const interactiveClass = canInspectH2H
+    ? 'cursor-pointer hover:border-[#7C1FA2]/70 transition-colors focus-visible:outline-2 focus-visible:outline-[#7C1FA2]'
+    : '';
+
+  const containerClass = `${
+    isFinal
+      ? 'rounded-2xl border border-[#F59E0B]/60 bg-gradient-to-b from-[#FFFBEB] via-white to-[#F8FAFC] p-3.5 sm:p-4 shadow-[0_10px_28px_-14px_rgba(180,83,9,0.28)]'
+      : isThird
+      ? 'rounded-2xl border border-[#EA580C]/45 bg-gradient-to-b from-[#FFF7ED] via-white to-white p-3.5 sm:p-4 shadow-[0_10px_28px_-14px_rgba(194,65,12,0.18)]'
+      : 'rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3'
+  } ${interactiveClass}`;
 
   const renderSide = (side: 'A' | 'B') => {
     const entryId = side === 'A' ? match.entryAId : match.entryBId;
@@ -359,7 +372,23 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
   };
 
   return (
-    <div className={containerClass}>
+    <div
+      className={containerClass}
+      role={canInspectH2H ? 'button' : undefined}
+      tabIndex={canInspectH2H ? 0 : undefined}
+      onClick={canInspectH2H ? () => onSelectMatch?.(match) : undefined}
+      onKeyDown={
+        canInspectH2H
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelectMatch?.(match);
+              }
+            }
+          : undefined
+      }
+      title={canInspectH2H ? 'Ver Cara a Cara e historial previo' : undefined}
+    >
       <div className="flex items-center justify-between gap-2 mb-2.5">
         {isFinal ? (
           <div className="flex items-center gap-2 min-w-0">
@@ -420,15 +449,23 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
               </span>
             )}
             {!match.isBye && (match.entryAId || match.entryBId) && (
-              <WhatsAppShareButton
-                compact
-                label="Compartir"
-                message={buildMatchWhatsAppMessage({
-                  match,
-                  tournamentName,
-                  divisionName,
-                })}
-              />
+              <>
+                {canInspectH2H && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#7C1FA2]">
+                    <ArrowLeftRight className="w-3 h-3" />
+                    Cara a Cara
+                  </span>
+                )}
+                <WhatsAppShareButton
+                  compact
+                  label="Compartir"
+                  message={buildMatchWhatsAppMessage({
+                    match,
+                    tournamentName,
+                    divisionName,
+                  })}
+                />
+              </>
             )}
           </div>
         </div>
@@ -441,15 +478,23 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
               ? `W.O. · Gana ${match.winnerName}`
               : statusInfo?.label || ''}
           </span>
-          <WhatsAppShareButton
-            compact
-            label="WhatsApp"
-            message={buildMatchWhatsAppMessage({
-              match,
-              tournamentName,
-              divisionName,
-            })}
-          />
+          <div className="flex items-center gap-2 shrink-0">
+            {canInspectH2H && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#7C1FA2]">
+                <ArrowLeftRight className="w-3 h-3" />
+                H2H
+              </span>
+            )}
+            <WhatsAppShareButton
+              compact
+              label="WhatsApp"
+              message={buildMatchWhatsAppMessage({
+                match,
+                tournamentName,
+                divisionName,
+              })}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -502,9 +547,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   const [lightboxPhotos, setLightboxPhotos] = useState<MatchdayPhoto[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState<number>(0);
 
-  // Player profile modal state
+  // Player profile modal & Head-to-Head modal state
   const [playerSearch, setPlayerSearch] = useState('');
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerPublic | null>(null);
+  const [selectedH2HMatch, setSelectedH2HMatch] = useState<Match | null>(null);
 
   const activeTournament = useMemo(
     () => tournaments.find((t) => t.id === selectedTournamentId) || tournaments[0] || null,
@@ -1140,13 +1186,29 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 ) : (
                   <div className="divide-y divide-[#E2E8F0]">
                     {upcomingMatches.slice(0, 6).map((m) => (
-                      <div key={m.id} className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div
+                        key={m.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedH2HMatch(m)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedH2HMatch(m);
+                          }
+                        }}
+                        className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:bg-[#F8FAFC] transition-colors focus-visible:outline-2 focus-visible:outline-[#7C1FA2]"
+                      >
                         <div className="min-w-0">
                           <p className="text-xs text-[#475569]">
                             {m.roundName} · {m.courtName || 'Cancha por definir'}
                           </p>
                           <p className="mt-1 text-sm font-semibold text-[#0A1633]">
                             {m.entryAName} <span className="text-[#475569] font-normal">vs</span> {m.entryBName}
+                          </p>
+                          <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-[#7C1FA2]">
+                            <ArrowLeftRight className="w-3 h-3" />
+                            Ver Cara a Cara
                           </p>
                         </div>
                         <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
@@ -1189,7 +1251,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   ) : (
                     <div className="divide-y divide-[#E2E8F0]">
                       {recentResults.slice(0, 5).map((m) => (
-                        <div key={m.id} className="p-4 space-y-2">
+                        <div
+                          key={m.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedH2HMatch(m)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedH2HMatch(m);
+                            }
+                          }}
+                          className="p-4 space-y-2 cursor-pointer hover:bg-[#F8FAFC] transition-colors focus-visible:outline-2 focus-visible:outline-[#7C1FA2]"
+                        >
                           <div className="flex items-center justify-between gap-2 text-xs text-[#475569]">
                             <span>{m.roundName}</span>
                             <span className={MATCH_STATUS_LABEL[m.status]?.tone}>
@@ -1210,8 +1284,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                             </div>
                           </div>
                           <div className="flex items-center justify-between gap-2 pt-1">
-                            <span className="text-[11px] text-[#475569] truncate">
-                              {m.winnerName ? `Ganador: ${m.winnerName}` : ''}
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#7C1FA2] truncate">
+                              <ArrowLeftRight className="w-3 h-3 shrink-0" />
+                              Cara a Cara
+                              {m.winnerName ? ` · Ganó ${m.winnerName}` : ''}
                             </span>
                             <WhatsAppShareButton
                               compact
@@ -1656,6 +1732,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                 divisionName={activeDivision?.name}
                                 getSidePlayers={getMatchSidePlayers}
                                 getSideSeed={getMatchSideSeed}
+                                onSelectMatch={setSelectedH2HMatch}
                               />
                             );
                           })}
@@ -1669,6 +1746,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                             divisionName={activeDivision?.name}
                             getSidePlayers={getMatchSidePlayers}
                             getSideSeed={getMatchSideSeed}
+                            onSelectMatch={setSelectedH2HMatch}
                           />
                         )
                       )}
@@ -1706,6 +1784,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                   divisionName={activeDivision?.name}
                                   getSidePlayers={getMatchSidePlayers}
                                   getSideSeed={getMatchSideSeed}
+                                  onSelectMatch={setSelectedH2HMatch}
                                 />
                               ))}
                               {thirdPlaceMatch ? (
@@ -1716,6 +1795,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                   divisionName={activeDivision?.name}
                                   getSidePlayers={getMatchSidePlayers}
                                   getSideSeed={getMatchSideSeed}
+                                  onSelectMatch={setSelectedH2HMatch}
                                 />
                               ) : (
                                 activeDivision.hasThirdPlaceMatch && (
@@ -1785,6 +1865,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                                   divisionName={activeDivision?.name}
                                                   getSidePlayers={getMatchSidePlayers}
                                                   getSideSeed={getMatchSideSeed}
+                                                  onSelectMatch={setSelectedH2HMatch}
                                                 />
                                               </div>
                                               <div
@@ -1801,6 +1882,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                                   divisionName={activeDivision?.name}
                                                   getSidePlayers={getMatchSidePlayers}
                                                   getSideSeed={getMatchSideSeed}
+                                                  onSelectMatch={setSelectedH2HMatch}
                                                 />
                                               </div>
                                               <div
@@ -1835,6 +1917,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                           divisionName={activeDivision?.name}
                                           getSidePlayers={getMatchSidePlayers}
                                           getSideSeed={getMatchSideSeed}
+                                          onSelectMatch={setSelectedH2HMatch}
                                         />
                                       ))}
                                     </div>
@@ -1867,6 +1950,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                         divisionName={activeDivision?.name}
                                         getSidePlayers={getMatchSidePlayers}
                                         getSideSeed={getMatchSideSeed}
+                                        onSelectMatch={setSelectedH2HMatch}
                                       />
                                     ))}
 
@@ -1878,6 +1962,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                         divisionName={activeDivision?.name}
                                         getSidePlayers={getMatchSidePlayers}
                                         getSideSeed={getMatchSideSeed}
+                                        onSelectMatch={setSelectedH2HMatch}
                                       />
                                     ) : (
                                       activeDivision.hasThirdPlaceMatch && (
@@ -2154,7 +2239,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     const t = tournaments.find((x) => x.id === m.tournamentId);
                     const d = divisions.find((x) => x.id === m.divisionId);
                     return (
-                      <div key={m.id} className="bg-white border border-[#E2E8F0] rounded-2xl p-4 space-y-2.5">
+                      <div
+                        key={m.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedH2HMatch(m)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedH2HMatch(m);
+                          }
+                        }}
+                        className="bg-white border border-[#E2E8F0] hover:border-[#7C1FA2]/60 rounded-2xl p-4 space-y-2.5 cursor-pointer transition-colors"
+                      >
                         <div className="flex items-center justify-between gap-2 text-xs text-[#475569]">
                           <span className="truncate font-medium text-[#7C1FA2]">
                             {d?.name} · {m.roundName}
@@ -2176,8 +2273,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         </div>
 
                         <div className="pt-2 border-t border-[#E2E8F0] flex items-center justify-between gap-2 text-xs">
-                          <span className="text-[#475569] truncate">
-                            {m.courtName || 'Cancha por definir'} · {t?.name}
+                          <span className="inline-flex items-center gap-1.5 text-[#475569] truncate">
+                            <ArrowLeftRight className="w-3 h-3 text-[#7C1FA2] shrink-0" />
+                            <span className="truncate">{m.courtName || 'Cancha por definir'} · {t?.name}</span>
                           </span>
                           <div className="shrink-0 flex items-center gap-2 text-right">
                             <span className={MATCH_STATUS_LABEL[m.status]?.tone}>
@@ -2215,7 +2313,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         <th className="py-3 px-4">Participantes</th>
                         <th className="py-3 px-4">Cancha</th>
                         <th className="py-3 px-4">Estado / Marcador</th>
-                        <th className="py-3 px-4 text-right">Compartir</th>
+                        <th className="py-3 px-4 text-right">Acciones</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E2E8F0] text-sm">
@@ -2228,7 +2326,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           m.status === 'retiro' ||
                           m.status === 'descalificado';
                         return (
-                          <tr key={m.id} className="hover:bg-[#F8FAFC] transition-colors">
+                          <tr
+                            key={m.id}
+                            onClick={() => setSelectedH2HMatch(m)}
+                            className="hover:bg-[#F8FAFC] transition-colors cursor-pointer"
+                            title="Clic para ver Cara a Cara e historial"
+                          >
                             <td className="py-3 px-4 font-mono tabular-nums text-xs">
                               <div className="font-medium text-[#0A1633]">
                                 {m.scheduledDate ? formatAsuncionDate(m.scheduledDate) : 'Fecha por definir'}
@@ -2267,15 +2370,28 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                               )}
                             </td>
                             <td className="py-3 px-4 text-right">
-                              <WhatsAppShareButton
-                                compact
-                                label="WhatsApp"
-                                message={buildMatchWhatsAppMessage({
-                                  match: m,
-                                  tournament: t,
-                                  division: d,
-                                })}
-                              />
+                              <div className="inline-flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedH2HMatch(m);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-[#E2E8F0] bg-white text-[11px] font-semibold text-[#7C1FA2] hover:bg-[#F8FAFC] transition-colors whitespace-nowrap"
+                                >
+                                  <ArrowLeftRight className="w-3 h-3" />
+                                  H2H
+                                </button>
+                                <WhatsAppShareButton
+                                  compact
+                                  label="WhatsApp"
+                                  message={buildMatchWhatsAppMessage({
+                                    match: m,
+                                    tournament: t,
+                                    division: d,
+                                  })}
+                                />
+                              </div>
                             </td>
                           </tr>
                         );
@@ -2313,7 +2429,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           m.status === 'retiro' ||
                           m.status === 'descalificado';
                         return (
-                          <div key={m.id} className="bg-white p-4 space-y-2">
+                          <div
+                            key={m.id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setSelectedH2HMatch(m)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setSelectedH2HMatch(m);
+                              }
+                            }}
+                            className="bg-white hover:bg-[#F8FAFC] p-4 space-y-2 cursor-pointer transition-colors"
+                          >
                             <div className="flex items-center justify-between text-xs text-[#475569]">
                               <span className="font-mono tabular-nums font-semibold text-[#0A1633]">
                                 {m.scheduledTime ? `${m.scheduledTime} hs` : 'TBC'}
@@ -2337,15 +2465,21 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                   </span>
                                 )}
                               </div>
-                              <WhatsAppShareButton
-                                compact
-                                label="WhatsApp"
-                                message={buildMatchWhatsAppMessage({
-                                  match: m,
-                                  tournament: t,
-                                  division: d,
-                                })}
-                              />
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#7C1FA2]">
+                                  <ArrowLeftRight className="w-3 h-3" />
+                                  H2H
+                                </span>
+                                <WhatsAppShareButton
+                                  compact
+                                  label="WhatsApp"
+                                  message={buildMatchWhatsAppMessage({
+                                    match: m,
+                                    tournament: t,
+                                    division: d,
+                                  })}
+                                />
+                              </div>
                             </div>
                           </div>
                         );
@@ -2407,7 +2541,19 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         ) : (
                           <div className="divide-y divide-[#E2E8F0]">
                             {mdMatches.map((m) => (
-                              <div key={m.id} className="py-2.5 flex items-center justify-between gap-3">
+                              <div
+                                key={m.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setSelectedH2HMatch(m)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setSelectedH2HMatch(m);
+                                  }
+                                }}
+                                className="py-2.5 px-2 -mx-2 rounded-lg flex items-center justify-between gap-3 cursor-pointer hover:bg-[#F8FAFC] transition-colors"
+                              >
                                 <div className="min-w-0">
                                   <p className="text-xs text-[#475569]">
                                     {m.scheduledTime ? `${m.scheduledTime} hs` : 'TBC'} · {m.courtName || 'Sin cancha'}
@@ -2794,7 +2940,23 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           ((isA && m.winnerEntryId === m.entryAId) ||
                             (!isA && m.winnerEntryId === m.entryBId));
                         return (
-                          <div key={m.id} className="p-3 flex items-center justify-between gap-3 text-xs">
+                          <div
+                            key={m.id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              setSelectedPlayer(null);
+                              setSelectedH2HMatch(m);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setSelectedPlayer(null);
+                                setSelectedH2HMatch(m);
+                              }
+                            }}
+                            className="p-3 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-[#F8FAFC] transition-colors"
+                          >
                             <div>
                               <p className="text-[#475569]">
                                 {div?.name} · {m.roundName}
@@ -2825,6 +2987,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Cara a Cara (Head-to-Head) */}
+      <HeadToHeadModal
+        match={selectedH2HMatch}
+        allMatches={matches}
+        tournaments={tournaments}
+        divisions={divisions}
+        players={players}
+        registrations={registrations}
+        onClose={() => setSelectedH2HMatch(null)}
+      />
     </div>
   );
 };
