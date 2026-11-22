@@ -114,16 +114,41 @@ export function useRealtimePush(subscribedPlayerIds: string[]) {
     let socket: WebSocket | null = null;
     let reconnectTimer: number | undefined;
     let closedByUnmount = false;
+    let retryAttempt = 0;
+
+    const scheduleReconnect = () => {
+      if (closedByUnmount) return;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      const delayMs = Math.min(30000, 3000 * Math.pow(2, retryAttempt));
+      retryAttempt += 1;
+      reconnectTimer = window.setTimeout(connect, delayMs);
+    };
 
     const connect = () => {
       if (closedByUnmount) return;
-      socket = new WebSocket(wsUrl);
-      socket.onopen = () => setWsConnected(true);
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        return;
+      }
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      try {
+        socket = new WebSocket(wsUrl);
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+      socket.onopen = () => {
+        retryAttempt = 0;
+        setWsConnected(true);
+      };
+      socket.onerror = () => {
+        // El reintento se gestiona con backoff exponencial en onclose
+      };
       socket.onclose = () => {
         setWsConnected(false);
-        if (!closedByUnmount) {
-          reconnectTimer = window.setTimeout(connect, 3000);
-        }
+        socket = null;
+        scheduleReconnect();
       };
       socket.onmessage = async (event) => {
         try {
@@ -165,9 +190,18 @@ export function useRealtimePush(subscribedPlayerIds: string[]) {
       };
     };
 
+    const handleOnline = () => {
+      if (closedByUnmount) return;
+      retryAttempt = 0;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      connect();
+    };
+
+    window.addEventListener('online', handleOnline);
     connect();
     return () => {
       closedByUnmount = true;
+      window.removeEventListener('online', handleOnline);
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       socket?.close();
     };

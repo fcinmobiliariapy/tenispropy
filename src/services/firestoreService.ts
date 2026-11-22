@@ -38,26 +38,86 @@ export function subscribeCollection<T>(
 ): () => void {
   const colRef = collection(db, collectionName);
   const q = onlyPublishedFilter ? query(colRef, where('published', '==', true)) : colRef;
-  return onSnapshot(
-    q,
-    (snapshot) => {
-      const data = snapshot.docs.map((d) => d.data() as T);
-      onData(data);
-    },
-    (error) => {
-      // Silenciar fallos iniciales si todavía no hay sesión para colecciones privadas
-      if (collectionName === 'photos_drafts' || collectionName === 'players_private' || collectionName === 'staff_roles') {
-        console.warn(`Lectura restringida en ${collectionName}:`, error.message);
-        onData([]);
-        return;
-      }
-      if ((error as { code?: string }).code === 'unavailable') {
-        console.warn(`Conexión temporalmente no disponible en ${collectionName}:`, error.message);
-        return;
-      }
-      handleFirestoreError(error, OperationType.LIST, collectionName);
+
+  let disposed = false;
+  let retryCount = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let currentUnsub: (() => void) | null = null;
+
+  const clearRetry = () => {
+    if (retryTimer !== null) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
     }
-  );
+  };
+
+  const attach = () => {
+    if (disposed) return;
+    currentUnsub?.();
+    currentUnsub = onSnapshot(
+      q,
+      (snapshot) => {
+        retryCount = 0;
+        const data = snapshot.docs.map((d) => d.data() as T);
+        onData(data);
+      },
+      (error) => {
+        // Silenciar fallos iniciales si todavía no hay sesión para colecciones privadas
+        if (
+          collectionName === 'photos_drafts' ||
+          collectionName === 'players_private' ||
+          collectionName === 'staff_roles'
+        ) {
+          console.warn(`Lectura restringida en ${collectionName}:`, error.message);
+          onData([]);
+          return;
+        }
+        const errCode = (error as { code?: string }).code;
+        const isTransient =
+          errCode === 'unavailable' ||
+          errCode === 'aborted' ||
+          errCode === 'deadline-exceeded' ||
+          /offline|unavailable|network/i.test(error.message);
+
+        if (isTransient) {
+          if (!disposed) {
+            const delayMs = Math.min(30000, 2000 * Math.pow(2, retryCount));
+            retryCount += 1;
+            clearRetry();
+            retryTimer = setTimeout(() => {
+              if (!disposed) attach();
+            }, delayMs);
+          }
+          return;
+        }
+
+        handleFirestoreError(error, OperationType.LIST, collectionName);
+      }
+    );
+  };
+
+  const handleOnline = () => {
+    if (disposed) return;
+    clearRetry();
+    retryCount = 0;
+    attach();
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', handleOnline);
+  }
+
+  attach();
+
+  return () => {
+    disposed = true;
+    clearRetry();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', handleOnline);
+    }
+    currentUnsub?.();
+    currentUnsub = null;
+  };
 }
 
 export async function saveEntity<T extends { id: string }>(

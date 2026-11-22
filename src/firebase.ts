@@ -1,20 +1,39 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import {
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  browserSessionPersistence,
+  getAuth,
+  GoogleAuthProvider,
+  initializeAuth,
+  type Auth,
+} from 'firebase/auth';
 import {
   doc,
   getDocFromServer,
   getFirestore,
   initializeFirestore,
+  memoryLocalCache,
+  setLogLevel,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
+// Evita spam de warnings internos de WebChannelConnection en reconexiones transitorias
+// manteniendo visibles errores reales y los reportes JSON de handleFirestoreError.
+setLogLevel('error');
+
 function createFirestoreDb() {
   try {
     return initializeFirestore(
       app,
-      { experimentalForceLongPolling: true },
+      {
+        experimentalAutoDetectLongPolling: true,
+        experimentalLongPollingOptions: { timeoutSeconds: 20 },
+        ignoreUndefinedProperties: true,
+        localCache: memoryLocalCache(),
+      },
       firebaseConfig.firestoreDatabaseId
     );
   } catch {
@@ -22,8 +41,21 @@ function createFirestoreDb() {
   }
 }
 
+function createFirebaseAuth(): Auth {
+  try {
+    // Evita indexedDBLocalPersistence para eliminar timeouts de cross-tab polling (DB_TIMEOUT)
+    // en entornos embebidos/iframe, manteniendo sesión persistente en localStorage y login por popup.
+    return initializeAuth(app, {
+      persistence: [browserLocalPersistence, browserSessionPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch {
+    return getAuth(app);
+  }
+}
+
 export const db = createFirestoreDb();
-export const auth = getAuth(app);
+export const auth = createFirebaseAuth();
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
@@ -79,41 +111,60 @@ export function handleFirestoreError(
   throw new Error(JSON.stringify(errInfo));
 }
 
+let activeConnectionCheck: Promise<boolean> | null = null;
+
 export async function testConnection(): Promise<boolean> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return false;
   }
+  if (activeConnectionCheck) {
+    return activeConnectionCheck;
+  }
 
-  const checkServer = async () => {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  };
+  activeConnectionCheck = (async () => {
+    const checkServer = async () => {
+      await getDocFromServer(doc(db, 'test', 'connection'));
+    };
 
-  try {
-    await checkServer();
-    return true;
-  } catch (firstError) {
-    const msg = firstError instanceof Error ? firstError.message : String(firstError);
-    const code = (firstError as { code?: string })?.code;
-    const isTransientOffline =
-      msg.includes('the client is offline') || code === 'unavailable';
+    try {
+      await checkServer();
+      return true;
+    } catch (firstError) {
+      const msg = firstError instanceof Error ? firstError.message : String(firstError);
+      const code = (firstError as { code?: string })?.code;
+      const isTransientOffline =
+        msg.includes('the client is offline') ||
+        code === 'unavailable' ||
+        code === 'deadline-exceeded';
 
-    if (isTransientOffline) {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      try {
-        await checkServer();
-        return true;
-      } catch (retryError) {
-        if (typeof navigator === 'undefined' || navigator.onLine !== false) {
-          const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
-          if (
-            retryMsg.includes('the client is offline') ||
-            (retryError as { code?: string })?.code === 'unavailable'
-          ) {
-            console.error('No hay conexión con Firestore. Verificá tu configuración de Firebase.');
+      if (isTransientOffline) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          return false;
+        }
+        try {
+          await checkServer();
+          return true;
+        } catch (retryError) {
+          if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+            const retryMsg =
+              retryError instanceof Error ? retryError.message : String(retryError);
+            if (
+              retryMsg.includes('the client is offline') ||
+              (retryError as { code?: string })?.code === 'unavailable'
+            ) {
+              console.warn(
+                'Conexión intermitente con Cloud Firestore; esperando recuperación automática.'
+              );
+            }
           }
         }
       }
+      return false;
+    } finally {
+      activeConnectionCheck = null;
     }
-    return false;
-  }
+  })();
+
+  return activeConnectionCheck;
 }

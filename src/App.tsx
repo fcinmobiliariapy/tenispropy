@@ -83,6 +83,11 @@ export default function App() {
 
   useEffect(() => {
     testConnection();
+    const handleOnline = () => {
+      void testConnection();
+    };
+    window.addEventListener('online', handleOnline);
+
     const unsubAuth = onAuthStateChanged(auth, (u) => setUser(u));
 
     const unsubs = [
@@ -104,6 +109,7 @@ export default function App() {
     ];
 
     return () => {
+      window.removeEventListener('online', handleOnline);
       unsubAuth();
       unsubs.forEach((u) => u());
     };
