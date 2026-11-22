@@ -17,6 +17,7 @@ import {
   PlayerPublic,
   Registration,
   RegistrationStatus,
+  StaffPermissions,
 } from '../../types/tennis';
 import {
   analyzeDuplicateMatches,
@@ -43,6 +44,7 @@ interface Props {
   groups: Group[];
   matches: Match[];
   isSuperAdmin: boolean;
+  permissions?: StaffPermissions;
 }
 
 type DrawMode = 'automatico' | 'manual';
@@ -56,7 +58,11 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
   groups,
   matches,
   isSuperAdmin,
+  permissions,
 }) => {
+  const canCreate = permissions ? permissions.canCreate : true;
+  const canEdit = permissions ? permissions.canEdit : true;
+  const canDelete = permissions ? (permissions.canDelete || isSuperAdmin) : isSuperAdmin;
   // Inscripción
   const [player1Id, setPlayer1Id] = useState('');
   const [player2Id, setPlayer2Id] = useState('');
@@ -714,7 +720,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
               Se conservarán los partidos con resultado o programación.
             </span>
           </div>
-          {isSuperAdmin && (
+          {canDelete && (
             <button
               type="button"
               onClick={handleCleanupDivisionDuplicates}
@@ -740,6 +746,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
       )}
 
       {/* Formulario de inscripción */}
+      {canCreate && (
       <form
         onSubmit={handleEnroll}
         className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 space-y-4"
@@ -812,6 +819,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
           </button>
         </div>
       </form>
+      )}
 
       {/* Lista de inscriptos */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
@@ -891,8 +899,9 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                     <div className="flex flex-wrap items-center gap-2">
                       <select
                         value={reg.status}
+                        disabled={!canEdit}
                         onChange={(e) => handleUpdateRegStatus(reg, e.target.value as RegistrationStatus)}
-                        className="h-10 sm:h-8 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium"
+                        className="h-10 sm:h-8 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium disabled:opacity-60"
                       >
                         <option value="confirmada">Confirmada</option>
                         <option value="pendiente">Pendiente</option>
@@ -900,24 +909,28 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                         <option value="retirada">Retirada</option>
                       </select>
 
-                      {isSuperAdmin && !isDeleting && (
+                      {!isDeleting && (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => startEditRegistration(reg)}
-                            title="Editar inscripción"
-                            className="p-2 rounded-lg border border-[#E2E8F0] text-[#0A1633] hover:bg-slate-50"
-                          >
-                            <Edit3 className="w-3.5 h-3.5 text-[#7C1FA2]" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteRegId(reg.id)}
-                            title="Eliminar inscripción"
-                            className="p-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => startEditRegistration(reg)}
+                              title="Editar inscripción"
+                              className="p-2 rounded-lg border border-[#E2E8F0] text-[#0A1633] hover:bg-slate-50"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-[#7C1FA2]" />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteRegId(reg.id)}
+                              title="Eliminar inscripción"
+                              className="p-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1381,7 +1394,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                 </button>
                 <button
                   onClick={handlePublishDraw}
-                  disabled={publishingDraw}
+                  disabled={publishingDraw || !canEdit}
                   className="inline-flex items-center gap-1.5 px-4 min-h-[40px] sm:min-h-[34px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium disabled:opacity-60"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />

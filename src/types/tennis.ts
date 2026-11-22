@@ -1,4 +1,20 @@
-export type UserRole = 'superadmin' | 'organizador' | 'operador';
+export type UserRole = 'superadmin' | 'organizador' | 'operador' | 'editor';
+
+export interface StaffPermissions {
+  // Operaciones ABM (Alta, Baja, Modificación)
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  // Acceso a funciones, módulos y parámetros de la página
+  manageTournaments: boolean;
+  managePlayers: boolean;
+  manageDraws: boolean;
+  manageScheduleAndMedia: boolean;
+  manageScoring: boolean;
+  manageLandingPage: boolean;
+  manageParameters: boolean;
+  manageUsers: boolean;
+}
 
 export interface StaffRole {
   uid: string;
@@ -6,6 +22,26 @@ export interface StaffRole {
   displayName: string;
   role: UserRole;
   assignedTournamentIds: string[];
+  allTournaments?: boolean;
+  active?: boolean;
+  permissions?: StaffPermissions;
+  inviteId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StaffInvite {
+  id: string;
+  email: string;
+  emailLower: string;
+  displayName: string;
+  role: UserRole;
+  assignedTournamentIds: string[];
+  allTournaments: boolean;
+  active: boolean;
+  permissions: StaffPermissions;
+  invitedBy: string;
+  claimedUid?: string | null;
   createdAt: string;
   updatedAt: string;
 }

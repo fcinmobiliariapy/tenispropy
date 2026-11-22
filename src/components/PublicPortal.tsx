@@ -8,10 +8,12 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  FileImage,
   Images,
   LayoutGrid,
   List,
   Medal,
+  QrCode,
   Search,
   SlidersHorizontal,
   Trophy,
@@ -40,8 +42,11 @@ import {
   buildMatchWhatsAppMessage,
   buildTournamentWhatsAppMessage,
 } from '../utils/whatsappShare';
+import { buildTournamentDirectUrl } from '../utils/tournamentLinks';
 import { WhatsAppShareButton } from './WhatsAppShareButton';
 import { HeadToHeadModal } from './HeadToHeadModal';
+import { TournamentQrModal } from './TournamentQrModal';
+import { MatchupsFlyerModal } from './MatchupsFlyerModal';
 
 interface PublicPortalProps {
   tournaments: Tournament[];
@@ -68,6 +73,7 @@ interface PublicPortalProps {
   followedPlayerIds: string[];
   onToggleFollowPlayer: (playerId: string) => void;
   defaultTournamentCoverUrl?: string;
+  logoUrl?: string;
 }
 
 const MATCH_STATUS_LABEL: Record<string, { label: string; tone: string }> = {
@@ -526,6 +532,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   followedPlayerIds,
   onToggleFollowPlayer,
   defaultTournamentCoverUrl,
+  logoUrl,
 }) => {
   const [heroImgFailed, setHeroImgFailed] = useState(false);
 
@@ -547,10 +554,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   const [lightboxPhotos, setLightboxPhotos] = useState<MatchdayPhoto[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState<number>(0);
 
-  // Player profile modal & Head-to-Head modal state
+  // Player profile modal, Head-to-Head, QR & Flyer modal state
   const [playerSearch, setPlayerSearch] = useState('');
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerPublic | null>(null);
   const [selectedH2HMatch, setSelectedH2HMatch] = useState<Match | null>(null);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [flyerModalOpen, setFlyerModalOpen] = useState(false);
 
   const activeTournament = useMemo(
     () => tournaments.find((t) => t.id === selectedTournamentId) || tournaments[0] || null,
@@ -960,14 +969,38 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   </button>
 
                   {activeTournament && (
-                    <WhatsAppShareButton
-                      message={buildTournamentWhatsAppMessage({
-                        tournament: activeTournament,
-                        division: activeDivision,
-                      })}
-                      label="Compartir torneo"
-                      className="min-h-[40px]"
-                    />
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setQrModalOpen(true)}
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 transition-colors min-h-[44px] sm:min-h-[40px] whitespace-nowrap shrink-0"
+                      >
+                        <QrCode className="w-4 h-4 text-[#7C1FA2]" />
+                        Link y QR
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFlyerModalOpen(true)}
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 transition-colors min-h-[44px] sm:min-h-[40px] whitespace-nowrap shrink-0"
+                      >
+                        <FileImage className="w-4 h-4 text-[#0284C7]" />
+                        Flyer de cruces
+                      </button>
+
+                      <WhatsAppShareButton
+                        message={buildTournamentWhatsAppMessage({
+                          tournament: activeTournament,
+                          division: activeDivision,
+                          appUrl: buildTournamentDirectUrl(activeTournament.id, {
+                            divisionId: activeDivision?.id,
+                            tab: activeTab,
+                          }),
+                        })}
+                        label="Compartir torneo"
+                        className="min-h-[40px]"
+                      />
+                    </>
                   )}
 
                   <PWAInstallButton />
@@ -2069,6 +2102,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                  {activeTournament && (
+                    <button
+                      type="button"
+                      onClick={() => setFlyerModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl border border-[#E2E8F0] bg-white text-xs font-semibold text-[#0A1633] hover:bg-slate-50"
+                    >
+                      <FileImage className="w-3.5 h-3.5 text-[#7C1FA2]" />
+                      Flyer de cruces
+                    </button>
+                  )}
+
                   {filteredFixtureMatches.length > 0 && (
                     <WhatsAppShareButton
                       label="Compartir fixture"
@@ -2077,6 +2121,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         matches: filteredFixtureMatches,
                         tournamentName: activeTournament?.name || 'Torneo PlayPy',
                         divisionName: activeDivision?.name,
+                        appUrl: activeTournament
+                          ? buildTournamentDirectUrl(activeTournament.id, {
+                              divisionId: activeDivision?.id,
+                              tab: 'fixture',
+                            })
+                          : undefined,
                       })}
                     />
                   )}
@@ -2997,6 +3047,28 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         players={players}
         registrations={registrations}
         onClose={() => setSelectedH2HMatch(null)}
+      />
+
+      {/* Modal Link Directo y QR del Torneo */}
+      <TournamentQrModal
+        open={qrModalOpen}
+        onClose={() => setQrModalOpen(false)}
+        tournament={activeTournament || null}
+        divisions={tournamentDivisions}
+        defaultDivisionId={activeDivision?.id}
+        logoUrl={logoUrl}
+      />
+
+      {/* Modal Generador de Flyer de Cruces */}
+      <MatchupsFlyerModal
+        open={flyerModalOpen}
+        onClose={() => setFlyerModalOpen(false)}
+        tournament={activeTournament || null}
+        divisions={divisions}
+        matchdays={matchdays}
+        matches={matches}
+        defaultDivisionId={activeDivision?.id || 'ALL'}
+        logoUrl={logoUrl}
       />
     </div>
   );

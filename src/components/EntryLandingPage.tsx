@@ -6,6 +6,7 @@ import {
   Calendar,
   ExternalLink,
   MapPin,
+  QrCode,
   Search,
   Shield,
   Sparkles,
@@ -31,7 +32,9 @@ import { TournamentAd } from './TournamentAd';
 import { formatScoreString } from '../utils/itfRules';
 import { formatAsuncionDate } from '../utils/tournamentEngine';
 import { buildMatchWhatsAppMessage } from '../utils/whatsappShare';
+import { buildTournamentDirectUrl } from '../utils/tournamentLinks';
 import { WhatsAppShareButton } from './WhatsAppShareButton';
+import { TournamentQrModal } from './TournamentQrModal';
 
 interface EntryLandingPageProps {
   tournaments: Tournament[];
@@ -117,6 +120,7 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
   const [brokenCoverIds, setBrokenCoverIds] = useState<Record<string, boolean>>({});
   const [logoBroken, setLogoBroken] = useState(false);
   const [bannerImgBroken, setBannerImgBroken] = useState(false);
+  const [qrTournament, setQrTournament] = useState<Tournament | null>(null);
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.matchMedia('(max-width: 639px)').matches : false
   );
@@ -636,6 +640,10 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
                         match: m,
                         tournament: t,
                         division: d,
+                        appUrl: buildTournamentDirectUrl(m.tournamentId, {
+                          divisionId: m.divisionId,
+                          tab: 'fixture',
+                        }),
                       })}
                     />
                   </div>
@@ -796,14 +804,23 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
                     </div>
                   </div>
 
-                  <div className="px-5 pb-5">
+                  <div className="px-5 pb-5 flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => onEnterTournament(t.id)}
-                      className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-xl bg-[#0A1633] text-white text-xs sm:text-sm font-semibold hover:bg-gradient-to-r hover:from-[#7C1FA2] hover:to-[#0284C7] transition-all"
+                      className="flex-1 inline-flex items-center justify-center gap-2 min-h-[44px] rounded-xl bg-[#0A1633] text-white text-xs sm:text-sm font-semibold hover:bg-gradient-to-r hover:from-[#7C1FA2] hover:to-[#0284C7] transition-all"
                     >
                       Ingresar a la competencia
                       <ArrowRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrTournament(t)}
+                      title="Link directo y código QR del torneo"
+                      className="inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[44px] rounded-xl border border-[#E2E8F0] bg-white text-[#0A1633] text-xs font-semibold hover:bg-slate-50 transition-colors shrink-0"
+                    >
+                      <QrCode className="w-4 h-4 text-[#7C1FA2]" />
+                      <span>QR</span>
                     </button>
                   </div>
                 </article>
@@ -812,6 +829,14 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
           </div>
         )}
       </section>
+
+      <TournamentQrModal
+        open={Boolean(qrTournament)}
+        onClose={() => setQrTournament(null)}
+        tournament={qrTournament}
+        divisions={divisions}
+        logoUrl={resolvedLogo}
+      />
     </div>
   );
 };

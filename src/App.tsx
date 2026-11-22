@@ -36,12 +36,18 @@ import {
 import { EntryLandingPage } from './components/EntryLandingPage';
 import { PublicPortal } from './components/PublicPortal';
 import { AdminDashboard } from './components/AdminDashboard';
+import { parseTournamentUrlParams, syncBrowserTournamentUrl } from './utils/tournamentLinks';
 
 export default function App() {
   const demoFallback = useMemo(() => buildDemoBundle(), []);
+  const initialUrlParams = useMemo(() => parseTournamentUrlParams(), []);
 
-  const [view, setView] = useState<AppView>('landing');
-  const [activePublicTab, setActivePublicTab] = useState<PublicTab>('resumen');
+  const [view, setView] = useState<AppView>(() =>
+    initialUrlParams.tournamentId ? 'portal' : 'landing'
+  );
+  const [activePublicTab, setActivePublicTab] = useState<PublicTab>(
+    () => initialUrlParams.tab || 'resumen'
+  );
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [itfModalOpen, setItfModalOpen] = useState(false);
 
@@ -129,9 +135,11 @@ export default function App() {
   );
 
   const [selectedTournamentId, setSelectedTournamentId] = useState<string>(
-    'torneo_copa_asuncion_2026'
+    () => initialUrlParams.tournamentId || 'torneo_copa_asuncion_2026'
   );
-  const [selectedDivisionId, setSelectedDivisionId] = useState<string>('div_5ta_singles_masc');
+  const [selectedDivisionId, setSelectedDivisionId] = useState<string>(
+    () => initialUrlParams.divisionId || 'div_5ta_singles_masc'
+  );
 
   // Sincronizar selección si cambia el listado de torneos/divisiones
   const effectiveTournamentId = useMemo(() => {
@@ -144,6 +152,11 @@ export default function App() {
     if (tDivs.some((d) => d.id === selectedDivisionId)) return selectedDivisionId;
     return tDivs[0]?.id || '';
   }, [divisions, effectiveTournamentId, selectedDivisionId]);
+
+  useEffect(() => {
+    if (!firestoreLoaded) return;
+    syncBrowserTournamentUrl(view, effectiveTournamentId, effectiveDivisionId, activePublicTab);
+  }, [firestoreLoaded, view, effectiveTournamentId, effectiveDivisionId, activePublicTab]);
 
   const handleSelectTournament = (tid: string) => {
     setSelectedTournamentId(tid);
@@ -237,6 +250,7 @@ export default function App() {
               followedPlayerIds={followedPlayerIds}
               onToggleFollowPlayer={handleToggleFollowPlayer}
               defaultTournamentCoverUrl={siteConfig.defaultTournamentCoverUrl}
+              logoUrl={siteConfig.logoUrl}
             />
           )}
 

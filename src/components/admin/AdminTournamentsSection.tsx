@@ -5,9 +5,11 @@ import {
   BookOpen,
   Edit3,
   ExternalLink,
+  FileImage,
   Image as ImageIcon,
   Megaphone,
   Plus,
+  QrCode,
   RotateCcw,
   Save,
   Sparkles,
@@ -28,6 +30,7 @@ import {
   NotificationAlert,
   PlayerPublic,
   Registration,
+  StaffPermissions,
   TiebreakerCriterion,
   Tournament,
   TournamentAd,
@@ -65,7 +68,10 @@ interface Props {
   onSelectDivision: (id: string) => void;
   currentUid: string;
   isSuperAdmin: boolean;
+  permissions?: StaffPermissions;
   onOpenItfModal: () => void;
+  onOpenQrModal?: () => void;
+  onOpenFlyerModal?: () => void;
 }
 
 const CATEGORIES = ['6ta', '5ta', '4ta', '3ra', '2da', '1ra', 'Libre', 'Senior', 'Personalizada'];
@@ -87,7 +93,7 @@ const PLACEMENT_LABELS: Record<AdPlacement, string> = {
 };
 
 const DEFAULT_COVER_IMAGE = '/src/assets/images/hero_clay_court_1795134987256.jpg';
-const MAX_STORED_IMAGE_CHARS = 250000;
+const MAX_STORED_IMAGE_CHARS = 300000;
 
 function formatFirestoreError(err: unknown, fallback: string): string {
   const raw = err instanceof Error ? err.message : String(err || '');
@@ -112,10 +118,10 @@ async function normalizeImageInputValue(rawValue: string): Promise<string> {
   const trimmed = rawValue.trim();
   if (!trimmed) return '';
   if (trimmed.startsWith('data:image/')) {
-    return compressImageDataUrl(trimmed, 220000);
+    return compressImageDataUrl(trimmed, 180000);
   }
   if (trimmed.length > MAX_STORED_IMAGE_CHARS) {
-    throw new Error('La URL de la imagen supera el tamaño máximo permitido.');
+    throw new Error('La URL de la imagen supera el tamaño máximo permitido (300.000 caracteres).');
   }
   return trimmed;
 }
@@ -158,7 +164,10 @@ export const AdminTournamentsSection: React.FC<Props> = ({
   onSelectDivision,
   currentUid,
   isSuperAdmin,
+  permissions,
   onOpenItfModal,
+  onOpenQrModal,
+  onOpenFlyerModal,
 }) => {
   const activeTournament = tournaments.find((t) => t.id === selectedTournamentId) || tournaments[0];
   const tournamentDivisions = divisions.filter((d) => d.tournamentId === activeTournament?.id);
@@ -423,17 +432,17 @@ export const AdminTournamentsSection: React.FC<Props> = ({
           }));
         const updated: Tournament = {
           ...existing,
-          name: tName.trim(),
-          organizerName: tOrg.trim() || existing.organizerName,
-          venue: tVenue.trim(),
-          city: tCity.trim() || 'Asunción',
+          name: tName.trim().slice(0, 140),
+          organizerName: (tOrg.trim() || existing.organizerName).slice(0, 120),
+          venue: tVenue.trim().slice(0, 140),
+          city: (tCity.trim() || 'Asunción').slice(0, 80),
           startDate: validStart,
           endDate: validEnd,
           regStartDate: validRegStart,
           regEndDate: validRegEnd,
-          minRestMinutes: Number(tRest) || 60,
+          minRestMinutes: Math.max(0, Math.min(480, Number(tRest) || 60)),
           status: tStatus,
-          coverImageUrl: normalizedCover,
+          coverImageUrl: normalizedCover || null,
           courts:
             cleanedCourts.length > 0
               ? cleanedCourts
@@ -458,13 +467,13 @@ export const AdminTournamentsSection: React.FC<Props> = ({
 
         const newT: Tournament = {
           id: makeId('tor'),
-          name: tName.trim(),
-          organizerName: tOrg.trim() || 'Organización PlayPy',
+          name: tName.trim().slice(0, 140),
+          organizerName: (tOrg.trim() || 'Organización PlayPy').slice(0, 120),
           organizerUid: currentUid,
-          venue: tVenue.trim(),
-          city: tCity.trim() || 'Asunción',
+          venue: tVenue.trim().slice(0, 140),
+          city: (tCity.trim() || 'Asunción').slice(0, 80),
           timezone: 'America/Asuncion',
-          coverImageUrl: normalizedCover,
+          coverImageUrl: normalizedCover || null,
           courts:
             courts.length > 0
               ? courts
@@ -1072,13 +1081,15 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             <BookOpen className="w-4 h-4 text-[#7C1FA2]" />
             Consultar ITF
           </button>
-          <button
-            onClick={openNewTournamentForm}
-            className="inline-flex items-center gap-2 px-4 min-h-[44px] sm:min-h-[38px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
-          >
-            <Plus className="w-4 h-4" />
-            Nuevo torneo
-          </button>
+          {(!permissions || permissions.canCreate) && (
+            <button
+              onClick={openNewTournamentForm}
+              className="inline-flex items-center gap-2 px-4 min-h-[44px] sm:min-h-[38px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
+            >
+              <Plus className="w-4 h-4" />
+              Nuevo torneo
+            </button>
+          )}
         </div>
       </div>
 
@@ -1412,27 +1423,47 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickCoverUrl(activeTournament.coverImageUrl || '');
-                  setQuickCoverError(null);
-                  setQuickCoverPreviewError(false);
-                  setShowQuickCover((v) => !v);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
-              >
-                <ImageIcon className="w-3.5 h-3.5 text-[#7C1FA2]" />
-                Foto de portada
-              </button>
-              <button
-                onClick={handleAddCourt}
-                className="px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
-              >
-                + Añadir cancha
-              </button>
-              {isSuperAdmin && (
+              {onOpenQrModal && (
+                <button
+                  type="button"
+                  onClick={onOpenQrModal}
+                  className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633] hover:bg-slate-100"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-[#7C1FA2]" />
+                  Link y QR
+                </button>
+              )}
+              {onOpenFlyerModal && (
+                <button
+                  type="button"
+                  onClick={onOpenFlyerModal}
+                  className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633] hover:bg-slate-100"
+                >
+                  <FileImage className="w-3.5 h-3.5 text-[#0095FF]" />
+                  Flyer de cruces
+                </button>
+              )}
+              {(!permissions || permissions.canEdit) && (
                 <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickCoverUrl(activeTournament.coverImageUrl || '');
+                      setQuickCoverError(null);
+                      setQuickCoverPreviewError(false);
+                      setShowQuickCover((v) => !v);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-[#7C1FA2]" />
+                    Foto de portada
+                  </button>
+                  <button
+                    onClick={handleAddCourt}
+                    className="px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
+                  >
+                    + Añadir cancha
+                  </button>
                   <button
                     onClick={() => openEditTournamentForm(activeTournament)}
                     className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
@@ -1440,15 +1471,17 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     <Edit3 className="w-3.5 h-3.5 text-[#7C1FA2]" />
                     Editar torneo
                   </button>
-                  <button
-                    onClick={() => setConfirmDeleteTournamentId(activeTournament.id)}
-                    className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-red-200 text-xs font-medium text-red-700 hover:bg-red-50"
-                    title="Eliminar torneo completo"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Eliminar torneo
-                  </button>
                 </>
+              )}
+              {(isSuperAdmin || permissions?.canDelete) && (
+                <button
+                  onClick={() => setConfirmDeleteTournamentId(activeTournament.id)}
+                  className="inline-flex items-center gap-1.5 px-3 min-h-[40px] sm:min-h-[34px] rounded-lg border border-red-200 text-xs font-medium text-red-700 hover:bg-red-50"
+                  title="Eliminar torneo completo"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Eliminar torneo
+                </button>
               )}
             </div>
           </div>
@@ -1604,13 +1637,15 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               <h4 className="text-sm font-semibold text-[#0A1633]">
                 Divisiones del torneo ({tournamentDivisions.length})
               </h4>
-              <button
-                onClick={openNewDivisionForm}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Agregar división
-              </button>
+              {(!permissions || permissions.canCreate) && (
+                <button
+                  onClick={openNewDivisionForm}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Agregar división
+                </button>
+              )}
             </div>
 
             {showDivForm && (
@@ -1886,24 +1921,28 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                         </p>
                       )}
                     </button>
-                    {isSuperAdmin && (
+                    {((!permissions || permissions.canEdit) || isSuperAdmin || permissions?.canDelete) && (
                       <div className="px-4 py-2 border-t border-[#E2E8F0]/80 flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditDivisionForm(d)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
-                        >
-                          <Edit3 className="w-3 h-3 text-[#7C1FA2]" />
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteDivisionId(d.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-red-200 text-[11px] font-medium text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          Eliminar
-                        </button>
+                        {(!permissions || permissions.canEdit) && (
+                          <button
+                            type="button"
+                            onClick={() => openEditDivisionForm(d)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
+                          >
+                            <Edit3 className="w-3 h-3 text-[#7C1FA2]" />
+                            Editar
+                          </button>
+                        )}
+                        {(isSuperAdmin || permissions?.canDelete) && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteDivisionId(d.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-red-200 text-[11px] font-medium text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Eliminar
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1944,12 +1983,16 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   </p>
                   <p className="text-[11px] text-[#475569]">
                     Ajustá puntajes opcionales, sistema de tie-break a 10 puntos y partido por 3er puesto.
+                    {permissions && (!permissions.manageParameters || !permissions.canEdit)
+                      ? ' (Solo lectura — requiere permiso de parámetros)'
+                      : ''}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 text-xs text-[#0A1633]">
                   <label className="inline-flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
+                      disabled={Boolean(permissions && (!permissions.manageParameters || !permissions.canEdit))}
                       checked={selectedDivision.itfConfig.setTiebreakPoints === 10}
                       onChange={() => handleToggleDivisionOption(selectedDivision, 'setTiebreak10')}
                     />
@@ -1958,6 +2001,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   <label className="inline-flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
+                      disabled={Boolean(permissions && (!permissions.manageParameters || !permissions.canEdit))}
                       checked={Boolean(selectedDivision.itfConfig.tiebreakExactTarget)}
                       onChange={() => handleToggleDivisionOption(selectedDivision, 'tiebreakExactTarget')}
                     />
@@ -1966,6 +2010,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   <label className="inline-flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
+                      disabled={Boolean(permissions && (!permissions.manageParameters || !permissions.canEdit))}
                       checked={Boolean(selectedDivision.itfConfig.directTiebreakMatch)}
                       onChange={() => handleToggleDivisionOption(selectedDivision, 'directTiebreakMatch')}
                     />
@@ -1974,6 +2019,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   <label className="inline-flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
+                      disabled={Boolean(permissions && (!permissions.manageParameters || !permissions.canEdit))}
                       checked={Boolean(selectedDivision.itfConfig.optionalSetScores)}
                       onChange={() => handleToggleDivisionOption(selectedDivision, 'optionalSetScores')}
                     />
@@ -1982,6 +2028,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   <label className="inline-flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
+                      disabled={Boolean(permissions && (!permissions.manageParameters || !permissions.canEdit))}
                       checked={Boolean(selectedDivision.hasThirdPlaceMatch)}
                       onChange={() => handleToggleDivisionOption(selectedDivision, 'hasThirdPlaceMatch')}
                     />
@@ -2006,14 +2053,16 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={openNewAdForm}
-                className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] sm:min-h-[34px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Agregar publicidad
-              </button>
+              {(!permissions || permissions.canCreate) && (
+                <button
+                  type="button"
+                  onClick={openNewAdForm}
+                  className="inline-flex items-center gap-1.5 px-3.5 min-h-[40px] sm:min-h-[34px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Agregar publicidad
+                </button>
+              )}
             </div>
 
             {adError && !showAdForm && (
@@ -2459,22 +2508,26 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                           </button>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleAdActive(ad)}
-                            className="px-2.5 py-1 rounded-lg border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
-                          >
-                            {ad.active ? 'Pausar' : 'Activar'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openEditAdForm(ad)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
-                          >
-                            <Edit3 className="w-3 h-3 text-[#7C1FA2]" />
-                            Editar
-                          </button>
-                          {isSuperAdmin && (
+                          {(!permissions || permissions.canEdit) && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleAdActive(ad)}
+                                className="px-2.5 py-1 rounded-lg border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
+                              >
+                                {ad.active ? 'Pausar' : 'Activar'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openEditAdForm(ad)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
+                              >
+                                <Edit3 className="w-3 h-3 text-[#7C1FA2]" />
+                                Editar
+                              </button>
+                            </>
+                          )}
+                          {(isSuperAdmin || permissions?.canDelete) && (
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteAdId(ad.id)}
@@ -2499,6 +2552,9 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             trophies={tournamentTrophies}
             selectedDivisionId={selectedDivisionId}
             isSuperAdmin={isSuperAdmin}
+            canCreate={permissions ? permissions.canCreate : true}
+            canEdit={permissions ? permissions.canEdit : true}
+            canDelete={permissions ? (permissions.canDelete || isSuperAdmin) : isSuperAdmin}
           />
         </div>
       )}

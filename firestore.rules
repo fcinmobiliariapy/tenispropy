@@ -28,7 +28,7 @@ service cloud.firestore {
     }
 
     function isBootstrappedSuperAdmin() {
-      return isVerified() && request.auth.token.email == 'elpatriota62@gmail.com';
+      return isVerified() && 'email' in request.auth.token && request.auth.token.email.lower() == 'elpatriota62@gmail.com';
     }
 
     function hasStaffDoc() {
@@ -40,11 +40,43 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isBootstrappedSuperAdmin() || (hasStaffDoc() && staffData().role == 'superadmin');
+      return isBootstrappedSuperAdmin()
+        || (hasStaffDoc() && (!('active' in staffData()) || staffData().active != false) && staffData().role == 'superadmin');
+    }
+
+    function isActiveStaff() {
+      return isBootstrappedSuperAdmin()
+        || (hasStaffDoc()
+          && (!('active' in staffData()) || staffData().active != false)
+          && staffData().role in ['superadmin', 'organizador', 'operador', 'editor']);
+    }
+
+    function hasLegacyRolePerm(permKey) {
+      return isActiveStaff() && !('permissions' in staffData()) && (
+        (staffData().role == 'organizador' && permKey in ['canCreate', 'canEdit', 'manageTournaments', 'managePlayers', 'manageDraws', 'manageScheduleAndMedia', 'manageScoring', 'manageLandingPage', 'manageParameters'])
+        || (staffData().role == 'operador' && permKey in ['canEdit', 'manageScoring'])
+        || (staffData().role == 'editor' && permKey in ['canCreate', 'canEdit', 'managePlayers', 'manageScheduleAndMedia', 'manageLandingPage'])
+      );
+    }
+
+    function hasStaffPerm(permKey) {
+      return isSuperAdmin()
+        || (isActiveStaff() && ('permissions' in staffData()) && staffData().permissions[permKey] == true)
+        || hasLegacyRolePerm(permKey);
+    }
+
+    function isUserManager() {
+      return isSuperAdmin() || hasStaffPerm('manageUsers');
+    }
+
+    function canAccessTournament(tid) {
+      return isSuperAdmin()
+        || (isActiveStaff()
+          && (('allTournaments' in staffData() && staffData().allTournaments == true) || tid in staffData().assignedTournamentIds));
     }
 
     function isAnyStaff() {
-      return isSuperAdmin() || (hasStaffDoc() && staffData().role in ['superadmin', 'organizador', 'operador']);
+      return isActiveStaff();
     }
 
     function isNonEmptyStr(val, maxLen) {
@@ -131,15 +163,65 @@ service cloud.firestore {
         && stats.currentStreak is number && stats.currentStreak >= -1000 && stats.currentStreak <= 1000;
     }
 
+    function isValidStaffPermissions(perms) {
+      return perms is map
+        && perms.keys().hasAll([
+          'canCreate', 'canEdit', 'canDelete',
+          'manageTournaments', 'managePlayers', 'manageDraws',
+          'manageScheduleAndMedia', 'manageScoring', 'manageLandingPage',
+          'manageParameters', 'manageUsers'
+        ])
+        && perms.keys().hasOnly([
+          'canCreate', 'canEdit', 'canDelete',
+          'manageTournaments', 'managePlayers', 'manageDraws',
+          'manageScheduleAndMedia', 'manageScoring', 'manageLandingPage',
+          'manageParameters', 'manageUsers'
+        ])
+        && perms.canCreate is bool
+        && perms.canEdit is bool
+        && perms.canDelete is bool
+        && perms.manageTournaments is bool
+        && perms.managePlayers is bool
+        && perms.manageDraws is bool
+        && perms.manageScheduleAndMedia is bool
+        && perms.manageScoring is bool
+        && perms.manageLandingPage is bool
+        && perms.manageParameters is bool
+        && perms.manageUsers is bool;
+    }
+
     function isValidStaffRole(data, uid) {
       return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'assignedTournamentIds', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'assignedTournamentIds', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'assignedTournamentIds', 'allTournaments', 'active', 'permissions', 'inviteId', 'createdAt', 'updatedAt'])
         && isValidId(data.uid) && data.uid == uid
         && isNonEmptyStr(data.email, 160)
         && isNonEmptyStr(data.displayName, 120)
-        && data.role in ['superadmin', 'organizador', 'operador']
+        && data.role in ['superadmin', 'organizador', 'operador', 'editor']
         && isValidList(data.assignedTournamentIds, 50)
         && (data.assignedTournamentIds.size() == 0 || data.assignedTournamentIds[0] is string)
+        && (!('allTournaments' in data) || data.allTournaments is bool)
+        && (!('active' in data) || data.active is bool)
+        && (!('permissions' in data) || isValidStaffPermissions(data.permissions))
+        && (!('inviteId' in data) || isOptionalStr(data.inviteId, 160))
+        && isNonEmptyStr(data.createdAt, 40)
+        && isNonEmptyStr(data.updatedAt, 40);
+    }
+
+    function isValidStaffInvite(data, inviteId) {
+      return data.keys().hasAll(['id', 'email', 'emailLower', 'displayName', 'role', 'permissions', 'assignedTournamentIds', 'allTournaments', 'active', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'email', 'emailLower', 'displayName', 'role', 'permissions', 'assignedTournamentIds', 'allTournaments', 'active', 'claimedUid', 'createdByEmail', 'createdAt', 'updatedAt'])
+        && isValidId(data.id) && data.id == inviteId
+        && isNonEmptyStr(data.email, 160)
+        && isNonEmptyStr(data.emailLower, 160)
+        && isNonEmptyStr(data.displayName, 120)
+        && data.role in ['superadmin', 'organizador', 'operador', 'editor']
+        && isValidStaffPermissions(data.permissions)
+        && isValidList(data.assignedTournamentIds, 50)
+        && (data.assignedTournamentIds.size() == 0 || data.assignedTournamentIds[0] is string)
+        && data.allTournaments is bool
+        && data.active is bool
+        && (!('claimedUid' in data) || isOptionalStr(data.claimedUid, 128))
+        && (!('createdByEmail' in data) || isOptionalStr(data.createdByEmail, 160))
         && isNonEmptyStr(data.createdAt, 40)
         && isNonEmptyStr(data.updatedAt, 40);
     }
@@ -166,7 +248,7 @@ service cloud.firestore {
         && data.minRestMinutes is number && data.minRestMinutes >= 0 && data.minRestMinutes <= 480
         && isNonEmptyStr(data.itfEdition, 60)
         && data.status in ['borrador', 'inscripciones', 'en_curso', 'finalizado']
-        && (!('coverImageUrl' in data) || isOptionalStr(data.coverImageUrl, 250000))
+        && (!('coverImageUrl' in data) || isOptionalStr(data.coverImageUrl, 300000))
         && (!('isDemo' in data) || data.isDemo is bool)
         && isNonEmptyStr(data.createdAt, 40)
         && isNonEmptyStr(data.updatedAt, 40);
@@ -355,9 +437,9 @@ service cloud.firestore {
         && isNonEmptyStr(data.sponsorName, 120)
         && isNonEmptyStr(data.title, 120)
         && (!('subtitle' in data) || isOptionalStr(data.subtitle, 240))
-        && isNonEmptyStr(data.imageUrl, 250000)
-        && (!('horizontalImageUrl' in data) || isOptionalStr(data.horizontalImageUrl, 250000))
-        && (!('verticalImageUrl' in data) || isOptionalStr(data.verticalImageUrl, 250000))
+        && isNonEmptyStr(data.imageUrl, 300000)
+        && (!('horizontalImageUrl' in data) || isOptionalStr(data.horizontalImageUrl, 300000))
+        && (!('verticalImageUrl' in data) || isOptionalStr(data.verticalImageUrl, 300000))
         && (!('aiPrompt' in data) || isOptionalStr(data.aiPrompt, 500))
         && (!('targetUrl' in data) || isOptionalStr(data.targetUrl, 2000))
         && data.placement in ['banner_principal', 'lateral', 'pie']
@@ -383,7 +465,7 @@ service cloud.firestore {
         && isNonEmptyStr(data.engravingText, 200)
         && (!('customPrompt' in data) || isOptionalStr(data.customPrompt, 500))
         && (!('aiMotifNote' in data) || isOptionalStr(data.aiMotifNote, 300))
-        && isNonEmptyStr(data.imageUrl, 250000)
+        && isNonEmptyStr(data.imageUrl, 300000)
         && data.active is bool
         && data.order is number && data.order >= 0 && data.order <= 500
         && isNonEmptyStr(data.createdAt, 40)
@@ -402,14 +484,14 @@ service cloud.firestore {
           'pillars', 'selectorKicker', 'selectorTitle', 'selectorSubtitle', 'footerTagline', 'footerRightText', 'updatedAt', 'updatedBy'
         ])
         && isValidId(data.id) && data.id == settingId
-        && isNonEmptyStr(data.logoUrl, 250000)
+        && isNonEmptyStr(data.logoUrl, 300000)
         && isNonEmptyStr(data.platformBadge, 80)
         && isNonEmptyStr(data.brandFirst, 40)
         && (!('brandSecond' in data) || isOptionalStr(data.brandSecond, 40))
         && (!('brandSubtitle' in data) || isOptionalStr(data.brandSubtitle, 120))
         && isNonEmptyStr(data.heroTitle, 160)
         && (!('heroDescription' in data) || isOptionalStr(data.heroDescription, 500))
-        && (!('heroBackgroundImageUrl' in data) || isOptionalStr(data.heroBackgroundImageUrl, 250000))
+        && (!('heroBackgroundImageUrl' in data) || isOptionalStr(data.heroBackgroundImageUrl, 300000))
         && isNonEmptyStr(data.primaryCtaLabel, 60)
         && (!('secondaryCtaLabel' in data) || isOptionalStr(data.secondaryCtaLabel, 60))
         && (!('showItfButton' in data) || data.showItfButton is bool)
@@ -417,15 +499,15 @@ service cloud.firestore {
         && (!('bannerKicker' in data) || isOptionalStr(data.bannerKicker, 120))
         && (!('bannerTitle' in data) || isOptionalStr(data.bannerTitle, 180))
         && (!('bannerDescription' in data) || isOptionalStr(data.bannerDescription, 500))
-        && (!('bannerImageHorizontalUrl' in data) || isOptionalStr(data.bannerImageHorizontalUrl, 250000))
-        && (!('bannerImageVerticalUrl' in data) || isOptionalStr(data.bannerImageVerticalUrl, 250000))
-        && (!('bannerBadgeUrl' in data) || isOptionalStr(data.bannerBadgeUrl, 250000))
+        && (!('bannerImageHorizontalUrl' in data) || isOptionalStr(data.bannerImageHorizontalUrl, 300000))
+        && (!('bannerImageVerticalUrl' in data) || isOptionalStr(data.bannerImageVerticalUrl, 300000))
+        && (!('bannerBadgeUrl' in data) || isOptionalStr(data.bannerBadgeUrl, 300000))
         && (!('bannerCtaLabel' in data) || isOptionalStr(data.bannerCtaLabel, 60))
         && (!('bannerCtaUrl' in data) || isOptionalStr(data.bannerCtaUrl, 2000))
         && (!('bannerShowSpotlightAd' in data) || data.bannerShowSpotlightAd is bool)
         && (!('bannerFooterLeft' in data) || isOptionalStr(data.bannerFooterLeft, 140))
         && (!('bannerFooterRight' in data) || isOptionalStr(data.bannerFooterRight, 80))
-        && isNonEmptyStr(data.defaultTournamentCoverUrl, 250000)
+        && isNonEmptyStr(data.defaultTournamentCoverUrl, 300000)
         && data.useAutoMetrics is bool
         && (!('stat1Label' in data) || isOptionalStr(data.stat1Label, 80))
         && (!('stat1CustomValue' in data) || isOptionalStr(data.stat1CustomValue, 40))
@@ -459,173 +541,276 @@ service cloud.firestore {
     }
 
     match /staff_roles/{uid} {
-      allow get: if isValidId(uid) && ((isSignedIn() && request.auth.uid == uid) || isSuperAdmin());
-      allow list: if isBootstrappedSuperAdmin();
-      allow create: if isValidId(uid) && isValidStaffRole(incoming(), uid) && isSuperAdmin();
-      allow update: if isValidId(uid) && isValidStaffRole(incoming(), uid) && isSuperAdmin()
+      allow get: if isValidId(uid) && ((isSignedIn() && request.auth.uid == uid) || isUserManager());
+      allow list: if isBootstrappedSuperAdmin() || isUserManager();
+      allow create: if isValidId(uid) && isValidStaffRole(incoming(), uid) && (
+        (isUserManager() && hasStaffPerm('canCreate'))
+        || (isVerified()
+          && request.auth.uid == uid
+          && 'email' in request.auth.token
+          && 'inviteId' in incoming()
+          && incoming().inviteId is string
+          && isValidId(incoming().inviteId)
+          && exists(/databases/$(database)/documents/staff_invites/$(incoming().inviteId))
+          && get(/databases/$(database)/documents/staff_invites/$(incoming().inviteId)).data.emailLower == request.auth.token.email.lower()
+          && get(/databases/$(database)/documents/staff_invites/$(incoming().inviteId)).data.active == true
+          && (!('claimedUid' in get(/databases/$(database)/documents/staff_invites/$(incoming().inviteId)).data)
+            || get(/databases/$(database)/documents/staff_invites/$(incoming().inviteId)).data.claimedUid == null)
+          && incoming().role == get(/databases/$(database)/documents/staff_invites/$(incoming().inviteId)).data.role
+          && ('permissions' in incoming())
+          && incoming().permissions == get(/databases/$(database)/documents/staff_invites/$(incoming().inviteId)).data.permissions
+          && incoming().assignedTournamentIds == get(/databases/$(database)/documents/staff_invites/$(incoming().inviteId)).data.assignedTournamentIds
+          && ('allTournaments' in incoming())
+          && incoming().allTournaments == get(/databases/$(database)/documents/staff_invites/$(incoming().inviteId)).data.allTournaments
+          && ('active' in incoming())
+          && incoming().active == true)
+      );
+      allow update: if isValidId(uid) && isValidStaffRole(incoming(), uid)
+        && isUserManager() && hasStaffPerm('canEdit')
         && incoming().uid == existing().uid
-        && incoming().createdAt == existing().createdAt;
-      allow delete: if isValidId(uid) && isSuperAdmin();
+        && incoming().createdAt == existing().createdAt
+        && existing().email.lower() != 'elpatriota62@gmail.com';
+      allow delete: if isValidId(uid) && isUserManager() && hasStaffPerm('canDelete')
+        && request.auth.uid != uid
+        && existing().email.lower() != 'elpatriota62@gmail.com';
+    }
+
+    match /staff_invites/{inviteId} {
+      allow get: if isValidId(inviteId) && (
+        isUserManager()
+        || (isVerified() && 'email' in request.auth.token && existing().emailLower == request.auth.token.email.lower())
+      );
+      allow list: if isBootstrappedSuperAdmin() || isUserManager();
+      allow create: if isValidId(inviteId) && isValidStaffInvite(incoming(), inviteId)
+        && isUserManager() && hasStaffPerm('canCreate');
+      allow update: if isValidId(inviteId) && isValidStaffInvite(incoming(), inviteId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && ((isUserManager() && hasStaffPerm('canEdit'))
+          || (isVerified()
+            && 'email' in request.auth.token
+            && existing().emailLower == request.auth.token.email.lower()
+            && existing().active == true
+            && (!('claimedUid' in existing()) || existing().claimedUid == null)
+            && ('claimedUid' in incoming())
+            && incoming().claimedUid == request.auth.uid
+            && incoming().emailLower == existing().emailLower
+            && incoming().role == existing().role
+            && incoming().permissions == existing().permissions
+            && incoming().assignedTournamentIds == existing().assignedTournamentIds
+            && incoming().allTournaments == existing().allTournaments
+            && incoming().active == existing().active));
+      allow delete: if isValidId(inviteId) && isUserManager() && hasStaffPerm('canDelete');
     }
 
     match /tournaments/{tournamentId} {
       allow get: if isValidId(tournamentId);
       allow list: if true;
       allow create: if isValidId(tournamentId) && isValidTournament(incoming(), tournamentId)
-        && isVerified();
+        && hasStaffPerm('manageTournaments') && hasStaffPerm('canCreate');
       allow update: if isValidId(tournamentId) && isValidTournament(incoming(), tournamentId)
-        && isVerified()
+        && hasStaffPerm('manageTournaments') && hasStaffPerm('canEdit')
+        && canAccessTournament(tournamentId)
         && incoming().id == existing().id
         && (isSuperAdmin() || incoming().organizerUid == existing().organizerUid)
         && incoming().createdAt == existing().createdAt;
-      allow delete: if isValidId(tournamentId) && isSuperAdmin();
+      allow delete: if isValidId(tournamentId)
+        && (isSuperAdmin() || (hasStaffPerm('manageTournaments') && hasStaffPerm('canDelete')))
+        && canAccessTournament(tournamentId);
     }
 
     match /divisions/{divisionId} {
       allow get: if isValidId(divisionId);
       allow list: if true;
       allow create: if isValidId(divisionId) && isValidDivision(incoming(), divisionId)
-        && isVerified()
+        && (hasStaffPerm('manageTournaments') || hasStaffPerm('manageDraws'))
+        && hasStaffPerm('canCreate')
+        && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId));
       allow update: if isValidId(divisionId) && isValidDivision(incoming(), divisionId)
-        && isVerified()
+        && (hasStaffPerm('manageTournaments') || hasStaffPerm('manageDraws') || hasStaffPerm('manageScoring') || hasStaffPerm('manageParameters'))
+        && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().id == existing().id
         && incoming().tournamentId == existing().tournamentId
         && incoming().createdAt == existing().createdAt;
-      allow delete: if isValidId(divisionId) && isSuperAdmin();
+      allow delete: if isValidId(divisionId)
+        && (isSuperAdmin() || (hasStaffPerm('manageTournaments') && hasStaffPerm('canDelete')))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /players_public/{playerId} {
       allow get: if isValidId(playerId);
       allow list: if true;
       allow create: if isValidId(playerId) && isValidPlayerPublic(incoming(), playerId)
-        && isVerified()
+        && (hasStaffPerm('managePlayers') || hasStaffPerm('manageTournaments'))
+        && hasStaffPerm('canCreate')
+        && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId));
       allow update: if isValidId(playerId) && isValidPlayerPublic(incoming(), playerId)
-        && isVerified()
+        && (hasStaffPerm('managePlayers') || hasStaffPerm('manageScoring') || hasStaffPerm('manageTournaments'))
+        && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().id == existing().id
         && (isSuperAdmin() || incoming().tournamentId == existing().tournamentId)
         && incoming().createdAt == existing().createdAt;
-      allow delete: if isValidId(playerId) && isSuperAdmin();
+      allow delete: if isValidId(playerId)
+        && (isSuperAdmin() || (hasStaffPerm('managePlayers') && hasStaffPerm('canDelete')))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /players_private/{playerId} {
-      allow get: if isValidId(playerId) && isAnyStaff();
-      allow list: if isBootstrappedSuperAdmin();
+      allow get: if isValidId(playerId) && hasStaffPerm('managePlayers') && canAccessTournament(existing().tournamentId);
+      allow list: if isBootstrappedSuperAdmin() || hasStaffPerm('managePlayers');
       allow create: if isValidId(playerId) && isValidPlayerPrivate(incoming(), playerId)
-        && isAnyStaff()
+        && hasStaffPerm('managePlayers') && hasStaffPerm('canCreate')
+        && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/players_public/$(playerId));
       allow update: if isValidId(playerId) && isValidPlayerPrivate(incoming(), playerId)
-        && isAnyStaff()
+        && hasStaffPerm('managePlayers') && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().id == existing().id
         && incoming().playerId == existing().playerId
         && (isSuperAdmin() || incoming().tournamentId == existing().tournamentId);
-      allow delete: if isValidId(playerId) && isSuperAdmin();
+      allow delete: if isValidId(playerId)
+        && (isSuperAdmin() || (hasStaffPerm('managePlayers') && hasStaffPerm('canDelete')))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /registrations/{registrationId} {
       allow get: if isValidId(registrationId);
       allow list: if true;
       allow create: if isValidId(registrationId) && isValidRegistration(incoming(), registrationId)
-        && isVerified()
+        && (hasStaffPerm('manageDraws') || hasStaffPerm('manageTournaments'))
+        && hasStaffPerm('canCreate')
+        && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/divisions/$(incoming().divisionId));
       allow update: if isValidId(registrationId) && isValidRegistration(incoming(), registrationId)
-        && isVerified()
+        && hasStaffPerm('manageDraws') && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().id == existing().id
         && incoming().tournamentId == existing().tournamentId
         && incoming().divisionId == existing().divisionId
         && incoming().registeredAt == existing().registeredAt;
-      allow delete: if isValidId(registrationId) && isSuperAdmin();
+      allow delete: if isValidId(registrationId)
+        && (isSuperAdmin() || (hasStaffPerm('manageDraws') && hasStaffPerm('canDelete')))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /groups/{groupId} {
       allow get: if isValidId(groupId);
       allow list: if true;
       allow create: if isValidId(groupId) && isValidGroup(incoming(), groupId)
-        && isVerified()
+        && (hasStaffPerm('manageDraws') || hasStaffPerm('manageTournaments'))
+        && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
+        && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/divisions/$(incoming().divisionId));
       allow update: if isValidId(groupId) && isValidGroup(incoming(), groupId)
-        && isVerified()
+        && (hasStaffPerm('manageDraws') || hasStaffPerm('manageScoring'))
+        && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().id == existing().id
         && incoming().tournamentId == existing().tournamentId
         && incoming().divisionId == existing().divisionId;
-      allow delete: if isValidId(groupId) && isSuperAdmin();
+      allow delete: if isValidId(groupId)
+        && (isSuperAdmin() || (hasStaffPerm('manageDraws') && hasStaffPerm('canDelete')))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /matchdays/{matchdayId} {
       allow get: if isValidId(matchdayId);
       allow list: if true;
       allow create: if isValidId(matchdayId) && isValidMatchday(incoming(), matchdayId)
-        && isVerified()
+        && (hasStaffPerm('manageScheduleAndMedia') || hasStaffPerm('manageTournaments'))
+        && hasStaffPerm('canCreate')
+        && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/divisions/$(incoming().divisionId));
       allow update: if isValidId(matchdayId) && isValidMatchday(incoming(), matchdayId)
-        && isVerified()
+        && hasStaffPerm('manageScheduleAndMedia') && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().id == existing().id
         && incoming().tournamentId == existing().tournamentId
         && incoming().divisionId == existing().divisionId
         && incoming().createdAt == existing().createdAt;
-      allow delete: if isValidId(matchdayId) && isSuperAdmin();
+      allow delete: if isValidId(matchdayId)
+        && (isSuperAdmin() || (hasStaffPerm('manageScheduleAndMedia') && hasStaffPerm('canDelete')))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /matches/{matchId} {
       allow get: if isValidId(matchId);
       allow list: if true;
       allow create: if isValidId(matchId) && isValidMatch(incoming(), matchId)
-        && isVerified()
+        && (hasStaffPerm('manageDraws') || hasStaffPerm('manageTournaments'))
+        && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
+        && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/divisions/$(incoming().divisionId));
       allow update: if isValidId(matchId) && isValidMatch(incoming(), matchId)
-        && isVerified()
+        && (hasStaffPerm('manageDraws') || hasStaffPerm('manageScheduleAndMedia') || hasStaffPerm('manageScoring'))
+        && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().id == existing().id
         && incoming().tournamentId == existing().tournamentId
         && incoming().divisionId == existing().divisionId
         && incoming().createdAt == existing().createdAt;
-      allow delete: if isValidId(matchId) && isSuperAdmin();
+      allow delete: if isValidId(matchId)
+        && (isSuperAdmin() || ((hasStaffPerm('manageDraws') || hasStaffPerm('manageScoring')) && hasStaffPerm('canDelete')))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /photos/{photoId} {
-      allow get: if isValidId(photoId) && (existing().published == true || isVerified());
-      allow list: if resource.data.published == true || isVerified();
+      allow get: if isValidId(photoId) && (existing().published == true || isActiveStaff());
+      allow list: if resource.data.published == true || isActiveStaff();
       allow create: if isValidId(photoId) && isValidPhoto(incoming(), photoId)
-        && isVerified()
+        && hasStaffPerm('manageScheduleAndMedia') && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
+        && canAccessTournament(incoming().tournamentId)
         && incoming().published == true
         && exists(/databases/$(database)/documents/matchdays/$(incoming().matchdayId));
       allow update: if isValidId(photoId) && isValidPhoto(incoming(), photoId)
-        && isVerified()
+        && hasStaffPerm('manageScheduleAndMedia') && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().published == true
         && incoming().id == existing().id
         && incoming().tournamentId == existing().tournamentId
         && incoming().divisionId == existing().divisionId
         && incoming().matchdayId == existing().matchdayId
         && incoming().createdAt == existing().createdAt;
-      allow delete: if isValidId(photoId) && isSuperAdmin();
+      allow delete: if isValidId(photoId)
+        && (isSuperAdmin() || (hasStaffPerm('manageScheduleAndMedia') && hasStaffPerm('canDelete')))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /photos_drafts/{photoId} {
-      allow get: if isValidId(photoId) && isVerified();
-      allow list: if isVerified() && resource.data.published == false;
+      allow get: if isValidId(photoId) && isActiveStaff();
+      allow list: if isActiveStaff() && resource.data.published == false;
       allow create: if isValidId(photoId) && isValidPhoto(incoming(), photoId)
-        && isVerified()
+        && hasStaffPerm('manageScheduleAndMedia') && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
+        && canAccessTournament(incoming().tournamentId)
         && incoming().published == false
         && exists(/databases/$(database)/documents/matchdays/$(incoming().matchdayId));
       allow update: if isValidId(photoId) && isValidPhoto(incoming(), photoId)
-        && isVerified()
+        && hasStaffPerm('manageScheduleAndMedia') && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().published == false
         && incoming().id == existing().id
         && incoming().tournamentId == existing().tournamentId
         && incoming().divisionId == existing().divisionId
         && incoming().matchdayId == existing().matchdayId
         && incoming().createdAt == existing().createdAt;
-      allow delete: if isValidId(photoId) && isVerified();
+      allow delete: if isValidId(photoId)
+        && hasStaffPerm('manageScheduleAndMedia')
+        && (hasStaffPerm('canEdit') || hasStaffPerm('canDelete'))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /notifications/{notificationId} {
       allow get: if isValidId(notificationId);
       allow list: if true;
       allow create: if isValidId(notificationId) && isValidNotification(incoming(), notificationId)
-        && isVerified()
+        && isActiveStaff() && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId));
       allow update: if isValidId(notificationId) && isValidNotification(incoming(), notificationId)
-        && isVerified()
+        && isActiveStaff() && canAccessTournament(incoming().tournamentId)
         && incoming().id == existing().id
         && incoming().tournamentId == existing().tournamentId
         && incoming().createdAt == existing().createdAt;
@@ -636,35 +821,45 @@ service cloud.firestore {
       allow get: if isValidId(adId);
       allow list: if true;
       allow create: if isValidId(adId) && isValidTournamentAd(incoming(), adId)
-        && isVerified()
+        && hasStaffPerm('manageTournaments') && hasStaffPerm('canCreate')
+        && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId));
       allow update: if isValidId(adId) && isValidTournamentAd(incoming(), adId)
-        && isVerified()
+        && hasStaffPerm('manageTournaments') && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().id == existing().id
         && (isSuperAdmin() || incoming().tournamentId == existing().tournamentId)
         && incoming().createdAt == existing().createdAt;
-      allow delete: if isValidId(adId) && isSuperAdmin();
+      allow delete: if isValidId(adId)
+        && (isSuperAdmin() || (hasStaffPerm('manageTournaments') && hasStaffPerm('canDelete')))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /tournament_trophies/{trophyId} {
       allow get: if isValidId(trophyId);
       allow list: if true;
       allow create: if isValidId(trophyId) && isValidTournamentTrophy(incoming(), trophyId)
-        && isVerified()
+        && hasStaffPerm('manageTournaments') && hasStaffPerm('canCreate')
+        && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId));
       allow update: if isValidId(trophyId) && isValidTournamentTrophy(incoming(), trophyId)
-        && isVerified()
+        && hasStaffPerm('manageTournaments') && hasStaffPerm('canEdit')
+        && canAccessTournament(incoming().tournamentId)
         && incoming().id == existing().id
         && (isSuperAdmin() || incoming().tournamentId == existing().tournamentId)
         && incoming().createdAt == existing().createdAt;
-      allow delete: if isValidId(trophyId) && isSuperAdmin();
+      allow delete: if isValidId(trophyId)
+        && (isSuperAdmin() || (hasStaffPerm('manageTournaments') && hasStaffPerm('canDelete')))
+        && canAccessTournament(existing().tournamentId);
     }
 
     match /site_settings/{settingId} {
       allow get: if isValidId(settingId);
       allow list: if true;
-      allow create: if isValidId(settingId) && isValidSiteLandingConfig(incoming(), settingId) && isAnyStaff();
-      allow update: if isValidId(settingId) && isValidSiteLandingConfig(incoming(), settingId) && isAnyStaff()
+      allow create: if isValidId(settingId) && isValidSiteLandingConfig(incoming(), settingId)
+        && hasStaffPerm('manageLandingPage') && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'));
+      allow update: if isValidId(settingId) && isValidSiteLandingConfig(incoming(), settingId)
+        && hasStaffPerm('manageLandingPage') && hasStaffPerm('canEdit')
         && incoming().id == existing().id;
       allow delete: if isValidId(settingId) && isSuperAdmin();
     }

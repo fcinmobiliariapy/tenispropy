@@ -24,6 +24,9 @@ interface AdminTrophiesPanelProps {
   trophies: TournamentTrophy[];
   selectedDivisionId: string;
   isSuperAdmin: boolean;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 export const AdminTrophiesPanel: React.FC<AdminTrophiesPanelProps> = ({
@@ -32,7 +35,13 @@ export const AdminTrophiesPanel: React.FC<AdminTrophiesPanelProps> = ({
   trophies,
   selectedDivisionId,
   isSuperAdmin,
+  canCreate,
+  canEdit,
+  canDelete,
 }) => {
+  const allowCreate = canCreate ?? true;
+  const allowEdit = canEdit ?? true;
+  const allowDelete = canDelete ?? isSuperAdmin;
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [divisionId, setDivisionId] = useState<string>(selectedDivisionId || divisions[0]?.id || '');
@@ -352,27 +361,29 @@ export const AdminTrophiesPanel: React.FC<AdminTrophiesPanelProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {divisions.length > 0 && (
+        {allowCreate && (
+          <div className="flex flex-wrap items-center gap-2">
+            {divisions.length > 0 && (
+              <button
+                type="button"
+                onClick={handleGeneratePodiumPack}
+                disabled={generatingPodium || generatingAi}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#7C1FA2]/30 bg-purple-50 text-[#7C1FA2] text-xs font-semibold hover:bg-purple-100 disabled:opacity-60 transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {generatingPodium ? 'Generando podio IA...' : 'Generar podio IA (división activa)'}
+              </button>
+            )}
             <button
               type="button"
-              onClick={handleGeneratePodiumPack}
-              disabled={generatingPodium || generatingAi}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#7C1FA2]/30 bg-purple-50 text-[#7C1FA2] text-xs font-semibold hover:bg-purple-100 disabled:opacity-60 transition-colors"
+              onClick={openNewForm}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0A1633] text-white text-xs font-semibold hover:bg-[#7C1FA2] transition-colors"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              {generatingPodium ? 'Generando podio IA...' : 'Generar podio IA (división activa)'}
+              <Plus className="w-3.5 h-3.5" />
+              Nuevo trofeo
             </button>
-          )}
-          <button
-            type="button"
-            onClick={openNewForm}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0A1633] text-white text-xs font-semibold hover:bg-[#7C1FA2] transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Nuevo trofeo
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {errorMsg && (
@@ -675,22 +686,26 @@ export const AdminTrophiesPanel: React.FC<AdminTrophiesPanelProps> = ({
                 </div>
               ) : (
                 <div className="pt-2 border-t border-[#E2E8F0] flex items-center justify-end gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleActive(t)}
-                    className="px-2.5 py-1 rounded-lg border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
-                  >
-                    {t.active ? 'Ocultar' : 'Mostrar'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openEditForm(t)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
-                  >
-                    <Edit3 className="w-3 h-3 text-[#7C1FA2]" />
-                    Editar
-                  </button>
-                  {isSuperAdmin && (
+                  {allowEdit && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleActive(t)}
+                        className="px-2.5 py-1 rounded-lg border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
+                      >
+                        {t.active ? 'Ocultar' : 'Mostrar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditForm(t)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[#E2E8F0] text-[11px] font-medium text-[#0A1633] hover:bg-slate-50"
+                      >
+                        <Edit3 className="w-3 h-3 text-[#7C1FA2]" />
+                        Editar
+                      </button>
+                    </>
+                  )}
+                  {allowDelete && (
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteId(t.id)}

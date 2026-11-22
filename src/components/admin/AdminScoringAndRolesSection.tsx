@@ -9,9 +9,8 @@ import {
   PlayerPublic,
   Registration,
   SetScore,
-  StaffRole,
+  StaffPermissions,
   Tournament,
-  UserRole,
 } from '../../types/tennis';
 import { formatScoreString, validateAndDetermineWinner } from '../../utils/itfRules';
 import {
@@ -27,7 +26,6 @@ import {
   publishNotificationAndBroadcast,
   removeEntity,
   saveEntity,
-  saveStaffRole,
 } from '../../services/firestoreService';
 import { buildMatchWhatsAppMessage } from '../../utils/whatsappShare';
 import { WhatsAppShareButton } from '../WhatsAppShareButton';
@@ -44,8 +42,9 @@ interface Props {
   players: PlayerPublic[];
   userEmail: string;
   isSuperAdmin: boolean;
-  staffRoles: StaffRole[];
-  onRefreshStaffRoles: () => void;
+  permissions?: StaffPermissions;
+  canOpenUsersTab?: boolean;
+  onOpenUsersTab?: () => void;
 }
 
 export const AdminScoringAndRolesSection: React.FC<Props> = ({
@@ -60,9 +59,12 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
   players,
   userEmail,
   isSuperAdmin,
-  staffRoles,
-  onRefreshStaffRoles,
+  permissions,
+  canOpenUsersTab,
+  onOpenUsersTab,
 }) => {
+  const canEdit = permissions ? permissions.canEdit : true;
+  const canDelete = permissions ? (permissions.canDelete || isSuperAdmin) : isSuperAdmin;
   const [selectedMatchId, setSelectedMatchId] = useState<string>('');
   const [status, setStatus] = useState<MatchStatus>('finalizado');
   const [sets, setSets] = useState<SetScore[]>([
@@ -83,13 +85,6 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [confirmDeleteMatchId, setConfirmDeleteMatchId] = useState<string | null>(null);
   const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
-
-  // Gestión de roles (Superadmin)
-  const [roleUid, setRoleUid] = useState('');
-  const [roleEmail, setRoleEmail] = useState('');
-  const [roleName, setRoleName] = useState('');
-  const [roleType, setRoleType] = useState<UserRole>('operador');
-  const [roleTournaments, setRoleTournaments] = useState<string>(tournament.id);
 
   const duplicateAnalysis = useMemo(
     () => analyzeDuplicateMatches(divisionMatches),
@@ -363,30 +358,6 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     setFeedback(`Marcador confirmado (${formatScoreString(setsToSave, status)}). Ganador: ${liveValidation.winnerName}.`);
   };
 
-  const handleSaveRole = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!roleUid.trim() || !roleEmail.trim()) return;
-    const now = new Date().toISOString();
-    const staff: StaffRole = {
-      uid: roleUid.trim(),
-      email: roleEmail.trim(),
-      displayName: roleName.trim() || roleEmail.trim(),
-      role: roleType,
-      assignedTournamentIds: roleTournaments
-        .split(',')
-        .map((x) => x.trim())
-        .filter(Boolean),
-      createdAt: now,
-      updatedAt: now,
-    };
-    await saveStaffRole(staff);
-    setRoleUid('');
-    setRoleEmail('');
-    setRoleName('');
-    onRefreshStaffRoles();
-    setFeedback(`Rol ${staff.role} asignado a ${staff.email}.`);
-  };
-
   return (
     <div className="space-y-8">
       <div>
@@ -421,7 +392,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
             <h3 className="text-sm font-semibold text-[#0A1633]">
               Partidos ({playableMatches.length})
             </h3>
-            {duplicateAnalysis.duplicateMatches.length > 0 && isSuperAdmin && (
+            {duplicateAnalysis.duplicateMatches.length > 0 && canDelete && (
               <button
                 type="button"
                 disabled={cleaningDuplicates}
@@ -484,7 +455,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                       </p>
                     </button>
 
-                    {isSuperAdmin && (
+                    {canDelete && (
                       <div className="shrink-0">
                         {confirmDeleteMatchId === m.id ? (
                           <div className="flex items-center gap-1">
@@ -876,10 +847,17 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                 </div>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {!canEdit && (
+                  <span className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+                    Modo lectura — no tenés permiso de modificación para confirmar resultados.
+                  </span>
+                )}
                 <button
+                  type="button"
+                  disabled={!canEdit}
                   onClick={() => applyScoreAndCascade(false)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#7C1FA2] text-white text-xs font-semibold hover:bg-[#6B1A8B]"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#7C1FA2] text-white text-xs font-semibold hover:bg-[#6B1A8B] disabled:opacity-50"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   Confirmar resultado oficial
@@ -909,73 +887,29 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Gestión de Roles y Operadores (Superadministrador) */}
-      {isSuperAdmin && (
-        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
+      {/* Acceso directo a la consola completa de Usuarios y Permisos */}
+      {canOpenUsersTab && onOpenUsersTab && (
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
             <Shield className="w-5 h-5 text-[#7C1FA2]" />
             <div>
               <h3 className="text-sm font-semibold text-[#0A1633]">
-                Equipo de Administración y Operadores (Superadmin)
+                Roles, Permisos ABM y Competencias de Usuarios
               </h3>
               <p className="text-xs text-[#475569]">
-                Asigná perfiles de superadministrador, organizador u operador de resultados por torneo.
+                Administrá altas, bajas, modificaciones, acceso a funciones/parámetros y asignación
+                de torneos desde la pestaña dedicada.
               </p>
             </div>
           </div>
-
-          <form onSubmit={handleSaveRole} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <input
-              required
-              placeholder="UID Firebase *"
-              value={roleUid}
-              onChange={(e) => setRoleUid(e.target.value)}
-              className="h-9 px-3 rounded-lg border border-[#E2E8F0] text-xs font-mono"
-            />
-            <input
-              required
-              type="email"
-              placeholder="Correo *"
-              value={roleEmail}
-              onChange={(e) => setRoleEmail(e.target.value)}
-              className="h-9 px-3 rounded-lg border border-[#E2E8F0] text-xs"
-            />
-            <input
-              placeholder="Nombre completo"
-              value={roleName}
-              onChange={(e) => setRoleName(e.target.value)}
-              className="h-9 px-3 rounded-lg border border-[#E2E8F0] text-xs"
-            />
-            <select
-              value={roleType}
-              onChange={(e) => setRoleType(e.target.value as UserRole)}
-              className="h-9 px-3 rounded-lg border border-[#E2E8F0] text-xs"
-            >
-              <option value="operador">Operador de resultados</option>
-              <option value="organizador">Organizador</option>
-              <option value="superadmin">Superadministrador</option>
-            </select>
-            <button
-              type="submit"
-              className="h-9 px-4 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium"
-            >
-              Asignar rol
-            </button>
-          </form>
-
-          {staffRoles.length > 0 && (
-            <div className="divide-y divide-[#E2E8F0] border border-[#E2E8F0] rounded-xl text-xs">
-              {staffRoles.map((sr) => (
-                <div key={sr.uid} className="px-4 py-2.5 flex items-center justify-between gap-3">
-                  <div>
-                    <span className="font-semibold text-[#0A1633]">{sr.displayName}</span> ·{' '}
-                    <span className="text-[#475569]">{sr.email}</span>
-                  </div>
-                  <span className="font-medium text-[#7C1FA2] capitalize">{sr.role}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={onOpenUsersTab}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0A1633] text-white text-xs font-semibold hover:bg-[#7C1FA2] transition-colors"
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            Ir a Usuarios y permisos
+          </button>
         </div>
       )}
     </div>

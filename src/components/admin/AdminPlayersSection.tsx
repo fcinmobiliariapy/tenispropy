@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Camera, Download, FileSpreadsheet, Plus, Search, Trash2, Upload } from 'lucide-react';
-import { Division, Gender, PlayerPrivate, PlayerPublic, Registration, Tournament } from '../../types/tennis';
+import { Division, Gender, PlayerPrivate, PlayerPublic, Registration, StaffPermissions, Tournament } from '../../types/tennis';
 import { downloadCsvTemplate, ParsedImportPlayerRow, parsePlayersImportFile } from '../../utils/importPlayers';
 import { optimizeAndUploadAvatar } from '../../utils/imageOptimizer';
 import { makeId } from '../../utils/tournamentEngine';
@@ -15,6 +15,7 @@ interface Props {
   playersPrivate: Record<string, PlayerPrivate>;
   registrations: Registration[];
   isSuperAdmin: boolean;
+  permissions?: StaffPermissions;
   onRefreshPrivate: (playerIds: string[]) => Promise<void>;
 }
 
@@ -25,8 +26,12 @@ export const AdminPlayersSection: React.FC<Props> = ({
   playersPrivate,
   registrations,
   isSuperAdmin,
+  permissions,
   onRefreshPrivate,
 }) => {
+  const canCreate = permissions ? permissions.canCreate : true;
+  const canEdit = permissions ? permissions.canEdit : true;
+  const canDelete = permissions ? (permissions.canDelete || isSuperAdmin) : isSuperAdmin;
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [showForm, setShowForm] = useState(false);
@@ -332,27 +337,31 @@ export const AdminPlayersSection: React.FC<Props> = ({
             Plantilla CSV
           </button>
 
-          <label className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 cursor-pointer">
-            <Upload className="w-3.5 h-3.5 text-[#7C1FA2]" />
-            Importar Excel / CSV
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-          </label>
+          {canCreate && (
+            <>
+              <label className="inline-flex items-center gap-1.5 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 cursor-pointer">
+                <Upload className="w-3.5 h-3.5 text-[#7C1FA2]" />
+                Importar Excel / CSV
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
 
-          <button
-            onClick={() => {
-              resetForm();
-              setShowForm(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[38px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
-          >
-            <Plus className="w-4 h-4" />
-            Nuevo jugador
-          </button>
+              <button
+                onClick={() => {
+                  resetForm();
+                  setShowForm(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[38px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
+              >
+                <Plus className="w-4 h-4" />
+                Nuevo jugador
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -796,13 +805,15 @@ export const AdminPlayersSection: React.FC<Props> = ({
                       </div>
                     ) : (
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => startEdit(p)}
-                          className="flex-1 min-h-[44px] rounded-xl border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
-                        >
-                          Editar ficha
-                        </button>
-                        {isSuperAdmin && (
+                        {canEdit && (
+                          <button
+                            onClick={() => startEdit(p)}
+                            className="flex-1 min-h-[44px] rounded-xl border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
+                          >
+                            Editar ficha
+                          </button>
+                        )}
+                        {canDelete && (
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteId(p.id)}
@@ -908,13 +919,15 @@ export const AdminPlayersSection: React.FC<Props> = ({
                             </div>
                           ) : (
                             <div className="inline-flex items-center gap-1.5">
-                              <button
-                                onClick={() => startEdit(p)}
-                                className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
-                              >
-                                Editar
-                              </button>
-                              {isSuperAdmin && (
+                              {canEdit && (
+                                <button
+                                  onClick={() => startEdit(p)}
+                                  className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
+                                >
+                                  Editar
+                                </button>
+                              )}
+                              {canDelete && (
                                 <button
                                   type="button"
                                   onClick={() => setConfirmDeleteId(p.id)}

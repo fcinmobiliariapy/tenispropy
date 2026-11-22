@@ -23,11 +23,13 @@ import {
   PlayerPublic,
   Registration,
   SiteLandingConfig,
+  StaffInvite,
   StaffRole,
   Tournament,
   TournamentAd,
   TournamentTrophy,
 } from '../types/tennis';
+import { buildStaffInviteId, normalizePermissions } from '../utils/rbac';
 
 export function subscribeCollection<T>(
   collectionName: string,
@@ -247,6 +249,101 @@ export async function saveStaffRole(staff: StaffRole): Promise<void> {
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
+}
+
+export async function fetchAllStaffRoles(): Promise<StaffRole[]> {
+  try {
+    const snap = await getDocs(collection(db, 'staff_roles'));
+    return snap.docs.map((d) => d.data() as StaffRole);
+  } catch (error) {
+    console.warn('Error al listar staff_roles:', error);
+    return [];
+  }
+}
+
+export async function deleteStaffRole(uid: string): Promise<void> {
+  const path = `staff_roles/${uid}`;
+  try {
+    await deleteDoc(doc(db, 'staff_roles', uid));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function fetchStaffInvites(): Promise<StaffInvite[]> {
+  try {
+    const snap = await getDocs(collection(db, 'staff_invites'));
+    return snap.docs.map((d) => d.data() as StaffInvite);
+  } catch (error) {
+    console.warn('Error al listar staff_invites:', error);
+    return [];
+  }
+}
+
+export async function findStaffInviteByEmail(email: string): Promise<StaffInvite | null> {
+  const lower = email.trim().toLowerCase();
+  if (!lower) return null;
+  const inviteId = buildStaffInviteId(lower);
+  try {
+    const snap = await getDoc(doc(db, 'staff_invites', inviteId));
+    if (snap.exists()) {
+      return snap.data() as StaffInvite;
+    }
+    return null;
+  } catch (error) {
+    console.warn('Error al buscar invitación de staff:', error);
+    return null;
+  }
+}
+
+export async function saveStaffInvite(invite: StaffInvite): Promise<void> {
+  const path = `staff_invites/${invite.id}`;
+  try {
+    await setDoc(doc(db, 'staff_invites', invite.id), invite);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteStaffInvite(inviteId: string): Promise<void> {
+  const path = `staff_invites/${inviteId}`;
+  try {
+    await deleteDoc(doc(db, 'staff_invites', inviteId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function claimStaffInvite(
+  user: { uid: string; email?: string | null; displayName?: string | null },
+  invite: StaffInvite
+): Promise<StaffRole> {
+  const now = new Date().toISOString();
+  const normalizedPerms = normalizePermissions(invite.role, invite.permissions);
+  const roleDoc: StaffRole = {
+    uid: user.uid,
+    email: user.email || invite.email,
+    displayName: user.displayName || invite.displayName,
+    role: invite.role,
+    assignedTournamentIds: invite.assignedTournamentIds,
+    allTournaments: invite.allTournaments,
+    active: invite.active,
+    permissions: normalizedPerms,
+    inviteId: invite.id,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await setDoc(doc(db, 'staff_roles', user.uid), roleDoc);
+  try {
+    await setDoc(doc(db, 'staff_invites', invite.id), {
+      ...invite,
+      claimedUid: user.uid,
+      updatedAt: now,
+    });
+  } catch (err) {
+    console.warn('Invitación reclamada, aviso al actualizar claimedUid:', err);
+  }
+  return roleDoc;
 }
 
 export async function fetchDraftPhotosForAdmin(): Promise<MatchdayPhoto[]> {

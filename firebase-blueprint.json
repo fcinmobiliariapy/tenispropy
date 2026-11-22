@@ -2,18 +2,43 @@
   "entities": {
     "StaffRole": {
       "title": "StaffRole",
-      "description": "Rol administrativo asignado a un usuario autenticado (superadmin, organizador, operador).",
+      "description": "Rol administrativo y matriz granular de permisos asignados a un usuario autenticado.",
       "type": "object",
       "properties": {
         "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
         "email": { "type": "string", "minLength": 3, "maxLength": 160 },
         "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
-        "role": { "type": "string", "enum": ["superadmin", "organizador", "operador"] },
-        "assignedTournamentIds": { "type": "array", "description": "IDs de torneos asignados al organizador u operador" },
+        "role": { "type": "string", "enum": ["superadmin", "organizador", "operador", "editor"] },
+        "assignedTournamentIds": { "type": "array", "description": "IDs de torneos asignados al usuario" },
+        "allTournaments": { "type": "boolean", "description": "Si es verdadero, habilita acceso a todas las competencias" },
+        "active": { "type": "boolean", "description": "Estado habilitado o suspendido del usuario" },
+        "permissions": { "type": "object", "description": "Permisos ABM (alta, baja, modificación) y acceso a módulos/parámetros" },
+        "inviteId": { "type": "string", "maxLength": 160 },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "displayName", "role", "assignedTournamentIds", "createdAt", "updatedAt"]
+    },
+    "StaffInvite": {
+      "title": "StaffInvite",
+      "description": "Pre-autorización de acceso administrativo por correo Google con roles, permisos y competencias asignadas.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "emailLower": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["superadmin", "organizador", "operador", "editor"] },
+        "permissions": { "type": "object" },
+        "assignedTournamentIds": { "type": "array" },
+        "allTournaments": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "claimedUid": { "type": "string", "maxLength": 128 },
+        "createdByEmail": { "type": "string", "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "emailLower", "displayName", "role", "permissions", "assignedTournamentIds", "allTournaments", "active", "createdAt", "updatedAt"]
     },
     "Tournament": {
       "title": "Tournament",
@@ -35,7 +60,7 @@
         "minRestMinutes": { "type": "number" },
         "itfEdition": { "type": "string", "minLength": 3, "maxLength": 60 },
         "status": { "type": "string", "enum": ["borrador", "inscripciones", "en_curso", "finalizado"] },
-        "coverImageUrl": { "type": "string", "maxLength": 250000 },
+        "coverImageUrl": { "type": "string", "maxLength": 300000 },
         "isDemo": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -252,9 +277,9 @@
         "sponsorName": { "type": "string", "minLength": 1, "maxLength": 120 },
         "title": { "type": "string", "minLength": 1, "maxLength": 120 },
         "subtitle": { "type": "string", "maxLength": 240 },
-        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 250000 },
-        "horizontalImageUrl": { "type": "string", "maxLength": 250000 },
-        "verticalImageUrl": { "type": "string", "maxLength": 250000 },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 300000 },
+        "horizontalImageUrl": { "type": "string", "maxLength": 300000 },
+        "verticalImageUrl": { "type": "string", "maxLength": 300000 },
         "aiPrompt": { "type": "string", "maxLength": 500 },
         "targetUrl": { "type": "string", "maxLength": 2000 },
         "placement": { "type": "string", "enum": ["banner_principal", "lateral", "pie"] },
@@ -283,7 +308,7 @@
         "engravingText": { "type": "string", "minLength": 1, "maxLength": 200 },
         "customPrompt": { "type": "string", "maxLength": 500 },
         "aiMotifNote": { "type": "string", "maxLength": 300 },
-        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 250000 },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 300000 },
         "active": { "type": "boolean" },
         "order": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" },
@@ -297,14 +322,14 @@
       "type": "object",
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
-        "logoUrl": { "type": "string", "minLength": 1, "maxLength": 250000 },
+        "logoUrl": { "type": "string", "minLength": 1, "maxLength": 300000 },
         "platformBadge": { "type": "string", "minLength": 1, "maxLength": 80 },
         "brandFirst": { "type": "string", "minLength": 1, "maxLength": 40 },
         "brandSecond": { "type": "string", "maxLength": 40 },
         "brandSubtitle": { "type": "string", "maxLength": 120 },
         "heroTitle": { "type": "string", "minLength": 1, "maxLength": 160 },
         "heroDescription": { "type": "string", "maxLength": 500 },
-        "heroBackgroundImageUrl": { "type": "string", "maxLength": 250000 },
+        "heroBackgroundImageUrl": { "type": "string", "maxLength": 300000 },
         "primaryCtaLabel": { "type": "string", "minLength": 1, "maxLength": 60 },
         "secondaryCtaLabel": { "type": "string", "maxLength": 60 },
         "showItfButton": { "type": "boolean" },
@@ -312,15 +337,15 @@
         "bannerKicker": { "type": "string", "maxLength": 120 },
         "bannerTitle": { "type": "string", "maxLength": 180 },
         "bannerDescription": { "type": "string", "maxLength": 500 },
-        "bannerImageHorizontalUrl": { "type": "string", "maxLength": 250000 },
-        "bannerImageVerticalUrl": { "type": "string", "maxLength": 250000 },
-        "bannerBadgeUrl": { "type": "string", "maxLength": 250000 },
+        "bannerImageHorizontalUrl": { "type": "string", "maxLength": 300000 },
+        "bannerImageVerticalUrl": { "type": "string", "maxLength": 300000 },
+        "bannerBadgeUrl": { "type": "string", "maxLength": 300000 },
         "bannerCtaLabel": { "type": "string", "maxLength": 60 },
         "bannerCtaUrl": { "type": "string", "maxLength": 2000 },
         "bannerShowSpotlightAd": { "type": "boolean" },
         "bannerFooterLeft": { "type": "string", "maxLength": 140 },
         "bannerFooterRight": { "type": "string", "maxLength": 80 },
-        "defaultTournamentCoverUrl": { "type": "string", "minLength": 1, "maxLength": 250000 },
+        "defaultTournamentCoverUrl": { "type": "string", "minLength": 1, "maxLength": 300000 },
         "useAutoMetrics": { "type": "boolean" },
         "stat1Label": { "type": "string", "maxLength": 80 },
         "stat1CustomValue": { "type": "string", "maxLength": 40 },
@@ -345,7 +370,11 @@
   "firestore": {
     "/staff_roles/{uid}": {
       "schema": { "$ref": "#/entities/StaffRole" },
-      "description": "Control de acceso RBAC para superadministrador, organizadores y operadores."
+      "description": "Control de acceso RBAC para superadministrador, organizadores, operadores y editores."
+    },
+    "/staff_invites/{inviteId}": {
+      "schema": { "$ref": "#/entities/StaffInvite" },
+      "description": "Pre-autorizaciones por correo Google para altas y asignación de competencias antes del primer login."
     },
     "/tournaments/{tournamentId}": {
       "schema": { "$ref": "#/entities/Tournament" },

@@ -13,6 +13,7 @@ import {
   SiteLandingConfig,
   SitePillar,
   SitePillarIcon,
+  StaffPermissions,
   Tournament,
 } from '../../types/tennis';
 import {
@@ -21,6 +22,7 @@ import {
   OFFICIAL_PLAYPY_LOGO,
   SITE_LANDING_DOC_ID,
 } from '../../data/siteConfigDefaults';
+import { auth } from '../../firebase';
 import { saveEntity } from '../../services/firestoreService';
 import { compressImageDataUrl, optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
 import { BannerStylePreset, generateAdaptiveTournamentAdBanners } from '../TournamentAd';
@@ -30,7 +32,17 @@ interface AdminLandingPageSectionProps {
   tournaments: Tournament[];
   userEmail: string;
   isSuperAdmin: boolean;
+  permissions?: StaffPermissions;
 }
+
+const VALID_PILLAR_ICONS: SitePillarIcon[] = [
+  'award',
+  'calendar',
+  'sparkles',
+  'trophy',
+  'users',
+  'shield',
+];
 
 const PILLAR_ICON_OPTIONS: Array<{ value: SitePillarIcon; label: string }> = [
   { value: 'award', label: 'Medalla / Podio' },
@@ -48,7 +60,9 @@ const STYLE_PRESETS: BannerStylePreset[] = [
   'Elegante Minimal',
 ];
 
-const MAX_STORED_IMAGE_CHARS = 250000;
+const MAX_STORED_IMAGE_CHARS = 300000;
+const MAX_INLINE_DATA_URL_CHARS = 160000;
+const MAX_FIRESTORE_DOC_BYTES = 950000;
 
 function formatFirestoreError(err: unknown, fallback: string): string {
   const raw = err instanceof Error ? err.message : String(err || '');
@@ -61,7 +75,19 @@ function formatFirestoreError(err: unknown, fallback: string): string {
   }
   const lower = detail.toLowerCase();
   if (lower.includes('permission_denied') || lower.includes('insufficient permissions')) {
-    return 'No se pudo guardar en Firestore por permisos o validación de campos. Verificá tu sesión de staff y que los textos y enlaces cumplan los límites permitidos.';
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      return 'Tu sesión de Google se cerró o expiró. Volvé a iniciar sesión para guardar los cambios.';
+    }
+    if (!currentUser.emailVerified) {
+      return `La cuenta ${currentUser.email || ''} no tiene el correo verificado en Firebase Auth.`;
+    }
+    return `Firestore rechazó la escritura por permisos o validación para ${
+      currentUser.email || currentUser.uid
+    }. Verificá que tu usuario tenga rol de staff activo y que las imágenes no superen el límite.`;
+  }
+  if (lower.includes('invalid-argument') || lower.includes('exceeds the maximum allowed size')) {
+    return 'La configuración supera el límite de tamaño de Firestore (1 MB) por imágenes incrustadas demasiado pesadas. Probá con imágenes más livianas o enlaces URL.';
   }
   if (lower.includes('unavailable') || lower.includes('offline')) {
     return 'No hay conexión con Firestore en este momento. Verificá tu conexión e intentá nuevamente.';
@@ -75,10 +101,16 @@ async function normalizeImageInput(raw: string, requiredFallback?: string): Prom
     return requiredFallback ?? null;
   }
   if (trimmed.startsWith('data:image/')) {
-    return compressImageDataUrl(trimmed, 220000);
+    if (trimmed.startsWith('data:image/svg+xml')) {
+      if (trimmed.length > MAX_INLINE_DATA_URL_CHARS) {
+        return compressImageDataUrl(trimmed, MAX_INLINE_DATA_URL_CHARS);
+      }
+      return trimmed;
+    }
+    return compressImageDataUrl(trimmed, MAX_INLINE_DATA_URL_CHARS);
   }
   if (trimmed.length > MAX_STORED_IMAGE_CHARS) {
-    throw new Error('La URL de la imagen supera el tamaño máximo permitido (250.000 caracteres).');
+    throw new Error('La URL de la imagen supera el tamaño máximo permitido (300.000 caracteres).');
   }
   return trimmed;
 }
@@ -112,11 +144,52 @@ function clampOptionalText(value: string | null | undefined, maxLen: number): st
   return trimmed ? trimmed.slice(0, maxLen) : null;
 }
 
+function validateSiteLandingPayload(payload: SiteLandingConfig): void {
+  const checks: Array<[string, string | null | undefined, number, boolean]> = [
+    ['Logo oficial', payload.logoUrl, MAX_STORED_IMAGE_CHARS, true],
+    ['Etiqueta superior', payload.platformBadge, 80, true],
+    ['Nombre parte 1', payload.brandFirst, 40, true],
+    ['Nombre parte 2', payload.brandSecond, 40, false],
+    ['Subtítulo de marca', payload.brandSubtitle, 120, false],
+    ['Título principal del Hero', payload.heroTitle, 160, true],
+    ['Descripción del Hero', payload.heroDescription, 500, false],
+    ['Imagen de fondo del Hero', payload.heroBackgroundImageUrl, MAX_STORED_IMAGE_CHARS, false],
+    ['Botón principal', payload.primaryCtaLabel, 60, true],
+    ['Botón reglamento', payload.secondaryCtaLabel, 60, false],
+    ['Kicker del banner', payload.bannerKicker, 120, false],
+    ['Título del banner', payload.bannerTitle, 180, false],
+    ['Descripción del banner', payload.bannerDescription, 500, false],
+    ['Imagen horizontal del banner', payload.bannerImageHorizontalUrl, MAX_STORED_IMAGE_CHARS, false],
+    ['Imagen vertical del banner', payload.bannerImageVerticalUrl, MAX_STORED_IMAGE_CHARS, false],
+    ['Insignia del banner', payload.bannerBadgeUrl, MAX_STORED_IMAGE_CHARS, false],
+    ['Botón CTA del banner', payload.bannerCtaLabel, 60, false],
+    ['Enlace CTA del banner', payload.bannerCtaUrl, 2000, false],
+    ['Portada por defecto de torneos', payload.defaultTournamentCoverUrl, MAX_STORED_IMAGE_CHARS, true],
+  ];
+
+  for (const [label, value, maxLen, required] of checks) {
+    if (required && (!value || value.length < 1)) {
+      throw new Error(`El campo "${label}" es obligatorio y no puede quedar vacío.`);
+    }
+    if (value && value.length > maxLen) {
+      throw new Error(`El campo "${label}" supera el máximo permitido (${maxLen} caracteres).`);
+    }
+  }
+
+  const approxBytes = new Blob([JSON.stringify(payload)]).size;
+  if (approxBytes > MAX_FIRESTORE_DOC_BYTES) {
+    throw new Error(
+      'Entre todas las imágenes incrustadas se superó el límite de 1 MB de Firestore. Usá menos imágenes incrustadas simultáneas o pegá enlaces URL.'
+    );
+  }
+}
+
 export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = ({
   siteConfig,
   tournaments,
   userEmail,
   isSuperAdmin,
+  permissions,
 }) => {
   const [form, setForm] = useState<SiteLandingConfig>(siteConfig);
   const [dirty, setDirty] = useState(false);
@@ -248,11 +321,19 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (permissions && !permissions.canEdit) {
+      setErrorMsg('No tenés permiso de modificación para editar la página principal.');
+      return;
+    }
     setSaving(true);
     setErrorMsg(null);
     setSuccessMsg(null);
 
     try {
+      if (!auth.currentUser) {
+        throw new Error('No hay una sesión activa en Firebase. Volvé a ingresar con Google.');
+      }
+
       const logoUrl = await normalizeImageInput(form.logoUrl, OFFICIAL_PLAYPY_LOGO);
       const defaultCoverUrl = await normalizeImageInput(
         form.defaultTournamentCoverUrl,
@@ -268,15 +349,15 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
         .slice(0, 6)
         .filter((p) => p.title.trim().length > 0)
         .map((p) => ({
-          icon: p.icon,
+          icon: VALID_PILLAR_ICONS.includes(p.icon) ? p.icon : 'trophy',
           title: clampText(p.title, 100),
           description: clampText(p.description || '', 280),
         }));
 
-      const platformBadge = clampText(form.platformBadge || 'Plataforma Oficial', 80);
-      const brandFirst = clampText(form.brandFirst || 'Play', 40);
+      const platformBadge = clampText(form.platformBadge, 80) || 'Plataforma Oficial';
+      const brandFirst = clampText(form.brandFirst, 40) || 'Play';
       const heroTitle = clampText(form.heroTitle, 160);
-      const primaryCtaLabel = clampText(form.primaryCtaLabel || 'Seleccionar torneo', 60);
+      const primaryCtaLabel = clampText(form.primaryCtaLabel, 60) || 'Seleccionar torneo';
 
       if (!heroTitle) {
         throw new Error('El título principal del Hero no puede estar vacío.');
@@ -324,9 +405,10 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
         footerTagline: clampOptionalText(form.footerTagline, 140) || '',
         footerRightText: clampOptionalText(form.footerRightText, 140) || '',
         updatedAt: new Date().toISOString(),
-        updatedBy: clampOptionalText(userEmail, 160),
+        updatedBy: clampOptionalText(userEmail || auth.currentUser.email, 160),
       };
 
+      validateSiteLandingPayload(payload);
       await saveEntity('site_settings', payload);
       setForm(payload);
       setDirty(false);
@@ -461,7 +543,10 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => handleUploadImage('logoUrl', e.target.files?.[0])}
+                      onChange={(e) => {
+                        handleUploadImage('logoUrl', e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
                     />
                   </label>
                   <button
@@ -502,9 +587,10 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) =>
-                        handleUploadImage('defaultTournamentCoverUrl', e.target.files?.[0])
-                      }
+                      onChange={(e) => {
+                        handleUploadImage('defaultTournamentCoverUrl', e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
                     />
                   </label>
                   <button
@@ -634,9 +720,10 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) =>
-                        handleUploadImage('heroBackgroundImageUrl', e.target.files?.[0])
-                      }
+                      onChange={(e) => {
+                        handleUploadImage('heroBackgroundImageUrl', e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
                     />
                   </label>
                   {form.heroBackgroundImageUrl && (
@@ -794,9 +881,10 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
                     type="file"
                     accept="image/*"
                     className="hidden"
-                    onChange={(e) =>
-                      handleUploadImage('bannerImageHorizontalUrl', e.target.files?.[0])
-                    }
+                    onChange={(e) => {
+                      handleUploadImage('bannerImageHorizontalUrl', e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
                   />
                 </label>
                 {form.bannerImageHorizontalUrl && (
@@ -850,9 +938,10 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
                     type="file"
                     accept="image/*"
                     className="hidden"
-                    onChange={(e) =>
-                      handleUploadImage('bannerImageVerticalUrl', e.target.files?.[0])
-                    }
+                    onChange={(e) => {
+                      handleUploadImage('bannerImageVerticalUrl', e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
                   />
                 </label>
                 {form.bannerImageVerticalUrl && (
@@ -1003,7 +1092,10 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => handleUploadImage('bannerBadgeUrl', e.target.files?.[0])}
+                onChange={(e) => {
+                  handleUploadImage('bannerBadgeUrl', e.target.files?.[0]);
+                  e.target.value = '';
+                }}
               />
             </label>
             {form.bannerBadgeUrl && (
@@ -1234,13 +1326,14 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-2 border-t border-[#E2E8F0]">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#E2E8F0]">
           <span className="text-[11px] text-[#475569]">
-            Acceso actual: {isSuperAdmin ? 'Superadministrador' : 'Organizador'} ({userEmail})
+            Acceso actual: {isSuperAdmin ? 'Superadministrador' : 'Staff autorizado'} ({userEmail})
+            {permissions && !permissions.canEdit ? ' · Modo lectura' : ''}
           </span>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || (permissions ? !permissions.canEdit : false)}
             className="inline-flex items-center gap-1.5 px-5 min-h-[40px] rounded-xl bg-[#7C1FA2] text-white text-xs font-semibold hover:bg-[#6B1A8B] disabled:opacity-50"
           >
             <Save className="w-4 h-4" />

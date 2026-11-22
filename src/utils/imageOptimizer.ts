@@ -95,6 +95,10 @@ function fitDataUrlWithinLimit(img: HTMLImageElement, maxChars: number): string 
     { width: 920, quality: 0.72 },
     { width: 760, quality: 0.65 },
     { width: 600, quality: 0.58 },
+    { width: 480, quality: 0.52 },
+    { width: 380, quality: 0.45 },
+    { width: 300, quality: 0.38 },
+    { width: 240, quality: 0.34 },
   ];
   let last = '';
   for (const step of attempts) {
@@ -221,8 +225,8 @@ export async function optimizeAndUploadAdBanner(file: File): Promise<string> {
     return data.fullUrl;
   } catch {
     // Fallback resiliente si el endpoint de archivos no está disponible (p.ej. preview estático)
-    const compact = fitDataUrlWithinLimit(img, 220000);
-    if (compact.length > 240000) {
+    const compact = fitDataUrlWithinLimit(img, 180000);
+    if (compact.length > 260000) {
       throw new Error(
         'No se pudo subir la imagen al servidor y el archivo comprimido supera el límite. Probá con una imagen más liviana o pegá una URL.'
       );

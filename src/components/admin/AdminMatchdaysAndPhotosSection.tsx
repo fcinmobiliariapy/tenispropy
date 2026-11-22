@@ -7,6 +7,7 @@ import {
   Calendar,
   CheckCircle2,
   Edit3,
+  FileImage,
   Images,
   Plus,
   Star,
@@ -20,6 +21,7 @@ import {
   Matchday,
   MatchdayPhoto,
   RescheduleRecord,
+  StaffPermissions,
   Tournament,
 } from '../../types/tennis';
 import { optimizeAndUploadPhoto } from '../../utils/imageOptimizer';
@@ -49,6 +51,8 @@ interface Props {
   onDraftPhotosChange: (photos: MatchdayPhoto[]) => void;
   userEmail: string;
   isSuperAdmin: boolean;
+  permissions?: StaffPermissions;
+  onOpenFlyerModal?: () => void;
 }
 
 export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
@@ -63,7 +67,12 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
   onDraftPhotosChange,
   userEmail,
   isSuperAdmin,
+  permissions,
+  onOpenFlyerModal,
 }) => {
+  const canCreate = permissions ? permissions.canCreate : true;
+  const canEdit = permissions ? permissions.canEdit : true;
+  const canDelete = permissions ? (permissions.canDelete || isSuperAdmin) : isSuperAdmin;
   const [selectedMatchdayId, setSelectedMatchdayId] = useState<string>(
     matchdays[0]?.id || ''
   );
@@ -472,20 +481,34 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={handleAutoSchedule}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
-          >
-            <Wand2 className="w-3.5 h-3.5 text-[#7C1FA2]" />
-            Proponer horarios automáticos
-          </button>
-          <button
-            onClick={() => setShowNewMd((v) => !v)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
-          >
-            <Plus className="w-4 h-4" />
-            Nueva jornada
-          </button>
+          {onOpenFlyerModal && (
+            <button
+              type="button"
+              onClick={onOpenFlyerModal}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
+            >
+              <FileImage className="w-3.5 h-3.5 text-[#0095FF]" />
+              Flyer de cruces
+            </button>
+          )}
+          {canEdit && (
+            <button
+              onClick={handleAutoSchedule}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
+            >
+              <Wand2 className="w-3.5 h-3.5 text-[#7C1FA2]" />
+              Proponer horarios automáticos
+            </button>
+          )}
+          {canCreate && (
+            <button
+              onClick={() => setShowNewMd((v) => !v)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
+            >
+              <Plus className="w-4 h-4" />
+              Nueva jornada
+            </button>
+          )}
         </div>
       </div>
 
@@ -562,24 +585,28 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {isSuperAdmin && activeMatchday && (
+            {activeMatchday && (canEdit || canDelete) && (
               <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => startEditMatchday(activeMatchday)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
-                >
-                  <Edit3 className="w-3.5 h-3.5 text-[#7C1FA2]" />
-                  Editar jornada
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDeleteMdId(activeMatchday.id)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 bg-white text-xs font-medium text-red-700 hover:bg-red-50"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Eliminar
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => startEditMatchday(activeMatchday)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-[#7C1FA2]" />
+                    Editar jornada
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteMdId(activeMatchday.id)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 bg-white text-xs font-medium text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Eliminar
+                  </button>
+                )}
               </div>
             )}
 
@@ -840,20 +867,24 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                         {m.scheduledDate ? `${m.scheduledDate} ${m.scheduledTime || ''}` : 'Sin horario'}{' '}
                         · {m.courtName || 'Sin cancha'}
                       </span>
-                      <button
-                        onClick={() => openScheduleEditor(m)}
-                        className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
-                      >
-                        Programar
-                      </button>
-                      <button
-                        onClick={() => handleNotifyMatch(m)}
-                        title="Enviar alerta push a los jugadores"
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#7C1FA2] hover:bg-emerald-50"
-                      >
-                        <Bell className="w-3.5 h-3.5" />
-                        Llamar
-                      </button>
+                      {canEdit && (
+                        <>
+                          <button
+                            onClick={() => openScheduleEditor(m)}
+                            className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#0A1633] hover:bg-slate-50"
+                          >
+                            Programar
+                          </button>
+                          <button
+                            onClick={() => handleNotifyMatch(m)}
+                            title="Enviar alerta push a los jugadores"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E2E8F0] text-xs font-medium text-[#7C1FA2] hover:bg-emerald-50"
+                          >
+                            <Bell className="w-3.5 h-3.5" />
+                            Llamar
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -875,27 +906,31 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 cursor-pointer">
-                  <Upload className="w-4 h-4 text-[#7C1FA2]" />
-                  {uploadingPhotos ? 'Optimizando y subiendo...' : 'Subir fotos'}
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleUploadPhotos}
-                    disabled={uploadingPhotos}
-                    className="hidden"
-                  />
-                </label>
+                {canCreate && (
+                  <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50 cursor-pointer">
+                    <Upload className="w-4 h-4 text-[#7C1FA2]" />
+                    {uploadingPhotos ? 'Optimizando y subiendo...' : 'Subir fotos'}
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleUploadPhotos}
+                      disabled={uploadingPhotos}
+                      className="hidden"
+                    />
+                  </label>
+                )}
 
-                <button
-                  onClick={handlePublishGallery}
-                  disabled={matchdayPhotos.length === 0}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B] disabled:opacity-50"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  {activeMatchday.galleryPublished ? 'Actualizar publicación' : 'Publicar galería'}
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={handlePublishGallery}
+                    disabled={matchdayPhotos.length === 0}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B] disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {activeMatchday.galleryPublished ? 'Actualizar publicación' : 'Publicar galería'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -992,18 +1027,20 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                             </div>
 
                             <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => handleSetCover(ph)}
-                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border ${
-                                  ph.isCover
-                                    ? 'bg-amber-50 border-amber-300 text-amber-800'
-                                    : 'bg-white border-[#E2E8F0] text-[#475569]'
-                                }`}
-                              >
-                                <Star className="w-3 h-3" />
-                                Portada
-                              </button>
-                              {(!ph.published || isSuperAdmin) && (
+                              {canEdit && (
+                                <button
+                                  onClick={() => handleSetCover(ph)}
+                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border ${
+                                    ph.isCover
+                                      ? 'bg-amber-50 border-amber-300 text-amber-800'
+                                      : 'bg-white border-[#E2E8F0] text-[#475569]'
+                                  }`}
+                                >
+                                  <Star className="w-3 h-3" />
+                                  Portada
+                                </button>
+                              )}
+                              {((!ph.published && canEdit) || canDelete) && (
                                 <button
                                   type="button"
                                   onClick={() => setConfirmDeletePhotoId(ph.id)}
