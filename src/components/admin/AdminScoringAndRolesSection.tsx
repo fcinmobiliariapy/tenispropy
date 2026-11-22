@@ -1,5 +1,18 @@
-import React, { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, History, Shield, Trash2, Trophy } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  Award,
+  CheckCircle2,
+  Edit3,
+  Filter,
+  History,
+  Medal,
+  Search,
+  Shield,
+  Sparkles,
+  Trash2,
+  Trophy,
+} from 'lucide-react';
 import {
   CorrectionRecord,
   Division,
@@ -18,7 +31,9 @@ import {
   compareMatchesByRound,
   computeGroupStandings,
   computePlayerStatsFromMatches,
+  dedupeMatches,
   findAffectedDownstreamMatches,
+  generateKnockoutBracket,
   makeId,
 } from '../../utils/tournamentEngine';
 import {
@@ -33,7 +48,10 @@ import { WhatsAppShareButton } from '../WhatsAppShareButton';
 interface Props {
   tournament: Tournament;
   division: Division;
+  divisions?: Division[];
+  onSelectDivision?: (id: string) => void;
   divisionMatches: Match[];
+  tournamentMatches?: Match[];
   allMatches: Match[];
   allDivisions: Division[];
   divisionGroups: Group[];
@@ -50,7 +68,10 @@ interface Props {
 export const AdminScoringAndRolesSection: React.FC<Props> = ({
   tournament,
   division,
+  divisions,
+  onSelectDivision,
   divisionMatches,
+  tournamentMatches,
   allMatches,
   allDivisions,
   divisionGroups,
@@ -65,6 +86,14 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
 }) => {
   const canEdit = permissions ? permissions.canEdit : true;
   const canDelete = permissions ? (permissions.canDelete || isSuperAdmin) : isSuperAdmin;
+
+  // Filtros estrictos por Categoría / División, Fase, Ronda/Grupo, Estado y Jugador
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('ALL');
+  const [phaseFilter, setPhaseFilter] = useState<'ALL' | 'grupos' | 'eliminacion'>('ALL');
+  const [roundFilter, setRoundFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'pending' | 'finished'>('ALL');
+  const [playerSearch, setPlayerSearch] = useState<string>('');
+
   const [selectedMatchId, setSelectedMatchId] = useState<string>('');
   const [status, setStatus] = useState<MatchStatus>('finalizado');
   const [sets, setSets] = useState<SetScore[]>([
@@ -85,10 +114,54 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [confirmDeleteMatchId, setConfirmDeleteMatchId] = useState<string | null>(null);
   const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
+  const [savingScore, setSavingScore] = useState(false);
+  const [generatingFinalBracket, setGeneratingFinalBracket] = useState(false);
+
+  const tournamentDivisions = useMemo(() => {
+    if (divisions && divisions.length > 0) return divisions;
+    return allDivisions.filter((d) => d.tournamentId === tournament.id);
+  }, [divisions, allDivisions, tournament.id]);
+
+  const categoriesList = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    tournamentDivisions.forEach((d) => {
+      if (d.category && !seen.has(d.category)) {
+        seen.add(d.category);
+        list.push(d.category);
+      }
+    });
+    return list;
+  }, [tournamentDivisions]);
+
+  const filteredDivisionChips = useMemo(() => {
+    if (selectedCategoryFilter === 'ALL') return tournamentDivisions;
+    const matchesCat = tournamentDivisions.filter((d) => d.category === selectedCategoryFilter);
+    return matchesCat.length > 0 ? matchesCat : tournamentDivisions;
+  }, [tournamentDivisions, selectedCategoryFilter]);
+
+  const divisionMatchCounts = useMemo(() => {
+    const source = tournamentMatches || allMatches.filter((m) => m.tournamentId === tournament.id);
+    const map = new Map<string, { total: number; pending: number }>();
+    tournamentDivisions.forEach((d) => {
+      const deduped = dedupeMatches(
+        source.filter((m) => m.divisionId === d.id && !m.isBye && m.entryAId && m.entryBId)
+      );
+      const pending = deduped.filter((m) => !m.winnerEntryId).length;
+      map.set(d.id, { total: deduped.length, pending });
+    });
+    return map;
+  }, [tournamentMatches, allMatches, tournament.id, tournamentDivisions]);
+
+  // Partidos estrictamente de la división activa, deduplicados para no mezclar ni duplicar cruces
+  const rawDivisionMatches = useMemo(
+    () => divisionMatches.filter((m) => m.divisionId === division.id),
+    [divisionMatches, division.id]
+  );
 
   const duplicateAnalysis = useMemo(
-    () => analyzeDuplicateMatches(divisionMatches),
-    [divisionMatches]
+    () => analyzeDuplicateMatches(rawDivisionMatches),
+    [rawDivisionMatches]
   );
 
   const duplicateIdSet = useMemo(
@@ -96,21 +169,94 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     [duplicateAnalysis]
   );
 
-  const playableMatches = useMemo(
+  const dedupedDivisionMatches = useMemo(
+    () => [...duplicateAnalysis.dedupedMatches].sort(compareMatchesByRound),
+    [duplicateAnalysis]
+  );
+
+  const allPlayableMatches = useMemo(
     () =>
-      divisionMatches
+      dedupedDivisionMatches
         .filter((m) => !m.isBye && m.entryAId && m.entryBId)
         .sort(compareMatchesByRound),
-    [divisionMatches]
+    [dedupedDivisionMatches]
   );
+
+  const hasGroupsPhase = useMemo(
+    () => allPlayableMatches.some((m) => m.phase === 'grupos') || divisionGroups.length > 0,
+    [allPlayableMatches, divisionGroups.length]
+  );
+
+  const hasEliminationPhase = useMemo(
+    () => dedupedDivisionMatches.some((m) => m.phase === 'eliminacion'),
+    [dedupedDivisionMatches]
+  );
+
+  const roundFilterOptions = useMemo(() => {
+    const opts: Array<{ value: string; label: string }> = [];
+    if (phaseFilter === 'ALL' || phaseFilter === 'grupos') {
+      const sortedGroups = [...divisionGroups].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      sortedGroups.forEach((g) => {
+        opts.push({ value: `group:${g.id}`, label: g.name });
+      });
+    }
+    if (phaseFilter === 'ALL' || phaseFilter === 'eliminacion') {
+      const seenRounds = new Set<string>();
+      allPlayableMatches
+        .filter((m) => m.phase === 'eliminacion')
+        .sort(compareMatchesByRound)
+        .forEach((m) => {
+          if (!seenRounds.has(m.roundName)) {
+            seenRounds.add(m.roundName);
+            opts.push({ value: `round:${m.roundName}`, label: m.roundName });
+          }
+        });
+    }
+    return opts;
+  }, [divisionGroups, allPlayableMatches, phaseFilter]);
+
+  const playableMatches = useMemo(() => {
+    const q = playerSearch.trim().toLowerCase();
+    return allPlayableMatches.filter((m) => {
+      if (phaseFilter !== 'ALL' && m.phase !== phaseFilter) return false;
+      if (roundFilter !== 'ALL') {
+        if (roundFilter.startsWith('group:')) {
+          const gid = roundFilter.slice('group:'.length);
+          const targetGroup = divisionGroups.find((g) => g.id === gid);
+          const matchesGroupId = m.groupId === gid;
+          const matchesByEntries = Boolean(
+            targetGroup &&
+              m.phase === 'grupos' &&
+              m.entryAId &&
+              m.entryBId &&
+              targetGroup.entryIds.includes(m.entryAId) &&
+              targetGroup.entryIds.includes(m.entryBId)
+          );
+          if (!matchesGroupId && !matchesByEntries) return false;
+        } else if (roundFilter.startsWith('round:')) {
+          const rName = roundFilter.slice('round:'.length);
+          if (m.roundName !== rName) return false;
+        }
+      }
+      if (statusFilter === 'pending' && Boolean(m.winnerEntryId)) return false;
+      if (statusFilter === 'finished' && !m.winnerEntryId) return false;
+      if (
+        q &&
+        !m.entryAName.toLowerCase().includes(q) &&
+        !m.entryBName.toLowerCase().includes(q) &&
+        !m.roundName.toLowerCase().includes(q)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [allPlayableMatches, phaseFilter, roundFilter, statusFilter, playerSearch, divisionGroups]);
 
   const activeMatch =
     playableMatches.find((m) => m.id === selectedMatchId) || playableMatches[0] || null;
 
-  const loadMatchIntoEditor = (m: Match) => {
-    setSelectedMatchId(m.id);
-    setErrorMsg(null);
-    setFeedback(null);
+  const syncEditorFromMatch = (m: Match | null) => {
+    if (!m) return;
     setPendingAffectedMatches(null);
     const nextStatus =
       m.status === 'programado' || m.status === 'reprogramado' ? 'finalizado' : m.status;
@@ -135,6 +281,39 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     );
     setOutcomeNote(m.outcomeNote || '');
     setCorrectionReason('');
+  };
+
+  // Al cambiar de categoría/división, limpiar subfiltros y cargar el primer partido pendiente (o el primero)
+  useEffect(() => {
+    setPhaseFilter('ALL');
+    setRoundFilter('ALL');
+    setStatusFilter('ALL');
+    setPlayerSearch('');
+    setErrorMsg(null);
+    setFeedback(null);
+    setPendingAffectedMatches(null);
+    setConfirmDeleteMatchId(null);
+    const firstPending = allPlayableMatches.find((m) => !m.winnerEntryId) || allPlayableMatches[0];
+    setSelectedMatchId(firstPending?.id || '');
+    if (firstPending) {
+      syncEditorFromMatch(firstPending);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [division.id]);
+
+  // Mantener sincronizado el editor cada vez que cambia el partido activo (p. ej. al filtrar o en carga inicial)
+  useEffect(() => {
+    if (activeMatch) {
+      syncEditorFromMatch(activeMatch);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMatch?.id]);
+
+  const loadMatchIntoEditor = (m: Match) => {
+    setSelectedMatchId(m.id);
+    setErrorMsg(null);
+    setFeedback(null);
+    syncEditorFromMatch(m);
   };
 
   const effectiveSets = status === 'finalizado' && !includeSetScores ? [] : sets;
@@ -162,8 +341,119 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     optionalSetsAllowedForMatch,
   ]);
 
+  // Cálculos en vivo para la vista integrada de Grupos, Cruces y Cuadro Eliminatorio
+  const liveGroupsWithDetails = useMemo(() => {
+    return [...divisionGroups]
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+      .map((grp) => {
+        const liveStandings = computeGroupStandings(
+          grp,
+          dedupedDivisionMatches,
+          divisionRegistrations,
+          division
+        );
+        const grpMatches = dedupedDivisionMatches
+          .filter(
+            (m) =>
+              m.phase === 'grupos' &&
+              (m.groupId === grp.id ||
+                (m.entryAId &&
+                  m.entryBId &&
+                  grp.entryIds.includes(m.entryAId) &&
+                  grp.entryIds.includes(m.entryBId)))
+          )
+          .sort(compareMatchesByRound);
+        return { group: grp, standings: liveStandings, matches: grpMatches };
+      });
+  }, [divisionGroups, dedupedDivisionMatches, divisionRegistrations, division]);
+
+  const liveQualifiers = useMemo(() => {
+    if (division.format !== 'grupos_y_final' || liveGroupsWithDetails.length === 0) return [];
+    const qPerGroup = division.drawConfig.qualifiersPerGroup || 2;
+    const list: Registration[] = [];
+    liveGroupsWithDetails.forEach(({ standings }) => {
+      standings.slice(0, qPerGroup).forEach((row, rank) => {
+        const reg = divisionRegistrations.find((r) => r.id === row.entryId);
+        if (reg) {
+          list.push({
+            ...reg,
+            seed: rank === 0 ? 1 : null,
+          });
+        }
+      });
+    });
+    return list;
+  }, [division.format, division.drawConfig.qualifiersPerGroup, liveGroupsWithDetails, divisionRegistrations]);
+
+  const knockoutRounds = useMemo(() => {
+    const ko = dedupedDivisionMatches.filter(
+      (m) => m.phase === 'eliminacion' && !m.isThirdPlace && m.roundName !== 'Tercer Puesto'
+    );
+    const grouped = new Map<number, { roundName: string; matches: Match[] }>();
+    ko.forEach((m) => {
+      if (!grouped.has(m.roundOrder)) {
+        grouped.set(m.roundOrder, { roundName: m.roundName, matches: [] });
+      }
+      grouped.get(m.roundOrder)!.matches.push(m);
+    });
+    return Array.from(grouped.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([, val]) => ({
+        roundName: val.roundName,
+        matches: val.matches.sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0)),
+      }));
+  }, [dedupedDivisionMatches]);
+
+  const thirdPlaceMatch = useMemo(
+    () =>
+      dedupedDivisionMatches.find(
+        (m) => m.phase === 'eliminacion' && (m.isThirdPlace || m.roundName === 'Tercer Puesto')
+      ) || null,
+    [dedupedDivisionMatches]
+  );
+
+  const projectedFinalMatches = useMemo(() => {
+    if (
+      division.format !== 'grupos_y_final' ||
+      knockoutRounds.length > 0 ||
+      liveQualifiers.length < 2
+    ) {
+      return [];
+    }
+    return generateKnockoutBracket(liveQualifiers, division, 10).filter(
+      (m) => m.roundOrder === 10 && !m.isBye && !m.isThirdPlace
+    );
+  }, [division, knockoutRounds.length, liveQualifiers]);
+
+  const handleGenerateAndPublishFinalBracket = async () => {
+    if (!canEdit || generatingFinalBracket || liveQualifiers.length < 2) return;
+    setGeneratingFinalBracket(true);
+    setErrorMsg(null);
+    setFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      const koMatches = generateKnockoutBracket(liveQualifiers, division, 10);
+      for (const m of koMatches) {
+        await saveEntity('matches', {
+          ...m,
+          published: true,
+          updatedAt: now,
+        });
+      }
+      setFeedback(
+        `Cuadro Final de ${division.name} generado y publicado con ${liveQualifiers.length} clasificados.`
+      );
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'No se pudo generar el cuadro final desde grupos.'
+      );
+    } finally {
+      setGeneratingFinalBracket(false);
+    }
+  };
+
   const applyScoreAndCascade = async (confirmedCascade: boolean) => {
-    if (!activeMatch || !liveValidation) return;
+    if (!activeMatch || !liveValidation || savingScore) return;
     setErrorMsg(null);
     setFeedback(null);
 
@@ -181,7 +471,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     // Verificar si cambia ganador y afecta cruces siguientes
     const affected = findAffectedDownstreamMatches(
       activeMatch,
-      divisionMatches,
+      dedupedDivisionMatches,
       liveValidation.winnerEntryId
     );
     if (affected.length > 0 && !confirmedCascade) {
@@ -189,190 +479,416 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
       return;
     }
 
-    const now = new Date().toISOString();
-    const setsToSave = status === 'wo' ? [] : effectiveSets;
-    const newCorrectionHistory: CorrectionRecord[] = [...activeMatch.correctionHistory];
-    if (isCorrection) {
-      newCorrectionHistory.push({
-        id: makeId('corr'),
-        at: now,
-        byEmail: userEmail,
-        reason: correctionReason.trim(),
-        previousScore: formatScoreString(activeMatch.sets, activeMatch.status),
-        newScore: formatScoreString(setsToSave, status),
-        previousWinnerId: activeMatch.winnerEntryId || null,
-        newWinnerId: liveValidation.winnerEntryId,
-      });
-    }
-
-    const updatedMatch: Match = {
-      ...activeMatch,
-      status,
-      sets: setsToSave,
-      winnerEntryId: liveValidation.winnerEntryId,
-      winnerName: liveValidation.winnerName,
-      outcomeNote: outcomeNote.trim() || null,
-      correctionHistory: newCorrectionHistory,
-      published: true,
-      updatedAt: now,
-    };
-
-    await saveEntity('matches', updatedMatch);
-
-    // Actualizar lista local para cálculos en cascada
-    const nextDivMatches = divisionMatches.map((m) => (m.id === updatedMatch.id ? updatedMatch : m));
-    const nextAllMatches = allMatches.map((m) => (m.id === updatedMatch.id ? updatedMatch : m));
-
-    // 1. Recalcular tabla de posiciones si pertenece a un grupo
-    if (updatedMatch.groupId) {
-      const grp = divisionGroups.find((g) => g.id === updatedMatch.groupId);
-      if (grp) {
-        const recalculated = computeGroupStandings(
-          grp,
-          nextDivMatches,
-          divisionRegistrations,
-          division
-        );
-        await saveEntity('groups', { ...grp, standings: recalculated, updatedAt: now });
+    setSavingScore(true);
+    try {
+      const now = new Date().toISOString();
+      const setsToSave = status === 'wo' ? [] : effectiveSets;
+      const newCorrectionHistory: CorrectionRecord[] = [...activeMatch.correctionHistory];
+      if (isCorrection) {
+        newCorrectionHistory.push({
+          id: makeId('corr'),
+          at: now,
+          byEmail: userEmail,
+          reason: correctionReason.trim(),
+          previousScore: formatScoreString(activeMatch.sets, activeMatch.status),
+          newScore: formatScoreString(setsToSave, status),
+          previousWinnerId: activeMatch.winnerEntryId || null,
+          newWinnerId: liveValidation.winnerEntryId,
+        });
       }
-    }
 
-    // 2. Avanzar ganador en cuadro de eliminación directa (y perdedor al 3er Puesto si aplica)
-    if (updatedMatch.phase === 'eliminacion' && updatedMatch.nextMatchId && updatedMatch.nextMatchSlot) {
-      const nextMatch = nextDivMatches.find((m) => m.id === updatedMatch.nextMatchId);
-      if (nextMatch) {
-        const winnerIsA = liveValidation.winnerEntryId === updatedMatch.entryAId;
-        const winnerPlayerIds = winnerIsA ? updatedMatch.playerIdsA : updatedMatch.playerIdsB;
+      const updatedMatch: Match = {
+        ...activeMatch,
+        status,
+        sets: setsToSave,
+        winnerEntryId: liveValidation.winnerEntryId,
+        winnerName: liveValidation.winnerName,
+        outcomeNote: outcomeNote.trim() || null,
+        correctionHistory: newCorrectionHistory,
+        published: true,
+        updatedAt: now,
+      };
 
-        const patchedNext: Match = {
-          ...nextMatch,
-          entryAId: updatedMatch.nextMatchSlot === 'A' ? liveValidation.winnerEntryId : nextMatch.entryAId,
-          entryAName: updatedMatch.nextMatchSlot === 'A' ? liveValidation.winnerName || 'Por definir' : nextMatch.entryAName,
-          playerIdsA: updatedMatch.nextMatchSlot === 'A' ? winnerPlayerIds : nextMatch.playerIdsA,
-          entryBId: updatedMatch.nextMatchSlot === 'B' ? liveValidation.winnerEntryId : nextMatch.entryBId,
-          entryBName: updatedMatch.nextMatchSlot === 'B' ? liveValidation.winnerName || 'Por definir' : nextMatch.entryBName,
-          playerIdsB: updatedMatch.nextMatchSlot === 'B' ? winnerPlayerIds : nextMatch.playerIdsB,
-          sets: affected.length > 0 ? [] : nextMatch.sets,
-          winnerEntryId: affected.length > 0 ? null : nextMatch.winnerEntryId,
-          winnerName: affected.length > 0 ? null : nextMatch.winnerName,
-          status: affected.length > 0 ? 'programado' : nextMatch.status,
-          updatedAt: now,
-        };
-        await saveEntity('matches', patchedNext);
+      await saveEntity('matches', updatedMatch);
 
-        // Si el siguiente partido es la Final, enviar perdedor de la Semifinal al partido de Tercer Puesto
-        if (!nextMatch.nextMatchId && !nextMatch.isThirdPlace) {
-          const thirdPlaceMatch = nextDivMatches.find(
-            (m) => m.isThirdPlace || m.roundName === 'Tercer Puesto'
+      // Actualizar listas locales deduplicadas para cálculos en cascada
+      const nextDivMatches = dedupeMatches(
+        dedupedDivisionMatches.map((m) => (m.id === updatedMatch.id ? updatedMatch : m))
+      );
+      const nextAllMatches = dedupeMatches(
+        allMatches.map((m) => (m.id === updatedMatch.id ? updatedMatch : m))
+      );
+
+      // 1. Recalcular tabla de posiciones si pertenece a fase de grupos
+      if (updatedMatch.phase === 'grupos') {
+        const grp =
+          divisionGroups.find((g) => g.id === updatedMatch.groupId) ||
+          divisionGroups.find(
+            (g) =>
+              updatedMatch.entryAId &&
+              updatedMatch.entryBId &&
+              g.entryIds.includes(updatedMatch.entryAId) &&
+              g.entryIds.includes(updatedMatch.entryBId)
           );
-          if (thirdPlaceMatch) {
-            const loserEntryId = winnerIsA ? updatedMatch.entryBId || null : updatedMatch.entryAId || null;
-            const loserName = winnerIsA ? updatedMatch.entryBName : updatedMatch.entryAName;
-            const loserPlayerIds = winnerIsA ? updatedMatch.playerIdsB : updatedMatch.playerIdsA;
-            const patchedThird: Match = {
-              ...thirdPlaceMatch,
-              entryAId: updatedMatch.nextMatchSlot === 'A' ? loserEntryId : thirdPlaceMatch.entryAId,
-              entryAName: updatedMatch.nextMatchSlot === 'A' ? loserName : thirdPlaceMatch.entryAName,
-              playerIdsA: updatedMatch.nextMatchSlot === 'A' ? loserPlayerIds : thirdPlaceMatch.playerIdsA,
-              entryBId: updatedMatch.nextMatchSlot === 'B' ? loserEntryId : thirdPlaceMatch.entryBId,
-              entryBName: updatedMatch.nextMatchSlot === 'B' ? loserName : thirdPlaceMatch.entryBName,
-              playerIdsB: updatedMatch.nextMatchSlot === 'B' ? loserPlayerIds : thirdPlaceMatch.playerIdsB,
-              sets: affected.length > 0 ? [] : thirdPlaceMatch.sets,
-              winnerEntryId: affected.length > 0 ? null : thirdPlaceMatch.winnerEntryId,
-              winnerName: affected.length > 0 ? null : thirdPlaceMatch.winnerName,
-              status: affected.length > 0 ? 'programado' : thirdPlaceMatch.status,
-              updatedAt: now,
-            };
-            await saveEntity('matches', patchedThird);
+        if (grp) {
+          const recalculated = computeGroupStandings(
+            grp,
+            nextDivMatches,
+            divisionRegistrations,
+            division
+          );
+          await saveEntity('groups', {
+            ...grp,
+            standings: recalculated,
+            published: true,
+            updatedAt: now,
+          });
+        }
+      }
+
+      let clearedFinal = false;
+      let clearedThirdPlace = false;
+
+      // 2. Avanzar ganador en cuadro de eliminación directa (y limpiar cascada completa si hubo corrección)
+      if (
+        updatedMatch.phase === 'eliminacion' &&
+        updatedMatch.nextMatchId &&
+        updatedMatch.nextMatchSlot
+      ) {
+        const nextMatch = nextDivMatches.find((m) => m.id === updatedMatch.nextMatchId);
+        if (nextMatch) {
+          const winnerIsA = liveValidation.winnerEntryId === updatedMatch.entryAId;
+          const winnerPlayerIds = winnerIsA ? updatedMatch.playerIdsA : updatedMatch.playerIdsB;
+
+          const patchedNext: Match = {
+            ...nextMatch,
+            entryAId:
+              updatedMatch.nextMatchSlot === 'A' ? liveValidation.winnerEntryId : nextMatch.entryAId,
+            entryAName:
+              updatedMatch.nextMatchSlot === 'A'
+                ? liveValidation.winnerName || 'Por definir'
+                : nextMatch.entryAName,
+            playerIdsA:
+              updatedMatch.nextMatchSlot === 'A' ? winnerPlayerIds : nextMatch.playerIdsA,
+            entryBId:
+              updatedMatch.nextMatchSlot === 'B' ? liveValidation.winnerEntryId : nextMatch.entryBId,
+            entryBName:
+              updatedMatch.nextMatchSlot === 'B'
+                ? liveValidation.winnerName || 'Por definir'
+                : nextMatch.entryBName,
+            playerIdsB:
+              updatedMatch.nextMatchSlot === 'B' ? winnerPlayerIds : nextMatch.playerIdsB,
+            sets: affected.length > 0 ? [] : nextMatch.sets,
+            winnerEntryId: affected.length > 0 ? null : nextMatch.winnerEntryId,
+            winnerName: affected.length > 0 ? null : nextMatch.winnerName,
+            outcomeNote: affected.length > 0 ? null : nextMatch.outcomeNote,
+            status: affected.length > 0 ? 'programado' : nextMatch.status,
+            published: true,
+            updatedAt: now,
+          };
+          await saveEntity('matches', patchedNext);
+
+          if (affected.length > 0 && !patchedNext.nextMatchId && !patchedNext.isThirdPlace) {
+            clearedFinal = true;
+          }
+
+          // Si el siguiente partido es la Final, enviar perdedor de la Semifinal al partido de Tercer Puesto
+          if (!nextMatch.nextMatchId && !nextMatch.isThirdPlace) {
+            const thirdPlaceMatch = nextDivMatches.find(
+              (m) => m.isThirdPlace || m.roundName === 'Tercer Puesto'
+            );
+            if (thirdPlaceMatch) {
+              const loserEntryId = winnerIsA
+                ? updatedMatch.entryBId || null
+                : updatedMatch.entryAId || null;
+              const loserName = winnerIsA ? updatedMatch.entryBName : updatedMatch.entryAName;
+              const loserPlayerIds = winnerIsA ? updatedMatch.playerIdsB : updatedMatch.playerIdsA;
+              const patchedThird: Match = {
+                ...thirdPlaceMatch,
+                entryAId:
+                  updatedMatch.nextMatchSlot === 'A' ? loserEntryId : thirdPlaceMatch.entryAId,
+                entryAName:
+                  updatedMatch.nextMatchSlot === 'A' ? loserName : thirdPlaceMatch.entryAName,
+                playerIdsA:
+                  updatedMatch.nextMatchSlot === 'A' ? loserPlayerIds : thirdPlaceMatch.playerIdsA,
+                entryBId:
+                  updatedMatch.nextMatchSlot === 'B' ? loserEntryId : thirdPlaceMatch.entryBId,
+                entryBName:
+                  updatedMatch.nextMatchSlot === 'B' ? loserName : thirdPlaceMatch.entryBName,
+                playerIdsB:
+                  updatedMatch.nextMatchSlot === 'B' ? loserPlayerIds : thirdPlaceMatch.playerIdsB,
+                sets: affected.length > 0 ? [] : thirdPlaceMatch.sets,
+                winnerEntryId: affected.length > 0 ? null : thirdPlaceMatch.winnerEntryId,
+                winnerName: affected.length > 0 ? null : thirdPlaceMatch.winnerName,
+                outcomeNote: affected.length > 0 ? null : thirdPlaceMatch.outcomeNote,
+                status: affected.length > 0 ? 'programado' : thirdPlaceMatch.status,
+                published: true,
+                updatedAt: now,
+              };
+              await saveEntity('matches', patchedThird);
+              if (affected.length > 0) clearedThirdPlace = true;
+            }
+          }
+
+          // Si hubo corrección y nextMatch alimenta rondas aún posteriores (p. ej. Cuartos -> Semi -> Final),
+          // limpiar recursivamente los cruces subsiguientes para que no queden ganadores viejos.
+          if (affected.length > 0 && patchedNext.nextMatchId && patchedNext.nextMatchSlot) {
+            let parentMatch: Match = patchedNext;
+            const visited = new Set<string>([patchedNext.id]);
+            while (parentMatch.nextMatchId && parentMatch.nextMatchSlot && !visited.has(parentMatch.nextMatchId)) {
+              visited.add(parentMatch.nextMatchId);
+              const downstream = nextDivMatches.find((m) => m.id === parentMatch.nextMatchId);
+              if (!downstream) break;
+
+              const slot = parentMatch.nextMatchSlot;
+              const clearedDownstream: Match = {
+                ...downstream,
+                entryAId: slot === 'A' ? null : downstream.entryAId,
+                entryAName: slot === 'A' ? 'Por definir' : downstream.entryAName,
+                playerIdsA: slot === 'A' ? [] : downstream.playerIdsA,
+                entryBId: slot === 'B' ? null : downstream.entryBId,
+                entryBName: slot === 'B' ? 'Por definir' : downstream.entryBName,
+                playerIdsB: slot === 'B' ? [] : downstream.playerIdsB,
+                sets: [],
+                winnerEntryId: null,
+                winnerName: null,
+                outcomeNote: null,
+                status: 'programado',
+                published: true,
+                updatedAt: now,
+              };
+              await saveEntity('matches', clearedDownstream);
+
+              if (!downstream.nextMatchId && !downstream.isThirdPlace) {
+                clearedFinal = true;
+              }
+
+              // Si parentMatch era Semifinal hacia Final, limpiar también el slot del 3er Puesto
+              if (!downstream.nextMatchId && !downstream.isThirdPlace) {
+                const tp = nextDivMatches.find(
+                  (m) => m.isThirdPlace || m.roundName === 'Tercer Puesto'
+                );
+                if (tp) {
+                  const clearedTp: Match = {
+                    ...tp,
+                    entryAId: slot === 'A' ? null : tp.entryAId,
+                    entryAName: slot === 'A' ? 'Por definir' : tp.entryAName,
+                    playerIdsA: slot === 'A' ? [] : tp.playerIdsA,
+                    entryBId: slot === 'B' ? null : tp.entryBId,
+                    entryBName: slot === 'B' ? 'Por definir' : tp.entryBName,
+                    playerIdsB: slot === 'B' ? [] : tp.playerIdsB,
+                    sets: [],
+                    winnerEntryId: null,
+                    winnerName: null,
+                    outcomeNote: null,
+                    status: 'programado',
+                    published: true,
+                    updatedAt: now,
+                  };
+                  await saveEntity('matches', clearedTp);
+                  clearedThirdPlace = true;
+                }
+              }
+
+              parentMatch = clearedDownstream;
+            }
           }
         }
       }
-    }
 
-    // 3. Si es la Final o el partido de Tercer Puesto, actualizar el podio de la división
-    let updatedDivisions = allDivisions;
-    if (
-      updatedMatch.phase === 'eliminacion' &&
-      !updatedMatch.nextMatchId &&
-      liveValidation.winnerEntryId
-    ) {
-      if (updatedMatch.isThirdPlace || updatedMatch.roundName === 'Tercer Puesto') {
+      // 3. Actualizar o limpiar podio de la división según Final / 3er Puesto
+      let updatedDivisions = allDivisions;
+      if (
+        updatedMatch.phase === 'eliminacion' &&
+        !updatedMatch.nextMatchId &&
+        liveValidation.winnerEntryId
+      ) {
+        if (updatedMatch.isThirdPlace || updatedMatch.roundName === 'Tercer Puesto') {
+          const updatedDiv: Division = {
+            ...division,
+            thirdPlaceEntryId: liveValidation.winnerEntryId,
+            thirdPlaceName: liveValidation.winnerName,
+            updatedAt: now,
+          };
+          await saveEntity('divisions', updatedDiv);
+          updatedDivisions = allDivisions.map((d) => (d.id === updatedDiv.id ? updatedDiv : d));
+        } else {
+          const runnerUpName =
+            liveValidation.winnerEntryId === updatedMatch.entryAId
+              ? updatedMatch.entryBName
+              : updatedMatch.entryAName;
+          const updatedDiv: Division = {
+            ...division,
+            championEntryId: liveValidation.winnerEntryId,
+            championName: liveValidation.winnerName,
+            runnerUpName,
+            updatedAt: now,
+          };
+          await saveEntity('divisions', updatedDiv);
+          updatedDivisions = allDivisions.map((d) => (d.id === updatedDiv.id ? updatedDiv : d));
+        }
+      } else if (clearedFinal || clearedThirdPlace) {
         const updatedDiv: Division = {
           ...division,
-          thirdPlaceEntryId: liveValidation.winnerEntryId,
-          thirdPlaceName: liveValidation.winnerName,
-          updatedAt: now,
-        };
-        await saveEntity('divisions', updatedDiv);
-        updatedDivisions = allDivisions.map((d) => (d.id === updatedDiv.id ? updatedDiv : d));
-      } else {
-        const runnerUpName =
-          liveValidation.winnerEntryId === updatedMatch.entryAId
-            ? updatedMatch.entryBName
-            : updatedMatch.entryAName;
-        const updatedDiv: Division = {
-          ...division,
-          championEntryId: liveValidation.winnerEntryId,
-          championName: liveValidation.winnerName,
-          runnerUpName,
+          championEntryId: clearedFinal ? null : division.championEntryId,
+          championName: clearedFinal ? null : division.championName,
+          runnerUpName: clearedFinal ? null : division.runnerUpName,
+          thirdPlaceEntryId: clearedThirdPlace ? null : division.thirdPlaceEntryId,
+          thirdPlaceName: clearedThirdPlace ? null : division.thirdPlaceName,
           updatedAt: now,
         };
         await saveEntity('divisions', updatedDiv);
         updatedDivisions = allDivisions.map((d) => (d.id === updatedDiv.id ? updatedDiv : d));
       }
-    }
 
-    // 4. Recalcular estadísticas de los jugadores involucrados
-    const involvedPlayerIds = Array.from(
-      new Set([...updatedMatch.playerIdsA, ...updatedMatch.playerIdsB])
-    );
-    for (const pid of involvedPlayerIds) {
-      const pDoc = players.find((p) => p.id === pid);
-      if (pDoc) {
-        const nextStats = computePlayerStatsFromMatches(
-          pid,
-          nextAllMatches,
-          updatedDivisions,
-          allRegistrations
-        );
-        await saveEntity('players_public', { ...pDoc, stats: nextStats, updatedAt: now });
+      // 4. Recalcular estadísticas de los jugadores involucrados
+      const involvedPlayerIds = Array.from(
+        new Set([...updatedMatch.playerIdsA, ...updatedMatch.playerIdsB])
+      );
+      for (const pid of involvedPlayerIds) {
+        const pDoc = players.find((p) => p.id === pid);
+        if (pDoc) {
+          const nextStats = computePlayerStatsFromMatches(
+            pid,
+            nextAllMatches,
+            updatedDivisions,
+            allRegistrations
+          );
+          await saveEntity('players_public', { ...pDoc, stats: nextStats, updatedAt: now });
+        }
       }
+
+      await publishNotificationAndBroadcast(
+        {
+          id: makeId('notif'),
+          tournamentId: tournament.id,
+          divisionId: division.id,
+          matchId: updatedMatch.id,
+          title: `Resultado confirmado · ${division.name}`,
+          body: `${updatedMatch.entryAName} vs ${updatedMatch.entryBName}: ${formatScoreString(setsToSave, status)}. Ganador: ${liveValidation.winnerName}.`,
+          targetPlayerIds: involvedPlayerIds,
+          createdAt: now,
+        },
+        'match:score_updated'
+      );
+
+      setSelectedMatchId(updatedMatch.id);
+      setPendingAffectedMatches(null);
+      setCorrectionReason('');
+      setFeedback(
+        `Marcador confirmado (${formatScoreString(setsToSave, status)}). Ganador: ${liveValidation.winnerName}. Tabla y cuadro actualizados.`
+      );
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'No se pudo guardar el resultado en Firestore.'
+      );
+    } finally {
+      setSavingScore(false);
     }
-
-    await publishNotificationAndBroadcast(
-      {
-        id: makeId('notif'),
-        tournamentId: tournament.id,
-        divisionId: division.id,
-        matchId: updatedMatch.id,
-        title: `Resultado confirmado · ${division.name}`,
-        body: `${updatedMatch.entryAName} vs ${updatedMatch.entryBName}: ${formatScoreString(setsToSave, status)}. Ganador: ${liveValidation.winnerName}.`,
-        targetPlayerIds: involvedPlayerIds,
-        createdAt: now,
-      },
-      'match:score_updated'
-    );
-
-    setPendingAffectedMatches(null);
-    setCorrectionReason('');
-    setFeedback(`Marcador confirmado (${formatScoreString(setsToSave, status)}). Ganador: ${liveValidation.winnerName}.`);
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <p className="text-xs text-[#7C1FA2] font-medium">
-          {division.itfConfig.edition} · {division.itfConfig.setsToWin === 2 ? 'Mejor de 3 sets' : division.itfConfig.setsToWin === 1 ? 'Set único' : 'Mejor de 5 sets'}
-          {division.itfConfig.setTiebreakPoints === 10 ? ' · Tie-break a 10 pts' : ''}
-          {division.itfConfig.tiebreakExactTarget ? ' · El que llegue primero' : ''}
-          {division.itfConfig.directTiebreakMatch ? ' · Partido directo TB 10' : ''}
-          {division.itfConfig.matchTiebreakThirdSet ? ' · Match Tie-Break 10 pts' : ''}
-          {division.itfConfig.decisivePointNoAd ? ' · Sin ventaja (No-Ad)' : ''}
-        </p>
-        <h2 className="text-xl font-bold text-[#0A1633]">
-          Carga y Corrección de Marcadores — {division.name}
-        </h2>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs text-[#7C1FA2] font-medium">
+            {division.itfConfig.edition} ·{' '}
+            {division.itfConfig.setsToWin === 2
+              ? 'Mejor de 3 sets'
+              : division.itfConfig.setsToWin === 1
+              ? 'Set único'
+              : 'Mejor de 5 sets'}
+            {division.itfConfig.setTiebreakPoints === 10 ? ' · Tie-break a 10 pts' : ''}
+            {division.itfConfig.tiebreakExactTarget ? ' · El que llegue primero' : ''}
+            {division.itfConfig.directTiebreakMatch ? ' · Partido directo TB 10' : ''}
+            {division.itfConfig.matchTiebreakThirdSet ? ' · Match Tie-Break 10 pts' : ''}
+            {division.itfConfig.decisivePointNoAd ? ' · Sin ventaja (No-Ad)' : ''}
+          </p>
+          <h2 className="text-xl font-bold text-[#0A1633]">
+            Carga y Corrección de Marcadores — {division.name}
+          </h2>
+        </div>
       </div>
+
+      {/* Selector / Filtro estricto por Categoría y División para no mezclar partidos */}
+      {tournamentDivisions.length > 0 && (
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#0A1633]">
+              <Filter className="w-3.5 h-3.5 text-[#7C1FA2]" />
+              Filtrar por Categoría / División (sin mezclar cuadros)
+            </div>
+            {categoriesList.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                    selectedCategoryFilter === 'ALL'
+                      ? 'bg-[#0A1633] text-white'
+                      : 'bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] hover:text-[#0A1633]'
+                  }`}
+                >
+                  Todas ({tournamentDivisions.length})
+                </button>
+                {categoriesList.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategoryFilter(cat);
+                      const firstInCat = tournamentDivisions.find((d) => d.category === cat);
+                      if (firstInCat && firstInCat.id !== division.id && onSelectDivision) {
+                        onSelectDivision(firstInCat.id);
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                      selectedCategoryFilter === cat
+                        ? 'bg-[#0A1633] text-white'
+                        : 'bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] hover:text-[#0A1633]'
+                    }`}
+                  >
+                    Cat. {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {filteredDivisionChips.map((d) => {
+              const active = d.id === division.id;
+              const counts = divisionMatchCounts.get(d.id) || { total: 0, pending: 0 };
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => onSelectDivision?.(d.id)}
+                  disabled={!onSelectDivision}
+                  className={`px-3 py-2 rounded-xl border text-left transition-colors flex items-center gap-2 ${
+                    active
+                      ? 'bg-[#7C1FA2] text-white border-[#7C1FA2]'
+                      : 'bg-[#F8FAFC] text-[#0A1633] border-[#E2E8F0] hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="text-xs font-semibold">{d.name}</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-md font-mono tabular-nums text-[10px] font-semibold ${
+                      active
+                        ? 'bg-white/20 text-white'
+                        : counts.pending > 0
+                        ? 'bg-amber-100 text-amber-900'
+                        : 'bg-emerald-100 text-emerald-900'
+                    }`}
+                  >
+                    {counts.pending > 0 ? `${counts.pending} pend.` : `${counts.total}/${counts.total}`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-medium text-red-800">
@@ -386,126 +902,230 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Lista de partidos de la división */}
-        <div className="lg:col-span-5 bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#F8FAFC] flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-[#0A1633]">
-              Partidos ({playableMatches.length})
-            </h3>
-            {duplicateAnalysis.duplicateMatches.length > 0 && canDelete && (
-              <button
-                type="button"
-                disabled={cleaningDuplicates}
-                onClick={async () => {
-                  setCleaningDuplicates(true);
-                  setErrorMsg(null);
-                  try {
-                    const ids = duplicateAnalysis.duplicateMatches.map((m) => m.id);
-                    await deleteMatchesBatch(ids);
-                    setFeedback(`Se eliminaron ${ids.length} partidos duplicados.`);
-                  } catch (err) {
-                    setErrorMsg(err instanceof Error ? err.message : 'No se pudieron eliminar duplicados.');
-                  } finally {
-                    setCleaningDuplicates(false);
-                  }
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-700 text-white text-[11px] font-semibold hover:bg-red-800 disabled:opacity-60"
-              >
-                <Trash2 className="w-3 h-3" />
-                {cleaningDuplicates
-                  ? 'Limpiando...'
-                  : `Borrar ${duplicateAnalysis.duplicateMatches.length} duplicados`}
-              </button>
-            )}
-          </div>
-          <div className="divide-y divide-[#E2E8F0] max-h-[520px] overflow-y-auto">
-            {playableMatches.map((m) => {
-              const selected = activeMatch?.id === m.id;
-              const isDup = duplicateIdSet.has(m.id);
-              return (
-                <div
-                  key={m.id}
-                  className={`p-4 transition-colors ${
-                    selected ? 'bg-emerald-50/50' : 'hover:bg-[#F8FAFC]'
-                  }`}
+        {/* Lista de partidos de la categoría seleccionada */}
+        <div className="lg:col-span-5 bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden flex flex-col">
+          <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#F8FAFC] space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-[#0A1633]">
+                Partidos · {division.name} ({playableMatches.length}/{allPlayableMatches.length})
+              </h3>
+              {duplicateAnalysis.duplicateMatches.length > 0 && canDelete && (
+                <button
+                  type="button"
+                  disabled={cleaningDuplicates}
+                  onClick={async () => {
+                    setCleaningDuplicates(true);
+                    setErrorMsg(null);
+                    try {
+                      const ids = duplicateAnalysis.duplicateMatches.map((m) => m.id);
+                      await deleteMatchesBatch(ids);
+                      setFeedback(`Se eliminaron ${ids.length} partidos duplicados.`);
+                    } catch (err) {
+                      setErrorMsg(
+                        err instanceof Error
+                          ? err.message
+                          : 'No se pudieron eliminar duplicados.'
+                      );
+                    } finally {
+                      setCleaningDuplicates(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-700 text-white text-[11px] font-semibold hover:bg-red-800 disabled:opacity-60"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => loadMatchIntoEditor(m)}
-                      className="flex-1 text-left min-w-0"
-                    >
-                      <div className="flex items-center justify-between gap-2 text-xs text-[#475569]">
-                        <span className="inline-flex items-center gap-1.5">
-                          {m.roundName}
-                          {isDup && (
-                            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold text-[10px]">
-                              Duplicado
-                            </span>
-                          )}
-                        </span>
-                        <span className="font-mono tabular-nums font-medium text-[#7C1FA2]">
-                          {m.sets.length > 0 || m.status === 'wo'
-                            ? formatScoreString(m.sets, m.status)
-                            : 'Pendiente'}
-                        </span>
-                      </div>
-                      <p className="text-sm font-semibold text-[#0A1633] mt-1">
-                        {m.entryAName} vs {m.entryBName}
-                      </p>
-                    </button>
+                  <Trash2 className="w-3 h-3" />
+                  {cleaningDuplicates
+                    ? 'Limpiando...'
+                    : `Borrar ${duplicateAnalysis.duplicateMatches.length} duplicados`}
+                </button>
+              )}
+            </div>
 
-                    {canDelete && (
-                      <div className="shrink-0">
-                        {confirmDeleteMatchId === m.id ? (
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteMatchId(null)}
-                              className="px-2 py-1 rounded border border-[#E2E8F0] bg-white text-[10px]"
-                            >
-                              No
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await removeEntity('matches', m.id);
-                                setConfirmDeleteMatchId(null);
-                                setFeedback(`Partido eliminado (${m.entryAName} vs ${m.entryBName}).`);
-                              }}
-                              className="px-2 py-1 rounded bg-red-700 text-white text-[10px] font-semibold"
-                            >
-                              Borrar
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteMatchId(m.id)}
-                            title="Eliminar partido"
-                            className="p-1.5 rounded-lg text-[#475569] hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
+            {/* Sub-filtros dentro de la categoría: Fase, Grupo/Ronda, Estado y Jugador */}
+            <div className="space-y-2">
+              {(hasGroupsPhase || hasEliminationPhase) && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(
+                    [
+                      { id: 'ALL', label: 'Todas las fases' },
+                      ...(hasGroupsPhase ? [{ id: 'grupos', label: 'Grupos' }] : []),
+                      ...(hasEliminationPhase
+                        ? [{ id: 'eliminacion', label: 'Eliminación' }]
+                        : []),
+                    ] as Array<{ id: 'ALL' | 'grupos' | 'eliminacion'; label: string }>
+                  ).map((ph) => (
+                    <button
+                      key={ph.id}
+                      type="button"
+                      onClick={() => {
+                        setPhaseFilter(ph.id);
+                        setRoundFilter('ALL');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                        phaseFilter === ph.id
+                          ? 'bg-[#0A1633] text-white'
+                          : 'bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#0A1633]'
+                      }`}
+                    >
+                      {ph.label}
+                    </button>
+                  ))}
                 </div>
-              );
-            })}
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <select
+                  value={roundFilter}
+                  onChange={(e) => setRoundFilter(e.target.value)}
+                  className="h-8 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs text-[#0A1633]"
+                >
+                  <option value="ALL">Todos los grupos / rondas</option>
+                  {roundFilterOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={statusFilter}
+                  onChange={(e) =>
+                    setStatusFilter(e.target.value as 'ALL' | 'pending' | 'finished')
+                  }
+                  className="h-8 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs text-[#0A1633]"
+                >
+                  <option value="ALL">Todos los estados</option>
+                  <option value="pending">Solo pendientes</option>
+                  <option value="finished">Solo finalizados</option>
+                </select>
+              </div>
+
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-[#475569] absolute left-2.5 top-2.5" />
+                <input
+                  type="text"
+                  value={playerSearch}
+                  onChange={(e) => setPlayerSearch(e.target.value)}
+                  placeholder="Buscar jugador o pareja en esta categoría..."
+                  className="w-full h-8 pl-8 pr-3 rounded-lg border border-[#E2E8F0] bg-white text-xs text-[#0A1633]"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="divide-y divide-[#E2E8F0] max-h-[520px] overflow-y-auto">
+            {playableMatches.length === 0 ? (
+              <div className="p-6 text-center text-xs text-[#475569]">
+                No hay partidos con jugadores asignados que coincidan con el filtro en{' '}
+                <strong>{division.name}</strong>.
+              </div>
+            ) : (
+              playableMatches.map((m) => {
+                const selected = activeMatch?.id === m.id;
+                const isDup = duplicateIdSet.has(m.id);
+                return (
+                  <div
+                    key={m.id}
+                    className={`p-3.5 transition-colors ${
+                      selected ? 'bg-purple-50/60 border-l-4 border-l-[#7C1FA2]' : 'hover:bg-[#F8FAFC]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => loadMatchIntoEditor(m)}
+                        className="flex-1 text-left min-w-0"
+                      >
+                        <div className="flex items-center justify-between gap-2 text-xs text-[#475569]">
+                          <span className="inline-flex items-center gap-1.5 truncate">
+                            <span className="font-medium">{m.roundName}</span>
+                            {isDup && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold text-[10px]">
+                                Duplicado
+                              </span>
+                            )}
+                          </span>
+                          <span
+                            className={`font-mono tabular-nums font-semibold shrink-0 ${
+                              m.winnerEntryId ? 'text-[#15803D]' : 'text-[#C2410C]'
+                            }`}
+                          >
+                            {m.sets.length > 0 || m.status === 'wo' || m.winnerEntryId
+                              ? formatScoreString(m.sets, m.status)
+                              : 'Pendiente'}
+                          </span>
+                        </div>
+                        <p className="text-sm font-semibold text-[#0A1633] mt-1">
+                          <span className={m.winnerEntryId === m.entryAId ? 'text-[#15803D]' : ''}>
+                            {m.entryAName}
+                          </span>{' '}
+                          <span className="text-xs font-normal text-[#475569]">vs</span>{' '}
+                          <span className={m.winnerEntryId === m.entryBId ? 'text-[#15803D]' : ''}>
+                            {m.entryBName}
+                          </span>
+                        </p>
+                        {m.winnerName && (
+                          <p className="text-[11px] text-[#15803D] font-medium mt-0.5">
+                            Ganador: {m.winnerName}
+                          </p>
+                        )}
+                      </button>
+
+                      {canDelete && (
+                        <div className="shrink-0">
+                          {confirmDeleteMatchId === m.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteMatchId(null)}
+                                className="px-2 py-1 rounded border border-[#E2E8F0] bg-white text-[10px]"
+                              >
+                                No
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await removeEntity('matches', m.id);
+                                  setConfirmDeleteMatchId(null);
+                                  setFeedback(`Partido eliminado (${m.entryAName} vs ${m.entryBName}).`);
+                                }}
+                                className="px-2 py-1 rounded bg-red-700 text-white text-[10px] font-semibold"
+                              >
+                                Borrar
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteMatchId(m.id)}
+                              title="Eliminar partido"
+                              className="p-1.5 rounded-lg text-[#475569] hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
         {/* Editor de Marcador ITF */}
         <div className="lg:col-span-7 bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-5">
           {!activeMatch ? (
-            <p className="text-sm text-[#475569]">Seleccioná un partido para cargar el resultado.</p>
+            <p className="text-sm text-[#475569]">
+              Seleccioná un partido de <strong>{division.name}</strong> para cargar o corregir su marcador.
+            </p>
           ) : (
             <>
               <div className="pb-4 border-b border-[#E2E8F0] flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs text-[#475569]">{activeMatch.roundName}</p>
+                  <p className="text-xs text-[#7C1FA2] font-semibold">
+                    {division.name} · {activeMatch.roundName}
+                  </p>
                   <h3 className="text-base font-bold text-[#0A1633] mt-0.5">
                     {activeMatch.entryAName} vs {activeMatch.entryBName}
                   </h3>
@@ -627,7 +1247,9 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                   status === 'descalificado' ||
                   (status === 'finalizado' && !includeSetScores)) && (
                   <div>
-                    <label className="block text-xs font-medium text-[#475569] mb-1">Ganador oficial *</label>
+                    <label className="block text-xs font-medium text-[#475569] mb-1">
+                      Ganador oficial *
+                    </label>
                     <select
                       value={incidentWinnerSide || ''}
                       onChange={(e) => setIncidentWinnerSide((e.target.value as 'A' | 'B') || null)}
@@ -691,86 +1313,92 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                       !s.isMatchTiebreak &&
                       ((s.a === gps + 1 && s.b === gps) || (s.b === gps + 1 && s.a === gps));
                     return (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-wrap items-center gap-3"
-                    >
-                      <span className="text-xs font-medium text-[#475569] w-24">
-                        {s.isMatchTiebreak ? 'Tie-Break (10)' : `Set ${idx + 1}`}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={0}
-                          max={30}
-                          value={s.a}
-                          onChange={(e) => {
-                            const next = [...sets];
-                            next[idx] = { ...s, a: Number(e.target.value) };
-                            setSets(next);
-                          }}
-                          className="w-16 h-9 px-2 rounded-lg border border-[#E2E8F0] bg-white text-center font-mono tabular-nums text-sm"
-                        />
-                        <span className="text-xs text-[#475569]">-</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={30}
-                          value={s.b}
-                          onChange={(e) => {
-                            const next = [...sets];
-                            next[idx] = { ...s, b: Number(e.target.value) };
-                            setSets(next);
-                          }}
-                          className="w-16 h-9 px-2 rounded-lg border border-[#E2E8F0] bg-white text-center font-mono tabular-nums text-sm"
-                        />
-                      </div>
-
-                      {showSetTiebreak && (
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <span className="text-[#475569]">
-                            TB ({division.itfConfig.setTiebreakPoints ?? 7}
-                            {division.itfConfig.tiebreakExactTarget ? ' exacto' : ''}):
-                          </span>
+                      <div
+                        key={idx}
+                        className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-wrap items-center gap-3"
+                      >
+                        <span className="text-xs font-medium text-[#475569] w-24">
+                          {s.isMatchTiebreak ? 'Tie-Break (10)' : `Set ${idx + 1}`}
+                        </span>
+                        <div className="flex items-center gap-2">
                           <input
                             type="number"
                             min={0}
                             max={30}
-                            placeholder="A"
-                            value={s.tbA ?? ''}
+                            value={s.a}
                             onChange={(e) => {
                               const next = [...sets];
-                              next[idx] = { ...s, tbA: e.target.value === '' ? null : Number(e.target.value) };
+                              next[idx] = { ...s, a: Number(e.target.value) };
                               setSets(next);
                             }}
-                            className="w-12 h-8 px-1 rounded border border-[#E2E8F0] bg-white text-center font-mono text-xs"
+                            className="w-16 h-9 px-2 rounded-lg border border-[#E2E8F0] bg-white text-center font-mono tabular-nums text-sm"
                           />
+                          <span className="text-xs text-[#475569]">-</span>
                           <input
                             type="number"
                             min={0}
                             max={30}
-                            placeholder="B"
-                            value={s.tbB ?? ''}
+                            value={s.b}
                             onChange={(e) => {
                               const next = [...sets];
-                              next[idx] = { ...s, tbB: e.target.value === '' ? null : Number(e.target.value) };
+                              next[idx] = { ...s, b: Number(e.target.value) };
                               setSets(next);
                             }}
-                            className="w-12 h-8 px-1 rounded border border-[#E2E8F0] bg-white text-center font-mono text-xs"
+                            className="w-16 h-9 px-2 rounded-lg border border-[#E2E8F0] bg-white text-center font-mono tabular-nums text-sm"
                           />
                         </div>
-                      )}
 
-                      {sets.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setSets(sets.filter((_, i) => i !== idx))}
-                          className="ml-auto text-xs text-red-700 hover:underline"
-                        >
-                          Quitar
-                        </button>
-                      )}
-                    </div>
+                        {showSetTiebreak && (
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <span className="text-[#475569]">
+                              TB ({division.itfConfig.setTiebreakPoints ?? 7}
+                              {division.itfConfig.tiebreakExactTarget ? ' exacto' : ''}):
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={30}
+                              placeholder="A"
+                              value={s.tbA ?? ''}
+                              onChange={(e) => {
+                                const next = [...sets];
+                                next[idx] = {
+                                  ...s,
+                                  tbA: e.target.value === '' ? null : Number(e.target.value),
+                                };
+                                setSets(next);
+                              }}
+                              className="w-12 h-8 px-1 rounded border border-[#E2E8F0] bg-white text-center font-mono text-xs"
+                            />
+                            <input
+                              type="number"
+                              min={0}
+                              max={30}
+                              placeholder="B"
+                              value={s.tbB ?? ''}
+                              onChange={(e) => {
+                                const next = [...sets];
+                                next[idx] = {
+                                  ...s,
+                                  tbB: e.target.value === '' ? null : Number(e.target.value),
+                                };
+                                setSets(next);
+                              }}
+                              className="w-12 h-8 px-1 rounded border border-[#E2E8F0] bg-white text-center font-mono text-xs"
+                            />
+                          </div>
+                        )}
+
+                        {sets.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setSets(sets.filter((_, i) => i !== idx))}
+                            className="ml-auto text-xs text-red-700 hover:underline"
+                          >
+                            Quitar
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -832,14 +1460,17 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                   </div>
                   <div className="flex justify-end gap-2">
                     <button
+                      type="button"
                       onClick={() => setPendingAffectedMatches(null)}
                       className="px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs"
                     >
                       Cancelar
                     </button>
                     <button
+                      type="button"
+                      disabled={savingScore}
                       onClick={() => applyScoreAndCascade(true)}
-                      className="px-3.5 py-1.5 rounded-lg bg-amber-700 text-white text-xs font-medium"
+                      className="px-3.5 py-1.5 rounded-lg bg-amber-700 text-white text-xs font-medium disabled:opacity-60"
                     >
                       Confirmar y actualizar cuadro
                     </button>
@@ -855,12 +1486,12 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                 )}
                 <button
                   type="button"
-                  disabled={!canEdit}
+                  disabled={!canEdit || savingScore}
                   onClick={() => applyScoreAndCascade(false)}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#7C1FA2] text-white text-xs font-semibold hover:bg-[#6B1A8B] disabled:opacity-50"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  Confirmar resultado oficial
+                  {savingScore ? 'Guardando...' : 'Confirmar resultado oficial'}
                 </button>
               </div>
 
@@ -883,6 +1514,392 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                 </div>
               )}
             </>
+          )}
+        </div>
+      </div>
+
+      {/* Reflejo en Tiempo Real: Grupos, Cruces y Cuadro Eliminatorio de la Categoría */}
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#E2E8F0] bg-[#F8FAFC] flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7C1FA2]">
+              Reflejo inmediato en vivo · {division.name}
+            </p>
+            <h3 className="text-base font-bold text-[#0A1633]">
+              Cuadro, Tabla de Posiciones y Cruces
+            </h3>
+          </div>
+
+          {division.format === 'grupos_y_final' &&
+            knockoutRounds.length === 0 &&
+            liveQualifiers.length >= 2 &&
+            canEdit && (
+              <button
+                type="button"
+                disabled={generatingFinalBracket}
+                onClick={handleGenerateAndPublishFinalBracket}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0A1633] text-white text-xs font-semibold hover:bg-[#7C1FA2] disabled:opacity-60 transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {generatingFinalBracket
+                  ? 'Generando cuadro...'
+                  : `Generar cuadro final (${liveQualifiers.length} clasificados)`}
+              </button>
+            )}
+        </div>
+
+        <div className="p-5 space-y-6">
+          {/* Podio si la final / 3er puesto ya tiene ganador */}
+          {(division.championName || division.runnerUpName || division.thirdPlaceName) && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {division.championName && (
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-3">
+                  <Trophy className="w-5 h-5 text-amber-700 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                      1° Campeón · Oro
+                    </p>
+                    <p className="text-sm font-bold text-[#0A1633] truncate">
+                      {division.championName}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {division.runnerUpName && (
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+                  <Medal className="w-5 h-5 text-slate-600 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                      2° Vicecampeón · Plata
+                    </p>
+                    <p className="text-sm font-bold text-[#0A1633] truncate">
+                      {division.runnerUpName}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {division.thirdPlaceName && (
+                <div className="p-3.5 rounded-xl bg-orange-50 border border-orange-200 flex items-center gap-3">
+                  <Award className="w-5 h-5 text-orange-700 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-orange-800">
+                      3° Tercer Puesto · Bronce
+                    </p>
+                    <p className="text-sm font-bold text-[#0A1633] truncate">
+                      {division.thirdPlaceName}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Grupos y Cruces de Zona */}
+          {liveGroupsWithDetails.length > 0 && (
+            <div className="space-y-4">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#475569]">
+                Fase de Grupos y Cruces ({liveGroupsWithDetails.length})
+              </h4>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {liveGroupsWithDetails.map(({ group, standings, matches: grpMatches }) => (
+                  <div
+                    key={group.id}
+                    className="border border-[#E2E8F0] rounded-xl overflow-hidden bg-[#F8FAFC]/50"
+                  >
+                    <div className="px-4 py-2.5 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-[#0A1633]">{group.name}</span>
+                      <span className="text-[11px] text-[#475569]">
+                        {division.format === 'todos_contra_todos'
+                          ? 'Todos contra todos'
+                          : `Clasifican ${division.drawConfig.qualifiersPerGroup}`}
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto bg-white">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-[#E2E8F0] text-[11px] text-[#475569] bg-[#F8FAFC]">
+                            <th className="py-2 px-3">#</th>
+                            <th className="py-2 px-3">Participante</th>
+                            <th className="py-2 px-2 text-right">PJ</th>
+                            <th className="py-2 px-2 text-right">G-P</th>
+                            <th className="py-2 px-2 text-right">Sets</th>
+                            <th className="py-2 px-2 text-right">DG</th>
+                            <th className="py-2 px-3 text-right">PTS</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#E2E8F0]">
+                          {standings.map((row, idx) => (
+                            <tr key={row.entryId} className={row.qualified ? 'bg-emerald-50/40' : ''}>
+                              <td className="py-2 px-3 font-mono tabular-nums text-[#475569]">
+                                {idx + 1}
+                              </td>
+                              <td className="py-2 px-3 font-medium text-[#0A1633]">
+                                <span>{row.displayName}</span>
+                                {row.qualified && (
+                                  <span className="ml-1.5 text-[10px] font-semibold text-[#15803D]">
+                                    Clasifica
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono tabular-nums">
+                                {row.played}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono tabular-nums">
+                                {row.won}-{row.lost}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono tabular-nums">
+                                {row.setsWon}/{row.setsLost}
+                              </td>
+                              <td className="py-2 px-2 text-right font-mono tabular-nums">
+                                {row.gamesDiff >= 0 ? `+${row.gamesDiff}` : row.gamesDiff}
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono tabular-nums font-bold text-[#7C1FA2]">
+                                {row.points}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {grpMatches.length > 0 && (
+                      <div className="p-3 border-t border-[#E2E8F0] space-y-1.5">
+                        <p className="text-[11px] font-semibold text-[#475569]">
+                          Cruces de {group.name}
+                        </p>
+                        <div className="space-y-1.5">
+                          {grpMatches.map((m) => (
+                            <div
+                              key={m.id}
+                              className={`px-3 py-2 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                                activeMatch?.id === m.id
+                                  ? 'bg-purple-50 border-[#7C1FA2]'
+                                  : 'bg-white border-[#E2E8F0]'
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <p className="text-[10px] text-[#475569]">{m.roundName}</p>
+                                <p className="font-medium text-[#0A1633] truncate">
+                                  <span
+                                    className={
+                                      m.winnerEntryId === m.entryAId
+                                        ? 'font-bold text-[#15803D]'
+                                        : ''
+                                    }
+                                  >
+                                    {m.entryAName}
+                                  </span>{' '}
+                                  <span className="text-[#475569] font-normal">vs</span>{' '}
+                                  <span
+                                    className={
+                                      m.winnerEntryId === m.entryBId
+                                        ? 'font-bold text-[#15803D]'
+                                        : ''
+                                    }
+                                  >
+                                    {m.entryBName}
+                                  </span>
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span
+                                  className={`font-mono tabular-nums font-semibold ${
+                                    m.winnerEntryId ? 'text-[#7C1FA2]' : 'text-[#475569]'
+                                  }`}
+                                >
+                                  {m.sets.length > 0 || m.status === 'wo' || m.winnerEntryId
+                                    ? formatScoreString(m.sets, m.status)
+                                    : 'Pendiente'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => loadMatchIntoEditor(m)}
+                                  title="Editar este cruce"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-[#E2E8F0] bg-[#F8FAFC] hover:bg-slate-100 text-[10px] font-medium text-[#0A1633]"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  Cargar
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cuadro Eliminatorio Oficial (o proyección desde grupos) */}
+          {knockoutRounds.length > 0 || thirdPlaceMatch ? (
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#475569]">
+                Cuadro de Eliminación Directa y Cruces Finales
+              </h4>
+              <div className="overflow-x-auto pb-2">
+                <div className="flex items-stretch gap-4 min-w-max">
+                  {knockoutRounds.map((round) => (
+                    <div
+                      key={round.roundName}
+                      className="w-[260px] shrink-0 flex flex-col gap-2.5"
+                    >
+                      <div className="pb-1.5 border-b border-[#E2E8F0] flex items-center justify-between">
+                        <span className="text-xs font-bold text-[#7C1FA2]">{round.roundName}</span>
+                        <span className="text-[11px] font-mono text-[#475569]">
+                          {round.matches.length}
+                        </span>
+                      </div>
+                      <div className="flex-1 flex flex-col justify-around gap-2.5">
+                        {round.matches.map((m) => {
+                          const canLoad = !m.isBye && Boolean(m.entryAId && m.entryBId);
+                          const isSelected = activeMatch?.id === m.id;
+                          return (
+                            <div
+                              key={m.id}
+                              className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                                isSelected
+                                  ? 'bg-purple-50/70 border-[#7C1FA2]'
+                                  : m.winnerEntryId
+                                  ? 'bg-white border-emerald-200'
+                                  : 'bg-[#F8FAFC] border-[#E2E8F0]'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] text-[#475569]">
+                                  {m.isBye
+                                    ? 'BYE'
+                                    : m.winnerEntryId
+                                    ? formatScoreString(m.sets, m.status)
+                                    : 'Por disputar'}
+                                </span>
+                                {canLoad && (
+                                  <button
+                                    type="button"
+                                    onClick={() => loadMatchIntoEditor(m)}
+                                    className="text-[10px] font-semibold text-[#7C1FA2] hover:underline"
+                                  >
+                                    {m.winnerEntryId ? 'Corregir' : 'Cargar'}
+                                  </button>
+                                )}
+                              </div>
+                              <div
+                                className={`px-2 py-1 rounded border flex items-center justify-between gap-2 ${
+                                  m.winnerEntryId && m.winnerEntryId === m.entryAId
+                                    ? 'bg-emerald-50 border-emerald-200 font-bold text-[#0A1633]'
+                                    : 'bg-white border-[#E2E8F0] text-[#0A1633]'
+                                }`}
+                              >
+                                <span className="truncate">{m.entryAName}</span>
+                                {m.winnerEntryId && m.winnerEntryId === m.entryAId && (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-[#15803D] shrink-0" />
+                                )}
+                              </div>
+                              <div
+                                className={`px-2 py-1 rounded border flex items-center justify-between gap-2 ${
+                                  m.winnerEntryId && m.winnerEntryId === m.entryBId
+                                    ? 'bg-emerald-50 border-emerald-200 font-bold text-[#0A1633]'
+                                    : 'bg-white border-[#E2E8F0] text-[#0A1633]'
+                                }`}
+                              >
+                                <span className="truncate">{m.entryBName}</span>
+                                {m.winnerEntryId && m.winnerEntryId === m.entryBId && (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-[#15803D] shrink-0" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  {thirdPlaceMatch && (
+                    <div className="w-[260px] shrink-0 flex flex-col gap-2.5">
+                      <div className="pb-1.5 border-b border-orange-200 flex items-center justify-between">
+                        <span className="text-xs font-bold text-[#9A3412]">Tercer Puesto</span>
+                        <span className="text-[11px] font-mono text-[#9A3412]">Bronce</span>
+                      </div>
+                      <div
+                        className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                          activeMatch?.id === thirdPlaceMatch.id
+                            ? 'bg-purple-50/70 border-[#7C1FA2]'
+                            : 'bg-orange-50/40 border-orange-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-[#9A3412] font-medium">
+                            {thirdPlaceMatch.winnerEntryId
+                              ? formatScoreString(thirdPlaceMatch.sets, thirdPlaceMatch.status)
+                              : 'Por disputar'}
+                          </span>
+                          {thirdPlaceMatch.entryAId && thirdPlaceMatch.entryBId && (
+                            <button
+                              type="button"
+                              onClick={() => loadMatchIntoEditor(thirdPlaceMatch)}
+                              className="text-[10px] font-semibold text-[#7C1FA2] hover:underline"
+                            >
+                              {thirdPlaceMatch.winnerEntryId ? 'Corregir' : 'Cargar'}
+                            </button>
+                          )}
+                        </div>
+                        <div
+                          className={`px-2 py-1 rounded border flex items-center justify-between gap-2 ${
+                            thirdPlaceMatch.winnerEntryId === thirdPlaceMatch.entryAId
+                              ? 'bg-emerald-50 border-emerald-200 font-bold text-[#0A1633]'
+                              : 'bg-white border-[#E2E8F0] text-[#0A1633]'
+                          }`}
+                        >
+                          <span className="truncate">{thirdPlaceMatch.entryAName}</span>
+                        </div>
+                        <div
+                          className={`px-2 py-1 rounded border flex items-center justify-between gap-2 ${
+                            thirdPlaceMatch.winnerEntryId === thirdPlaceMatch.entryBId
+                              ? 'bg-emerald-50 border-emerald-200 font-bold text-[#0A1633]'
+                              : 'bg-white border-[#E2E8F0] text-[#0A1633]'
+                          }`}
+                        >
+                          <span className="truncate">{thirdPlaceMatch.entryBName}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            division.format === 'grupos_y_final' &&
+            projectedFinalMatches.length > 0 && (
+              <div className="space-y-3 pt-2 border-t border-[#E2E8F0]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[#0A1633]">
+                      Proyección en vivo de cruces de Fase Final (según tabla actual)
+                    </h4>
+                    <p className="text-[11px] text-[#475569]">
+                      Se actualiza con cada resultado cargado en grupos. Usá “Generar cuadro final” cuando quieras publicar los cruces oficiales.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {projectedFinalMatches.map((pm) => (
+                    <div
+                      key={pm.id}
+                      className="p-3 rounded-xl border border-dashed border-[#7C1FA2]/40 bg-purple-50/30 text-xs space-y-1.5"
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[#7C1FA2]">
+                        {pm.roundName} (Proyectado)
+                      </p>
+                      <p className="font-semibold text-[#0A1633] truncate">{pm.entryAName}</p>
+                      <p className="text-[10px] text-[#475569]">vs</p>
+                      <p className="font-semibold text-[#0A1633] truncate">{pm.entryBName}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
           )}
         </div>
       </div>

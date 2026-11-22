@@ -28,6 +28,7 @@ import { optimizeAndUploadPhoto } from '../../utils/imageOptimizer';
 import {
   autoProposeSchedule,
   compareMatchesByRound,
+  dedupeMatches,
   detectScheduleConflicts,
   formatAsuncionDate,
   makeId,
@@ -43,6 +44,8 @@ interface Props {
   tournament: Tournament;
   tournaments: Tournament[];
   division: Division;
+  divisions?: Division[];
+  onSelectDivision?: (id: string) => void;
   matchdays: Matchday[];
   divisionMatches: Match[];
   allMatches: Match[];
@@ -59,6 +62,8 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
   tournament,
   tournaments,
   division,
+  divisions,
+  onSelectDivision,
   matchdays,
   divisionMatches,
   allMatches,
@@ -77,6 +82,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
     matchdays[0]?.id || ''
   );
   const [innerTab, setInnerTab] = useState<'partidos' | 'fotos'>('partidos');
+  const [schedulePhaseFilter, setSchedulePhaseFilter] = useState<'ALL' | 'grupos' | 'eliminacion'>('ALL');
 
   // Nueva / Editar / Eliminar jornada
   const [showNewMd, setShowNewMd] = useState(false);
@@ -523,6 +529,35 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
         </div>
       )}
 
+      {divisions && divisions.length > 1 && onSelectDivision && (
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-3.5 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#475569] mr-1">
+            Categoría / División:
+          </span>
+          {divisions.map((d) => {
+            const active = d.id === division.id;
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => {
+                  onSelectDivision(d.id);
+                  setEditingMatchId(null);
+                  setSchedulePhaseFilter('ALL');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  active
+                    ? 'bg-[#7C1FA2] text-white'
+                    : 'bg-[#F8FAFC] border border-[#E2E8F0] text-[#0A1633] hover:bg-slate-100'
+                }`}
+              >
+                {d.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {showNewMd && (
         <form
           onSubmit={handleCreateMatchday}
@@ -835,9 +870,31 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
               </div>
             )}
 
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+              <div className="flex items-center gap-1.5">
+                {(['ALL', 'grupos', 'eliminacion'] as const).map((ph) => (
+                  <button
+                    key={ph}
+                    type="button"
+                    onClick={() => setSchedulePhaseFilter(ph)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      schedulePhaseFilter === ph
+                        ? 'bg-[#0A1633] text-white'
+                        : 'bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569]'
+                    }`}
+                  >
+                    {ph === 'ALL' ? 'Todos' : ph === 'grupos' ? 'Grupos' : 'Eliminación'}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[11px] text-[#475569]">
+                División activa: <strong className="text-[#0A1633]">{division.name}</strong>
+              </span>
+            </div>
+
             <div className="divide-y divide-[#E2E8F0]">
-              {[...divisionMatches]
-                .filter((m) => !m.isBye)
+              {dedupeMatches(divisionMatches)
+                .filter((m) => !m.isBye && (schedulePhaseFilter === 'ALL' || m.phase === schedulePhaseFilter))
                 .sort(compareMatchesByRound)
                 .map((m) => (
                   <div

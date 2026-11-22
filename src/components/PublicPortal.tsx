@@ -6,6 +6,7 @@ import {
   BellRing,
   BookOpen,
   Calendar,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   FileImage,
@@ -33,7 +34,13 @@ import {
   TournamentTrophy,
 } from '../types/tennis';
 import { formatScoreString } from '../utils/itfRules';
-import { compareMatchesByRound, dedupeMatches, formatAsuncionDate } from '../utils/tournamentEngine';
+import {
+  compareMatchesByRound,
+  computeGroupStandings,
+  dedupeMatches,
+  formatAsuncionDate,
+  generateKnockoutBracket,
+} from '../utils/tournamentEngine';
 import { PublicTab, PWAInstallButton } from './TopBarAndPWA';
 import { TournamentAd as TournamentAdCard } from './TournamentAd';
 import { TournamentTrophiesViewer } from './TournamentTrophiesViewer';
@@ -332,6 +339,12 @@ const BracketMatchCard: React.FC<BracketMatchCardProps> = ({
               >
                 {entryName}
               </span>
+              {isWinner && !isFinal && !isThird && (
+                <CheckCircle2
+                  className="w-3.5 h-3.5 text-[#15803D] shrink-0"
+                  aria-label="Ganador"
+                />
+              )}
             </div>
           </div>
         </div>
@@ -741,6 +754,64 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       ) || null,
     [divisionMatches]
   );
+
+  const liveDivisionGroups = useMemo(() => {
+    if (!activeDivision) return [];
+    return [...divisionGroups]
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+      .map((grp) => {
+        const liveStandings = computeGroupStandings(
+          grp,
+          divisionMatches,
+          divisionRegistrations,
+          activeDivision
+        );
+        const grpMatches = divisionMatches
+          .filter(
+            (m) =>
+              m.phase === 'grupos' &&
+              (m.groupId === grp.id ||
+                (m.entryAId &&
+                  m.entryBId &&
+                  grp.entryIds.includes(m.entryAId) &&
+                  grp.entryIds.includes(m.entryBId)))
+          )
+          .sort(compareMatchesByRound);
+        return {
+          ...grp,
+          standings: liveStandings.length > 0 ? liveStandings : grp.standings,
+          matches: grpMatches,
+        };
+      });
+  }, [activeDivision, divisionGroups, divisionMatches, divisionRegistrations]);
+
+  const projectedFinalMatches = useMemo(() => {
+    if (
+      !activeDivision ||
+      activeDivision.format !== 'grupos_y_final' ||
+      knockoutRounds.length > 0 ||
+      liveDivisionGroups.length === 0
+    ) {
+      return [];
+    }
+    const qPerGroup = activeDivision.drawConfig.qualifiersPerGroup || 2;
+    const qualifiers: Registration[] = [];
+    liveDivisionGroups.forEach((g) => {
+      g.standings.slice(0, qPerGroup).forEach((row, rank) => {
+        const reg = divisionRegistrations.find((r) => r.id === row.entryId);
+        if (reg) {
+          qualifiers.push({
+            ...reg,
+            seed: rank === 0 ? 1 : null,
+          });
+        }
+      });
+    });
+    if (qualifiers.length < 2) return [];
+    return generateKnockoutBracket(qualifiers, activeDivision, 10).filter(
+      (m) => m.roundOrder === 10 && !m.isBye && !m.isThirdPlace
+    );
+  }, [activeDivision, knockoutRounds.length, liveDivisionGroups, divisionRegistrations]);
 
   const playersById = useMemo(
     () => new Map<string, PlayerPublic>(players.map((p) => [p.id, p])),
@@ -1371,7 +1442,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   </p>
                 </div>
 
-                {divisionGroups.map((grp) => (
+                {liveDivisionGroups.map((grp) => (
                   <div key={grp.id} className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
                     <div className="px-4 sm:px-5 py-3.5 border-b border-[#E2E8F0] flex items-center justify-between gap-2">
                       <h3 className="text-sm font-semibold text-[#0A1633]">{grp.name}</h3>
@@ -1476,6 +1547,90 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         </tbody>
                       </table>
                     </div>
+
+                    {/* Cruces del grupo y resultados reflejados */}
+                    {grp.matches.length > 0 && (
+                      <div className="p-4 sm:px-5 border-t border-[#E2E8F0] bg-[#FAFBF9] space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.06em] text-[#475569]">
+                            Cruces y resultados · {grp.name} ({grp.matches.length})
+                          </h4>
+                          <span className="text-[11px] text-[#475569]">
+                            Tocá un partido para ver Cara a Cara
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                          {grp.matches.map((m) => {
+                            const hasResult = Boolean(
+                              m.winnerEntryId ||
+                                m.sets.length > 0 ||
+                                ['finalizado', 'wo', 'retiro', 'descalificado'].includes(m.status)
+                            );
+                            const winA = Boolean(m.winnerEntryId && m.winnerEntryId === m.entryAId);
+                            const winB = Boolean(m.winnerEntryId && m.winnerEntryId === m.entryBId);
+                            return (
+                              <div
+                                key={m.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setSelectedH2HMatch(m)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setSelectedH2HMatch(m);
+                                  }
+                                }}
+                                className={`p-3 rounded-xl border bg-white cursor-pointer transition-colors hover:border-[#7C1FA2]/70 ${
+                                  hasResult ? 'border-emerald-200/90' : 'border-[#E2E8F0]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2 text-[11px] text-[#475569]">
+                                  <span className="truncate font-medium">
+                                    {m.roundName}
+                                    {m.scheduledDate ? ` · ${formatAsuncionDate(m.scheduledDate)}` : ''}
+                                    {m.scheduledTime ? ` ${m.scheduledTime} hs` : ''}
+                                  </span>
+                                  <span className={MATCH_STATUS_LABEL[m.status]?.tone || 'text-[#475569]'}>
+                                    {MATCH_STATUS_LABEL[m.status]?.label || m.status}
+                                  </span>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between gap-3">
+                                  <div className="min-w-0 space-y-0.5 text-xs">
+                                    <p className={`flex items-center gap-1.5 truncate ${winA ? 'font-bold text-[#0A1633]' : 'text-[#475569]'}`}>
+                                      <span className="truncate">{m.entryAName}</span>
+                                      {winA && <CheckCircle2 className="w-3.5 h-3.5 text-[#15803D] shrink-0" />}
+                                    </p>
+                                    <p className={`flex items-center gap-1.5 truncate ${winB ? 'font-bold text-[#0A1633]' : 'text-[#475569]'}`}>
+                                      <span className="truncate">{m.entryBName}</span>
+                                      {winB && <CheckCircle2 className="w-3.5 h-3.5 text-[#15803D] shrink-0" />}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {hasResult ? (
+                                      <span className="font-mono tabular-nums text-xs font-bold text-[#7C1FA2] bg-purple-50 px-2 py-1 rounded-lg">
+                                        {formatScoreString(m.sets, m.status)}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-[#475569]">Por jugar</span>
+                                    )}
+                                    <WhatsAppShareButton
+                                      compact
+                                      label="WA"
+                                      message={buildMatchWhatsAppMessage({
+                                        match: m,
+                                        tournament: activeTournament,
+                                        division: activeDivision,
+                                      })}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="px-4 sm:px-5 py-2.5 bg-[#F8FAFC] border-t border-[#E2E8F0] text-xs text-[#475569]">
                       {activeDivision.drawConfig.woHandlingNote}
                     </div>
@@ -1702,9 +1857,43 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
               <div className="p-4 sm:p-6">
                 {knockoutRounds.length === 0 && !thirdPlaceMatch ? (
-                  <div className="py-10 text-center text-sm text-[#475569]">
-                    Los cruces de fase final se publicarán al completar el sorteo o la etapa de grupos.
-                  </div>
+                  projectedFinalMatches.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-[#7C1FA2]">
+                          Proyección en vivo de cruces de Fase Final según la tabla actual de grupos
+                        </p>
+                        <span className="text-[11px] text-[#475569]">
+                          Se confirmará oficialmente al cierre de la fase de grupos
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {projectedFinalMatches.map((pm) => (
+                          <div
+                            key={pm.id}
+                            className="rounded-xl border border-dashed border-[#7C1FA2]/45 bg-[#FAFBF9] p-3.5 space-y-2"
+                          >
+                            <div className="flex items-center justify-between gap-2 text-[11px]">
+                              <span className="font-semibold text-[#7C1FA2]">{pm.roundName}</span>
+                              <span className="text-[#475569]">Proyectado</span>
+                            </div>
+                            <div className="space-y-1.5 text-xs">
+                              <div className="px-2.5 py-2 rounded-lg bg-white border border-[#E2E8F0] font-semibold text-[#0A1633] truncate">
+                                {pm.entryAName}
+                              </div>
+                              <div className="px-2.5 py-2 rounded-lg bg-white border border-[#E2E8F0] font-semibold text-[#0A1633] truncate">
+                                {pm.entryBName}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-10 text-center text-sm text-[#475569]">
+                      Los cruces de fase final se publicarán al completar el sorteo o la etapa de grupos.
+                    </div>
+                  )
                 ) : (
                   <div>
                     {/* Vista móvil (< md): Selector de ronda con distinción Oro / Bronce */}
