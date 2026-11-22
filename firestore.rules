@@ -857,10 +857,10 @@ service cloud.firestore {
       allow get: if isValidId(settingId);
       allow list: if true;
       allow create: if isValidId(settingId) && isValidSiteLandingConfig(incoming(), settingId)
-        && hasStaffPerm('manageLandingPage') && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'));
+        && (isSuperAdmin() || (hasStaffPerm('manageLandingPage') && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))));
       allow update: if isValidId(settingId) && isValidSiteLandingConfig(incoming(), settingId)
-        && hasStaffPerm('manageLandingPage') && hasStaffPerm('canEdit')
-        && incoming().id == existing().id;
+        && (isSuperAdmin() || (hasStaffPerm('manageLandingPage') && hasStaffPerm('canEdit')))
+        && (!('id' in existing()) || incoming().id == existing().id);
       allow delete: if isValidId(settingId) && isSuperAdmin();
     }
   }

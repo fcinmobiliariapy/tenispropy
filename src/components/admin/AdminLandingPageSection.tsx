@@ -421,6 +421,10 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
   };
 
   const handleRestoreDefaults = async () => {
+    if (permissions && !permissions.canEdit) {
+      setErrorMsg('No tenés permiso de modificación para restaurar la página principal.');
+      return;
+    }
     setRestoring(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -465,8 +469,9 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
           {!confirmRestore ? (
             <button
               type="button"
+              disabled={permissions ? !permissions.canEdit : false}
               onClick={() => setConfirmRestore(true)}
-              className="inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl border border-[#E2E8F0] text-xs font-medium text-[#475569] hover:text-[#0A1633]"
+              className="inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-xl border border-[#E2E8F0] text-xs font-medium text-[#475569] hover:text-[#0A1633] disabled:opacity-50"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Restaurar defaults
@@ -475,7 +480,7 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
             <div className="inline-flex items-center gap-1.5 p-1 rounded-xl border border-amber-300 bg-amber-50">
               <button
                 type="button"
-                disabled={restoring}
+                disabled={restoring || (permissions ? !permissions.canEdit : false)}
                 onClick={handleRestoreDefaults}
                 className="px-2.5 py-1 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-50"
               >
@@ -493,7 +498,7 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || (permissions ? !permissions.canEdit : false)}
             className="inline-flex items-center gap-1.5 px-4 min-h-[40px] rounded-xl bg-[#7C1FA2] text-white text-xs font-semibold hover:bg-[#6B1A8B] disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
