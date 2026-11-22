@@ -21,15 +21,18 @@ import {
 } from '../../types/tennis';
 import {
   analyzeDuplicateMatches,
+  computeQualifiedSeededEntries,
   generateGroupsDrawPreview,
   generateKnockoutBracket,
   generateKnockoutBracketFromSlotPairs,
   generateMatchesForGroupBuckets,
+  isRealFinalMatch,
   makeId,
 } from '../../utils/tournamentEngine';
 import {
   deleteGroupsBatch,
   deleteMatchesBatch,
+  formatFirestoreError,
   publishNotificationAndBroadcast,
   removeEntity,
   saveEntity,
@@ -99,6 +102,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
   // Cada par representa [entryAId | '', entryBId | ''] (vacío = BYE)
   const [manualKoPairs, setManualKoPairs] = useState<Array<[string, string]>>([]);
   const [manualKoTarget, setManualKoTarget] = useState<'direct' | 'from_groups'>('direct');
+  const [manualBracketSize, setManualBracketSize] = useState<'auto' | 4 | 8 | 16>('auto');
 
   // Edición y eliminación de inscripciones (Superadmin)
   const [editingRegId, setEditingRegId] = useState<string | null>(null);
@@ -133,29 +137,21 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
   }, [division.format, division.drawConfig.groupCount]);
 
   const groupQualifiers = useMemo(() => {
-    if (division.format !== 'grupos_y_final' || groups.length === 0) return [];
-    const qPerGroup = division.drawConfig.qualifiersPerGroup || 2;
-    const sortedGroups = [...groups].sort((a, b) => a.name.localeCompare(b.name));
-    const list: Registration[] = [];
-    sortedGroups.forEach((g) => {
-      g.standings.slice(0, qPerGroup).forEach((row, rank) => {
-        const reg = registrations.find((r) => r.id === row.entryId);
-        if (reg) {
-          list.push({
-            ...reg,
-            seed: rank === 0 ? 1 : null,
-          });
-        }
-      });
-    });
-    return list;
-  }, [division.format, division.drawConfig.qualifiersPerGroup, groups, registrations]);
+    return computeQualifiedSeededEntries(groups, matches, registrations, division);
+  }, [division, groups, matches, registrations]);
+
+  const manualFromGroupsPool = useMemo(() => {
+    const qualifierIds = new Set(groupQualifiers.map((q) => q.id));
+    const extras = confirmedEntries.filter((e) => !qualifierIds.has(e.id));
+    return [...groupQualifiers, ...extras];
+  }, [groupQualifiers, confirmedEntries]);
 
   // Limpiar borradores al cambiar de división
   useEffect(() => {
     setPreviewGroups(null);
     setPreviewMatches(null);
     setManualKoPairs([]);
+    setManualBracketSize('auto');
     setRegError(null);
     setFeedback(null);
   }, [division.id]);
@@ -174,9 +170,19 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
     });
   }, [confirmedEntries, groupNames.length]);
 
-  const initManualBracketSlots = (entriesPool: Registration[], target: 'direct' | 'from_groups') => {
+  const initManualBracketSlots = (
+    entriesPool: Registration[],
+    target: 'direct' | 'from_groups',
+    sizeOverride?: 'auto' | 4 | 8 | 16
+  ) => {
+    const chosenSize = sizeOverride ?? manualBracketSize;
     let bracketSize = 2;
-    while (bracketSize < Math.max(2, entriesPool.length)) bracketSize *= 2;
+    if (chosenSize !== 'auto') {
+      bracketSize = Math.max(chosenSize, 2);
+      while (bracketSize < entriesPool.length) bracketSize *= 2;
+    } else {
+      while (bracketSize < Math.max(2, entriesPool.length)) bracketSize *= 2;
+    }
     const pairCount = bracketSize / 2;
     const pairs: Array<[string, string]> = [];
     for (let i = 0; i < pairCount; i++) {
@@ -522,7 +528,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
         : matches.filter((m) => m.phase === 'eliminacion');
       let matchesToSave = previewMatches;
 
-      if (isSuperAdmin) {
+      if (canDelete) {
         if (existingPhaseMatches.length > 0) {
           await deleteMatchesBatch(existingPhaseMatches.map((m) => m.id));
         }
@@ -604,7 +610,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
       setPreviewMatches(null);
       setFeedback(`Sorteo y cruces de ${division.name} publicados en el portal público.`);
     } catch (err) {
-      setRegError(err instanceof Error ? err.message : 'Error al publicar el sorteo.');
+      setRegError(formatFirestoreError(err, 'Error al publicar el sorteo.'));
     } finally {
       setPublishingDraw(false);
     }
@@ -612,91 +618,101 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
 
   const handleCrownChampionRoundRobin = async () => {
     if (groups.length === 0 || groups[0].standings.length === 0) return;
-    const top = groups[0].standings[0];
-    const second = groups[0].standings[1];
-    const third = groups[0].standings[2];
-    await saveEntity('divisions', {
-      ...division,
-      championEntryId: top.entryId,
-      championName: top.displayName,
-      runnerUpName: second?.displayName || null,
-      thirdPlaceEntryId: third?.entryId || null,
-      thirdPlaceName: third?.displayName || null,
-      updatedAt: new Date().toISOString(),
-    });
-    setFeedback(
-      `Podio publicado: 1° ${top.displayName}${second ? `, 2° ${second.displayName}` : ''}${third ? `, 3° ${third.displayName}` : ''}.`
-    );
+    setRegError(null);
+    try {
+      const top = groups[0].standings[0];
+      const second = groups[0].standings[1];
+      const third = groups[0].standings[2];
+      await saveEntity('divisions', {
+        ...division,
+        championEntryId: top.entryId,
+        championName: top.displayName,
+        runnerUpName: second?.displayName || null,
+        thirdPlaceEntryId: third?.entryId || null,
+        thirdPlaceName: third?.displayName || null,
+        updatedAt: new Date().toISOString(),
+      });
+      setFeedback(
+        `Podio publicado: 1° ${top.displayName}${second ? `, 2° ${second.displayName}` : ''}${third ? `, 3° ${third.displayName}` : ''}.`
+      );
+    } catch (err) {
+      setRegError(formatFirestoreError(err, 'No se pudo publicar el podio.'));
+    }
   };
 
   const hasSemisWithoutThirdPlace = useMemo(() => {
     if (!division.hasThirdPlaceMatch) return false;
     const hasThird = matches.some((m) => m.isThirdPlace || m.roundName === 'Tercer Puesto');
-    const hasFinal = matches.some(
-      (m) => m.phase === 'eliminacion' && !m.nextMatchId && !m.isThirdPlace
-    );
+    const hasFinal = matches.some((m) => isRealFinalMatch(m, matches));
     const hasSemis = matches.some((m) => m.phase === 'eliminacion' && m.roundName === 'Semifinales');
     return hasFinal && hasSemis && !hasThird;
   }, [division.hasThirdPlaceMatch, matches]);
 
   const handleAddThirdPlaceMatch = async () => {
-    const finalMatch = matches.find(
-      (m) => m.phase === 'eliminacion' && !m.nextMatchId && !m.isThirdPlace
-    );
-    const semis = matches
-      .filter((m) => m.phase === 'eliminacion' && m.nextMatchId === finalMatch?.id)
-      .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
-    const sf1 = semis[0];
-    const sf2 = semis[1];
-    const getLoser = (sf?: Match) => {
-      if (!sf || !sf.winnerEntryId) return { id: null, name: 'Por definir', pids: [] as string[] };
-      const wonA = sf.winnerEntryId === sf.entryAId;
-      return {
-        id: wonA ? sf.entryBId || null : sf.entryAId || null,
-        name: wonA ? sf.entryBName : sf.entryAName,
-        pids: wonA ? sf.playerIdsB : sf.playerIdsA,
+    setRegError(null);
+    try {
+      const finalMatch = matches.find((m) => isRealFinalMatch(m, matches));
+      const semis = matches
+        .filter(
+          (m) =>
+            m.phase === 'eliminacion' &&
+            (m.nextMatchId === finalMatch?.id || m.roundName === 'Semifinales')
+        )
+        .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
+      const sf1 = semis[0];
+      const sf2 = semis[1];
+      const getLoser = (sf?: Match) => {
+        if (!sf || !sf.winnerEntryId) return { id: null, name: 'Por definir', pids: [] as string[] };
+        const wonA = sf.winnerEntryId === sf.entryAId;
+        return {
+          id: wonA ? sf.entryBId || null : sf.entryAId || null,
+          name: wonA ? sf.entryBName : sf.entryAName,
+          pids: wonA ? sf.playerIdsB : sf.playerIdsA,
+        };
       };
-    };
-    const loserA = getLoser(sf1);
-    const loserB = getLoser(sf2);
-    const now = new Date().toISOString();
-    const thirdMatch: Match = {
-      id: makeId('ko3'),
-      tournamentId: division.tournamentId,
-      divisionId: division.id,
-      matchdayId: null,
-      phase: 'eliminacion',
-      roundName: 'Tercer Puesto',
-      roundOrder: finalMatch?.roundOrder || 10,
-      bracketPosition: 2,
-      nextMatchId: null,
-      nextMatchSlot: null,
-      isThirdPlace: true,
-      groupId: null,
-      entryAId: loserA.id,
-      entryAName: loserA.name,
-      playerIdsA: loserA.pids,
-      entryBId: loserB.id,
-      entryBName: loserB.name,
-      playerIdsB: loserB.pids,
-      isBye: false,
-      scheduledDate: null,
-      scheduledTime: null,
-      courtId: null,
-      courtName: null,
-      status: 'programado',
-      sets: [],
-      winnerEntryId: null,
-      winnerName: null,
-      outcomeNote: null,
-      correctionHistory: [],
-      rescheduleHistory: [],
-      published: true,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await saveEntity('matches', thirdMatch);
-    setFeedback('Partido por el 3er Puesto agregado al cuadro final.');
+      const loserA = getLoser(sf1);
+      const loserB = getLoser(sf2);
+      const now = new Date().toISOString();
+      const thirdMatch: Match = {
+        id: makeId('ko3'),
+        tournamentId: division.tournamentId,
+        divisionId: division.id,
+        matchdayId: null,
+        phase: 'eliminacion',
+        roundName: 'Tercer Puesto',
+        roundOrder: finalMatch?.roundOrder || 10,
+        bracketPosition: 2,
+        nextMatchId: null,
+        nextMatchSlot: null,
+        isThirdPlace: true,
+        groupId: null,
+        entryAId: loserA.id,
+        entryAName: loserA.name,
+        playerIdsA: loserA.pids,
+        entryBId: loserB.id,
+        entryBName: loserB.name,
+        playerIdsB: loserB.pids,
+        isBye: false,
+        scheduledDate: null,
+        scheduledTime: null,
+        courtId: null,
+        courtName: null,
+        status: 'programado',
+        sets: [],
+        winnerEntryId: null,
+        winnerName: null,
+        outcomeNote: null,
+        correctionHistory: [],
+        rescheduleHistory: [],
+        published: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await saveEntity('matches', thirdMatch);
+      setFeedback('Partido por el 3er Puesto agregado al cuadro final.');
+    } catch (err) {
+      setRegError(formatFirestoreError(err, 'No se pudo agregar el partido por el 3er Puesto.'));
+    }
   };
 
   return (
@@ -1143,7 +1159,23 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                   Definí manualmente cada enfrentamiento o asigná BYE (pase libre).
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={manualBracketSize}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const nextSize: 'auto' | 4 | 8 | 16 =
+                      raw === 'auto' ? 'auto' : (Number(raw) as 4 | 8 | 16);
+                    setManualBracketSize(nextSize);
+                    initManualBracketSlots(confirmedEntries, 'direct', nextSize);
+                  }}
+                  className="h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs text-[#0A1633]"
+                >
+                  <option value="auto">Tamaño automático ({confirmedEntries.length} cupos)</option>
+                  <option value={4}>Semifinales (4 cupos / 2 llaves)</option>
+                  <option value={8}>Cuartos de Final (8 cupos / 4 llaves)</option>
+                  <option value={16}>Octavos de Final (16 cupos / 8 llaves)</option>
+                </select>
                 <button
                   type="button"
                   onClick={() => initManualBracketSlots(confirmedEntries, 'direct')}
@@ -1300,15 +1332,33 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
               <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-medium text-[#0A1633]">
-                    Emparejá manualmente a los clasificados para la Ronda 1 de Fase Final:
+                    Emparejá manualmente los cruces de Ronda 1 (Semifinales o Cuartos de Final):
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => handleAutoFillManualBracket(groupQualifiers)}
-                    className="px-3 min-h-[36px] rounded-lg border border-[#7C1FA2] bg-white text-xs font-medium text-[#7C1FA2]"
-                  >
-                    Completar automáticamente
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={manualBracketSize}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const nextSize: 'auto' | 4 | 8 | 16 =
+                          raw === 'auto' ? 'auto' : (Number(raw) as 4 | 8 | 16);
+                        setManualBracketSize(nextSize);
+                        initManualBracketSlots(groupQualifiers, 'from_groups', nextSize);
+                      }}
+                      className="h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs text-[#0A1633]"
+                    >
+                      <option value="auto">Automático ({groupQualifiers.length} clasificados)</option>
+                      <option value={4}>Semifinales (4 cupos / 2 llaves)</option>
+                      <option value={8}>Cuartos de Final (8 cupos / 4 llaves)</option>
+                      <option value={16}>Octavos de Final (16 cupos / 8 llaves)</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => handleAutoFillManualBracket(manualFromGroupsPool)}
+                      className="px-3 min-h-[36px] rounded-lg border border-[#7C1FA2] bg-white text-xs font-medium text-[#7C1FA2]"
+                    >
+                      Completar automáticamente
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {manualKoPairs.map(([aId, bId], idx) => (
@@ -1330,11 +1380,26 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                         className="w-full h-10 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
                       >
                         <option value="">BYE / Pase libre</option>
-                        {groupQualifiers.map((entry) => (
-                          <option key={entry.id} value={entry.id}>
-                            {entry.displayName} {entry.seed ? `[1° Grupo]` : ''}
-                          </option>
-                        ))}
+                        {groupQualifiers.length > 0 && (
+                          <optgroup label="Clasificados de grupos">
+                            {groupQualifiers.map((entry) => (
+                              <option key={entry.id} value={entry.id}>
+                                {entry.displayName} {entry.seed ? `[Seed ${entry.seed}]` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {manualFromGroupsPool.length > groupQualifiers.length && (
+                          <optgroup label="Otros inscriptos confirmados">
+                            {manualFromGroupsPool
+                              .filter((e) => !groupQualifiers.some((q) => q.id === e.id))
+                              .map((entry) => (
+                                <option key={entry.id} value={entry.id}>
+                                  {entry.displayName}
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
                       </select>
                       <select
                         value={bId}
@@ -1347,11 +1412,26 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                         className="w-full h-10 px-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
                       >
                         <option value="">BYE / Pase libre</option>
-                        {groupQualifiers.map((entry) => (
-                          <option key={entry.id} value={entry.id}>
-                            {entry.displayName} {entry.seed ? `[1° Grupo]` : ''}
-                          </option>
-                        ))}
+                        {groupQualifiers.length > 0 && (
+                          <optgroup label="Clasificados de grupos">
+                            {groupQualifiers.map((entry) => (
+                              <option key={entry.id} value={entry.id}>
+                                {entry.displayName} {entry.seed ? `[Seed ${entry.seed}]` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {manualFromGroupsPool.length > groupQualifiers.length && (
+                          <optgroup label="Otros inscriptos confirmados">
+                            {manualFromGroupsPool
+                              .filter((e) => !groupQualifiers.some((q) => q.id === e.id))
+                              .map((entry) => (
+                                <option key={entry.id} value={entry.id}>
+                                  {entry.displayName}
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
                       </select>
                     </div>
                   ))}
@@ -1360,7 +1440,7 @@ export const AdminRegistrationsDrawSection: React.FC<Props> = ({
                   type="button"
                   onClick={() =>
                     handleBuildManualBracketPreview(
-                      groupQualifiers,
+                      manualFromGroupsPool,
                       10,
                       'Borrador manual de fase final'
                     )

@@ -31,13 +31,18 @@ import {
   compareMatchesByRound,
   computeGroupStandings,
   computePlayerStatsFromMatches,
+  computeQualifiedSeededEntries,
   dedupeMatches,
   findAffectedDownstreamMatches,
   generateKnockoutBracket,
+  getKnockoutStageRank,
+  isRealFinalMatch,
   makeId,
+  resolveNextKnockoutMatch,
 } from '../../utils/tournamentEngine';
 import {
   deleteMatchesBatch,
+  formatFirestoreError,
   publishNotificationAndBroadcast,
   removeEntity,
   saveEntity,
@@ -86,6 +91,10 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
 }) => {
   const canEdit = permissions ? permissions.canEdit : true;
   const canDelete = permissions ? (permissions.canDelete || isSuperAdmin) : isSuperAdmin;
+  const canGenerateFinalBracket = permissions
+    ? (permissions.manageDraws || permissions.manageTournaments || permissions.manageScoring) &&
+      (permissions.canCreate || permissions.canEdit)
+    : canEdit;
 
   // Filtros estrictos por Categoría / División, Fase, Ronda/Grupo, Estado y Jugador
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('ALL');
@@ -285,6 +294,9 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
 
   // Al cambiar de categoría/división, limpiar subfiltros y cargar el primer partido pendiente (o el primero)
   useEffect(() => {
+    if (selectedCategoryFilter !== 'ALL' && division.category !== selectedCategoryFilter) {
+      setSelectedCategoryFilter('ALL');
+    }
     setPhaseFilter('ALL');
     setRoundFilter('ALL');
     setStatusFilter('ALL');
@@ -368,37 +380,33 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
   }, [divisionGroups, dedupedDivisionMatches, divisionRegistrations, division]);
 
   const liveQualifiers = useMemo(() => {
-    if (division.format !== 'grupos_y_final' || liveGroupsWithDetails.length === 0) return [];
-    const qPerGroup = division.drawConfig.qualifiersPerGroup || 2;
-    const list: Registration[] = [];
-    liveGroupsWithDetails.forEach(({ standings }) => {
-      standings.slice(0, qPerGroup).forEach((row, rank) => {
-        const reg = divisionRegistrations.find((r) => r.id === row.entryId);
-        if (reg) {
-          list.push({
-            ...reg,
-            seed: rank === 0 ? 1 : null,
-          });
-        }
-      });
-    });
-    return list;
-  }, [division.format, division.drawConfig.qualifiersPerGroup, liveGroupsWithDetails, divisionRegistrations]);
+    return computeQualifiedSeededEntries(
+      divisionGroups,
+      dedupedDivisionMatches,
+      divisionRegistrations,
+      division
+    );
+  }, [divisionGroups, dedupedDivisionMatches, divisionRegistrations, division]);
 
   const knockoutRounds = useMemo(() => {
     const ko = dedupedDivisionMatches.filter(
       (m) => m.phase === 'eliminacion' && !m.isThirdPlace && m.roundName !== 'Tercer Puesto'
     );
-    const grouped = new Map<number, { roundName: string; matches: Match[] }>();
+    const grouped = new Map<string, { roundOrder: number; roundName: string; matches: Match[] }>();
     ko.forEach((m) => {
-      if (!grouped.has(m.roundOrder)) {
-        grouped.set(m.roundOrder, { roundName: m.roundName, matches: [] });
+      const key = `${m.roundOrder}::${m.roundName}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, { roundOrder: m.roundOrder, roundName: m.roundName, matches: [] });
       }
-      grouped.get(m.roundOrder)!.matches.push(m);
+      grouped.get(key)!.matches.push(m);
     });
-    return Array.from(grouped.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([, val]) => ({
+    return Array.from(grouped.values())
+      .sort(
+        (a, b) =>
+          a.roundOrder - b.roundOrder ||
+          getKnockoutStageRank(a.roundName) - getKnockoutStageRank(b.roundName)
+      )
+      .map((val) => ({
         roundName: val.roundName,
         matches: val.matches.sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0)),
       }));
@@ -421,17 +429,21 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
       return [];
     }
     return generateKnockoutBracket(liveQualifiers, division, 10).filter(
-      (m) => m.roundOrder === 10 && !m.isBye && !m.isThirdPlace
+      (m) => m.roundOrder === 10 && !m.isThirdPlace
     );
   }, [division, knockoutRounds.length, liveQualifiers]);
 
   const handleGenerateAndPublishFinalBracket = async () => {
-    if (!canEdit || generatingFinalBracket || liveQualifiers.length < 2) return;
+    if (!canGenerateFinalBracket || generatingFinalBracket || liveQualifiers.length < 2) return;
     setGeneratingFinalBracket(true);
     setErrorMsg(null);
     setFeedback(null);
     try {
       const now = new Date().toISOString();
+      const existingKoMatches = rawDivisionMatches.filter((m) => m.phase === 'eliminacion');
+      if (canDelete && existingKoMatches.length > 0) {
+        await deleteMatchesBatch(existingKoMatches.map((m) => m.id));
+      }
       const koMatches = generateKnockoutBracket(liveQualifiers, division, 10);
       for (const m of koMatches) {
         await saveEntity('matches', {
@@ -440,13 +452,18 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
           updatedAt: now,
         });
       }
+      if (division.drawStatus !== 'publicado') {
+        await saveEntity('divisions', {
+          ...division,
+          drawStatus: 'publicado',
+          updatedAt: now,
+        });
+      }
       setFeedback(
         `Cuadro Final de ${division.name} generado y publicado con ${liveQualifiers.length} clasificados.`
       );
     } catch (err) {
-      setErrorMsg(
-        err instanceof Error ? err.message : 'No se pudo generar el cuadro final desde grupos.'
-      );
+      setErrorMsg(formatFirestoreError(err, 'No se pudo generar el cuadro final desde grupos.'));
     } finally {
       setGeneratingFinalBracket(false);
     }
@@ -497,8 +514,15 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
         });
       }
 
+      const resolvedNext =
+        activeMatch.phase === 'eliminacion'
+          ? resolveNextKnockoutMatch(activeMatch, dedupedDivisionMatches)
+          : null;
+
       const updatedMatch: Match = {
         ...activeMatch,
+        nextMatchId: resolvedNext ? resolvedNext.nextMatch.id : activeMatch.nextMatchId,
+        nextMatchSlot: resolvedNext ? resolvedNext.slot : activeMatch.nextMatchSlot,
         status,
         sets: setsToSave,
         winnerEntryId: liveValidation.winnerEntryId,
@@ -550,183 +574,168 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
       let clearedThirdPlace = false;
 
       // 2. Avanzar ganador en cuadro de eliminación directa (y limpiar cascada completa si hubo corrección)
-      if (
-        updatedMatch.phase === 'eliminacion' &&
-        updatedMatch.nextMatchId &&
-        updatedMatch.nextMatchSlot
-      ) {
-        const nextMatch = nextDivMatches.find((m) => m.id === updatedMatch.nextMatchId);
-        if (nextMatch) {
-          const winnerIsA = liveValidation.winnerEntryId === updatedMatch.entryAId;
-          const winnerPlayerIds = winnerIsA ? updatedMatch.playerIdsA : updatedMatch.playerIdsB;
+      if (updatedMatch.phase === 'eliminacion' && resolvedNext) {
+        const nextMatch =
+          nextDivMatches.find((m) => m.id === resolvedNext.nextMatch.id) || resolvedNext.nextMatch;
+        const targetSlot = resolvedNext.slot;
+        const winnerIsA = liveValidation.winnerEntryId === updatedMatch.entryAId;
+        const winnerPlayerIds = winnerIsA ? updatedMatch.playerIdsA : updatedMatch.playerIdsB;
 
-          const patchedNext: Match = {
-            ...nextMatch,
-            entryAId:
-              updatedMatch.nextMatchSlot === 'A' ? liveValidation.winnerEntryId : nextMatch.entryAId,
-            entryAName:
-              updatedMatch.nextMatchSlot === 'A'
-                ? liveValidation.winnerName || 'Por definir'
-                : nextMatch.entryAName,
-            playerIdsA:
-              updatedMatch.nextMatchSlot === 'A' ? winnerPlayerIds : nextMatch.playerIdsA,
-            entryBId:
-              updatedMatch.nextMatchSlot === 'B' ? liveValidation.winnerEntryId : nextMatch.entryBId,
-            entryBName:
-              updatedMatch.nextMatchSlot === 'B'
-                ? liveValidation.winnerName || 'Por definir'
-                : nextMatch.entryBName,
-            playerIdsB:
-              updatedMatch.nextMatchSlot === 'B' ? winnerPlayerIds : nextMatch.playerIdsB,
-            sets: affected.length > 0 ? [] : nextMatch.sets,
-            winnerEntryId: affected.length > 0 ? null : nextMatch.winnerEntryId,
-            winnerName: affected.length > 0 ? null : nextMatch.winnerName,
-            outcomeNote: affected.length > 0 ? null : nextMatch.outcomeNote,
-            status: affected.length > 0 ? 'programado' : nextMatch.status,
-            published: true,
-            updatedAt: now,
-          };
-          await saveEntity('matches', patchedNext);
+        const patchedNext: Match = {
+          ...nextMatch,
+          entryAId: targetSlot === 'A' ? liveValidation.winnerEntryId : nextMatch.entryAId,
+          entryAName:
+            targetSlot === 'A'
+              ? liveValidation.winnerName || 'Por definir'
+              : nextMatch.entryAName,
+          playerIdsA: targetSlot === 'A' ? winnerPlayerIds : nextMatch.playerIdsA,
+          entryBId: targetSlot === 'B' ? liveValidation.winnerEntryId : nextMatch.entryBId,
+          entryBName:
+            targetSlot === 'B'
+              ? liveValidation.winnerName || 'Por definir'
+              : nextMatch.entryBName,
+          playerIdsB: targetSlot === 'B' ? winnerPlayerIds : nextMatch.playerIdsB,
+          sets: affected.length > 0 ? [] : nextMatch.sets,
+          winnerEntryId: affected.length > 0 ? null : nextMatch.winnerEntryId,
+          winnerName: affected.length > 0 ? null : nextMatch.winnerName,
+          outcomeNote: affected.length > 0 ? null : nextMatch.outcomeNote,
+          status: affected.length > 0 ? 'programado' : nextMatch.status,
+          published: true,
+          updatedAt: now,
+        };
+        await saveEntity('matches', patchedNext);
 
-          if (affected.length > 0 && !patchedNext.nextMatchId && !patchedNext.isThirdPlace) {
-            clearedFinal = true;
+        const nextIsFinal = isRealFinalMatch(patchedNext, nextDivMatches);
+        if (affected.length > 0 && nextIsFinal) {
+          clearedFinal = true;
+        }
+
+        // Si el siguiente partido es la Final, enviar perdedor de la Semifinal al partido de Tercer Puesto
+        if (nextIsFinal) {
+          const thirdPlaceMatch = nextDivMatches.find(
+            (m) => m.isThirdPlace || m.roundName === 'Tercer Puesto'
+          );
+          if (thirdPlaceMatch) {
+            const loserEntryId = winnerIsA
+              ? updatedMatch.entryBId || null
+              : updatedMatch.entryAId || null;
+            const loserName = winnerIsA ? updatedMatch.entryBName : updatedMatch.entryAName;
+            const loserPlayerIds = winnerIsA ? updatedMatch.playerIdsB : updatedMatch.playerIdsA;
+            const patchedThird: Match = {
+              ...thirdPlaceMatch,
+              entryAId: targetSlot === 'A' ? loserEntryId : thirdPlaceMatch.entryAId,
+              entryAName: targetSlot === 'A' ? loserName : thirdPlaceMatch.entryAName,
+              playerIdsA: targetSlot === 'A' ? loserPlayerIds : thirdPlaceMatch.playerIdsA,
+              entryBId: targetSlot === 'B' ? loserEntryId : thirdPlaceMatch.entryBId,
+              entryBName: targetSlot === 'B' ? loserName : thirdPlaceMatch.entryBName,
+              playerIdsB: targetSlot === 'B' ? loserPlayerIds : thirdPlaceMatch.playerIdsB,
+              sets: affected.length > 0 ? [] : thirdPlaceMatch.sets,
+              winnerEntryId: affected.length > 0 ? null : thirdPlaceMatch.winnerEntryId,
+              winnerName: affected.length > 0 ? null : thirdPlaceMatch.winnerName,
+              outcomeNote: affected.length > 0 ? null : thirdPlaceMatch.outcomeNote,
+              status: affected.length > 0 ? 'programado' : thirdPlaceMatch.status,
+              published: true,
+              updatedAt: now,
+            };
+            await saveEntity('matches', patchedThird);
+            if (affected.length > 0) clearedThirdPlace = true;
           }
+        }
 
-          // Si el siguiente partido es la Final, enviar perdedor de la Semifinal al partido de Tercer Puesto
-          if (!nextMatch.nextMatchId && !nextMatch.isThirdPlace) {
-            const thirdPlaceMatch = nextDivMatches.find(
-              (m) => m.isThirdPlace || m.roundName === 'Tercer Puesto'
-            );
-            if (thirdPlaceMatch) {
-              const loserEntryId = winnerIsA
-                ? updatedMatch.entryBId || null
-                : updatedMatch.entryAId || null;
-              const loserName = winnerIsA ? updatedMatch.entryBName : updatedMatch.entryAName;
-              const loserPlayerIds = winnerIsA ? updatedMatch.playerIdsB : updatedMatch.playerIdsA;
-              const patchedThird: Match = {
-                ...thirdPlaceMatch,
-                entryAId:
-                  updatedMatch.nextMatchSlot === 'A' ? loserEntryId : thirdPlaceMatch.entryAId,
-                entryAName:
-                  updatedMatch.nextMatchSlot === 'A' ? loserName : thirdPlaceMatch.entryAName,
-                playerIdsA:
-                  updatedMatch.nextMatchSlot === 'A' ? loserPlayerIds : thirdPlaceMatch.playerIdsA,
-                entryBId:
-                  updatedMatch.nextMatchSlot === 'B' ? loserEntryId : thirdPlaceMatch.entryBId,
-                entryBName:
-                  updatedMatch.nextMatchSlot === 'B' ? loserName : thirdPlaceMatch.entryBName,
-                playerIdsB:
-                  updatedMatch.nextMatchSlot === 'B' ? loserPlayerIds : thirdPlaceMatch.playerIdsB,
-                sets: affected.length > 0 ? [] : thirdPlaceMatch.sets,
-                winnerEntryId: affected.length > 0 ? null : thirdPlaceMatch.winnerEntryId,
-                winnerName: affected.length > 0 ? null : thirdPlaceMatch.winnerName,
-                outcomeNote: affected.length > 0 ? null : thirdPlaceMatch.outcomeNote,
-                status: affected.length > 0 ? 'programado' : thirdPlaceMatch.status,
-                published: true,
-                updatedAt: now,
-              };
-              await saveEntity('matches', patchedThird);
-              if (affected.length > 0) clearedThirdPlace = true;
-            }
-          }
+        // Si hubo corrección y nextMatch alimenta rondas aún posteriores (p. ej. Cuartos -> Semi -> Final),
+        // limpiar recursivamente los cruces subsiguientes para que no queden ganadores viejos.
+        if (affected.length > 0) {
+          let parentMatch: Match = patchedNext;
+          const visited = new Set<string>([patchedNext.id]);
+          while (true) {
+            const nextStep = resolveNextKnockoutMatch(parentMatch, nextDivMatches);
+            if (!nextStep || visited.has(nextStep.nextMatch.id)) break;
+            const downstream = nextStep.nextMatch;
+            const slot = nextStep.slot;
+            visited.add(downstream.id);
 
-          // Si hubo corrección y nextMatch alimenta rondas aún posteriores (p. ej. Cuartos -> Semi -> Final),
-          // limpiar recursivamente los cruces subsiguientes para que no queden ganadores viejos.
-          if (affected.length > 0 && patchedNext.nextMatchId && patchedNext.nextMatchSlot) {
-            let parentMatch: Match = patchedNext;
-            const visited = new Set<string>([patchedNext.id]);
-            while (parentMatch.nextMatchId && parentMatch.nextMatchSlot && !visited.has(parentMatch.nextMatchId)) {
-              visited.add(parentMatch.nextMatchId);
-              const downstream = nextDivMatches.find((m) => m.id === parentMatch.nextMatchId);
-              if (!downstream) break;
+            const clearedDownstream: Match = {
+              ...downstream,
+              entryAId: slot === 'A' ? null : downstream.entryAId,
+              entryAName: slot === 'A' ? 'Por definir' : downstream.entryAName,
+              playerIdsA: slot === 'A' ? [] : downstream.playerIdsA,
+              entryBId: slot === 'B' ? null : downstream.entryBId,
+              entryBName: slot === 'B' ? 'Por definir' : downstream.entryBName,
+              playerIdsB: slot === 'B' ? [] : downstream.playerIdsB,
+              sets: [],
+              winnerEntryId: null,
+              winnerName: null,
+              outcomeNote: null,
+              status: 'programado',
+              published: true,
+              updatedAt: now,
+            };
+            await saveEntity('matches', clearedDownstream);
 
-              const slot = parentMatch.nextMatchSlot;
-              const clearedDownstream: Match = {
-                ...downstream,
-                entryAId: slot === 'A' ? null : downstream.entryAId,
-                entryAName: slot === 'A' ? 'Por definir' : downstream.entryAName,
-                playerIdsA: slot === 'A' ? [] : downstream.playerIdsA,
-                entryBId: slot === 'B' ? null : downstream.entryBId,
-                entryBName: slot === 'B' ? 'Por definir' : downstream.entryBName,
-                playerIdsB: slot === 'B' ? [] : downstream.playerIdsB,
-                sets: [],
-                winnerEntryId: null,
-                winnerName: null,
-                outcomeNote: null,
-                status: 'programado',
-                published: true,
-                updatedAt: now,
-              };
-              await saveEntity('matches', clearedDownstream);
-
-              if (!downstream.nextMatchId && !downstream.isThirdPlace) {
-                clearedFinal = true;
+            const downstreamIsFinal = isRealFinalMatch(downstream, nextDivMatches);
+            if (downstreamIsFinal) {
+              clearedFinal = true;
+              const tp = nextDivMatches.find(
+                (m) => m.isThirdPlace || m.roundName === 'Tercer Puesto'
+              );
+              if (tp) {
+                const clearedTp: Match = {
+                  ...tp,
+                  entryAId: slot === 'A' ? null : tp.entryAId,
+                  entryAName: slot === 'A' ? 'Por definir' : tp.entryAName,
+                  playerIdsA: slot === 'A' ? [] : tp.playerIdsA,
+                  entryBId: slot === 'B' ? null : tp.entryBId,
+                  entryBName: slot === 'B' ? 'Por definir' : tp.entryBName,
+                  playerIdsB: slot === 'B' ? [] : tp.playerIdsB,
+                  sets: [],
+                  winnerEntryId: null,
+                  winnerName: null,
+                  outcomeNote: null,
+                  status: 'programado',
+                  published: true,
+                  updatedAt: now,
+                };
+                await saveEntity('matches', clearedTp);
+                clearedThirdPlace = true;
               }
-
-              // Si parentMatch era Semifinal hacia Final, limpiar también el slot del 3er Puesto
-              if (!downstream.nextMatchId && !downstream.isThirdPlace) {
-                const tp = nextDivMatches.find(
-                  (m) => m.isThirdPlace || m.roundName === 'Tercer Puesto'
-                );
-                if (tp) {
-                  const clearedTp: Match = {
-                    ...tp,
-                    entryAId: slot === 'A' ? null : tp.entryAId,
-                    entryAName: slot === 'A' ? 'Por definir' : tp.entryAName,
-                    playerIdsA: slot === 'A' ? [] : tp.playerIdsA,
-                    entryBId: slot === 'B' ? null : tp.entryBId,
-                    entryBName: slot === 'B' ? 'Por definir' : tp.entryBName,
-                    playerIdsB: slot === 'B' ? [] : tp.playerIdsB,
-                    sets: [],
-                    winnerEntryId: null,
-                    winnerName: null,
-                    outcomeNote: null,
-                    status: 'programado',
-                    published: true,
-                    updatedAt: now,
-                  };
-                  await saveEntity('matches', clearedTp);
-                  clearedThirdPlace = true;
-                }
-              }
-
-              parentMatch = clearedDownstream;
             }
+
+            parentMatch = clearedDownstream;
           }
         }
       }
 
       // 3. Actualizar o limpiar podio de la división según Final / 3er Puesto
       let updatedDivisions = allDivisions;
-      if (
+      const isUpdatedThirdPlace =
         updatedMatch.phase === 'eliminacion' &&
-        !updatedMatch.nextMatchId &&
-        liveValidation.winnerEntryId
-      ) {
-        if (updatedMatch.isThirdPlace || updatedMatch.roundName === 'Tercer Puesto') {
-          const updatedDiv: Division = {
-            ...division,
-            thirdPlaceEntryId: liveValidation.winnerEntryId,
-            thirdPlaceName: liveValidation.winnerName,
-            updatedAt: now,
-          };
-          await saveEntity('divisions', updatedDiv);
-          updatedDivisions = allDivisions.map((d) => (d.id === updatedDiv.id ? updatedDiv : d));
-        } else {
-          const runnerUpName =
-            liveValidation.winnerEntryId === updatedMatch.entryAId
-              ? updatedMatch.entryBName
-              : updatedMatch.entryAName;
-          const updatedDiv: Division = {
-            ...division,
-            championEntryId: liveValidation.winnerEntryId,
-            championName: liveValidation.winnerName,
-            runnerUpName,
-            updatedAt: now,
-          };
-          await saveEntity('divisions', updatedDiv);
-          updatedDivisions = allDivisions.map((d) => (d.id === updatedDiv.id ? updatedDiv : d));
-        }
+        (Boolean(updatedMatch.isThirdPlace) || updatedMatch.roundName === 'Tercer Puesto');
+      const isUpdatedFinal =
+        updatedMatch.phase === 'eliminacion' && isRealFinalMatch(updatedMatch, nextDivMatches);
+
+      if (isUpdatedThirdPlace && liveValidation.winnerEntryId) {
+        const updatedDiv: Division = {
+          ...division,
+          thirdPlaceEntryId: liveValidation.winnerEntryId,
+          thirdPlaceName: liveValidation.winnerName,
+          updatedAt: now,
+        };
+        await saveEntity('divisions', updatedDiv);
+        updatedDivisions = allDivisions.map((d) => (d.id === updatedDiv.id ? updatedDiv : d));
+      } else if (isUpdatedFinal && liveValidation.winnerEntryId) {
+        const runnerUpName =
+          liveValidation.winnerEntryId === updatedMatch.entryAId
+            ? updatedMatch.entryBName
+            : updatedMatch.entryAName;
+        const updatedDiv: Division = {
+          ...division,
+          championEntryId: liveValidation.winnerEntryId,
+          championName: liveValidation.winnerName,
+          runnerUpName,
+          updatedAt: now,
+        };
+        await saveEntity('divisions', updatedDiv);
+        updatedDivisions = allDivisions.map((d) => (d.id === updatedDiv.id ? updatedDiv : d));
       } else if (clearedFinal || clearedThirdPlace) {
         const updatedDiv: Division = {
           ...division,
@@ -779,9 +788,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
         `Marcador confirmado (${formatScoreString(setsToSave, status)}). Ganador: ${liveValidation.winnerName}. Tabla y cuadro actualizados.`
       );
     } catch (err) {
-      setErrorMsg(
-        err instanceof Error ? err.message : 'No se pudo guardar el resultado en Firestore.'
-      );
+      setErrorMsg(formatFirestoreError(err, 'No se pudo guardar el resultado en Firestore.'));
     } finally {
       setSavingScore(false);
     }
@@ -1533,7 +1540,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
           {division.format === 'grupos_y_final' &&
             knockoutRounds.length === 0 &&
             liveQualifiers.length >= 2 &&
-            canEdit && (
+            canGenerateFinalBracket && (
               <button
                 type="button"
                 disabled={generatingFinalBracket}
@@ -1883,15 +1890,24 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                     </p>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                   {projectedFinalMatches.map((pm) => (
                     <div
                       key={pm.id}
-                      className="p-3 rounded-xl border border-dashed border-[#7C1FA2]/40 bg-purple-50/30 text-xs space-y-1.5"
+                      className={`p-3 rounded-xl border border-dashed text-xs space-y-1.5 ${
+                        pm.isBye
+                          ? 'border-emerald-300 bg-emerald-50/40'
+                          : 'border-[#7C1FA2]/40 bg-purple-50/30'
+                      }`}
                     >
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[#7C1FA2]">
-                        {pm.roundName} (Proyectado)
-                      </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#7C1FA2]">
+                          {pm.roundName}
+                        </p>
+                        <span className="text-[10px] font-medium text-[#475569]">
+                          {pm.isBye ? 'Pase directo' : 'Proyectado'}
+                        </span>
+                      </div>
                       <p className="font-semibold text-[#0A1633] truncate">{pm.entryAName}</p>
                       <p className="text-[10px] text-[#475569]">vs</p>
                       <p className="font-semibold text-[#0A1633] truncate">{pm.entryBName}</p>

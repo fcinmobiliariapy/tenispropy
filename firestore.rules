@@ -741,7 +741,7 @@ service cloud.firestore {
       allow get: if isValidId(matchId);
       allow list: if true;
       allow create: if isValidId(matchId) && isValidMatch(incoming(), matchId)
-        && (hasStaffPerm('manageDraws') || hasStaffPerm('manageTournaments'))
+        && (hasStaffPerm('manageDraws') || hasStaffPerm('manageTournaments') || (hasStaffPerm('manageScoring') && incoming().phase == 'eliminacion'))
         && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
         && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/divisions/$(incoming().divisionId));

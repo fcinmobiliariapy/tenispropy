@@ -120,6 +120,25 @@ export function subscribeCollection<T>(
   };
 }
 
+export function formatFirestoreError(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : String(err || '');
+  let detail = raw;
+  try {
+    const parsed = JSON.parse(raw) as { error?: string; path?: string | null };
+    if (parsed?.error) detail = parsed.error;
+  } catch {
+    // No era JSON estructurado
+  }
+  const lower = detail.toLowerCase();
+  if (lower.includes('permission_denied') || lower.includes('insufficient permissions')) {
+    return 'No se pudo guardar en Firestore por permisos o validación de campos. Verificá tu sesión y los permisos asignados a tu rol.';
+  }
+  if (lower.includes('unavailable') || lower.includes('offline')) {
+    return 'No hay conexión con Firestore en este momento. Verificá tu conexión e intentá nuevamente.';
+  }
+  return detail || fallback;
+}
+
 export async function saveEntity<T extends { id: string }>(
   collectionName: string,
   entity: T

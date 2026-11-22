@@ -43,6 +43,7 @@ import { makeId } from '../../utils/tournamentEngine';
 import {
   deleteDivisionCascade,
   deleteTournamentCascade,
+  formatFirestoreError,
   removeEntity,
   saveEntity,
 } from '../../services/firestoreService';
@@ -94,25 +95,6 @@ const PLACEMENT_LABELS: Record<AdPlacement, string> = {
 
 const DEFAULT_COVER_IMAGE = '/src/assets/images/hero_clay_court_1795134987256.jpg';
 const MAX_STORED_IMAGE_CHARS = 300000;
-
-function formatFirestoreError(err: unknown, fallback: string): string {
-  const raw = err instanceof Error ? err.message : String(err || '');
-  let detail = raw;
-  try {
-    const parsed = JSON.parse(raw) as { error?: string };
-    if (parsed?.error) detail = parsed.error;
-  } catch {
-    // No era JSON estructurado
-  }
-  const lower = detail.toLowerCase();
-  if (lower.includes('permission_denied') || lower.includes('insufficient permissions')) {
-    return 'No se pudo guardar en Firestore por permisos o validación de campos. Verificá tu sesión de Google y que los textos, fechas o enlaces cumplan el formato válido.';
-  }
-  if (lower.includes('unavailable') || lower.includes('offline')) {
-    return 'No hay conexión con Firestore en este momento. Verificá tu conexión e intentá nuevamente.';
-  }
-  return detail || fallback;
-}
 
 async function normalizeImageInputValue(rawValue: string): Promise<string> {
   const trimmed = rawValue.trim();
@@ -687,6 +669,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         setShowDivForm(false);
         setFeedback(`División "${newDiv.name}" creada con módulo independiente.`);
       }
+    } catch (err) {
+      setErrorMsg(formatFirestoreError(err, 'No se pudo guardar la división en Firestore.'));
     } finally {
       setSaving(false);
     }
@@ -797,8 +781,12 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         updatedAt: now,
       };
     }
-    await saveEntity('divisions', updated);
-    setFeedback(`Configuración de "${div.name}" actualizada.`);
+    try {
+      await saveEntity('divisions', updated);
+      setFeedback(`Configuración de "${div.name}" actualizada.`);
+    } catch (err) {
+      setErrorMsg(formatFirestoreError(err, 'No se pudo actualizar la configuración de la división.'));
+    }
   };
 
   // Publicidad personalizada del torneo (Horizontal + Vertical + Generador IA)

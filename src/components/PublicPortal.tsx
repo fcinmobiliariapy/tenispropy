@@ -37,9 +37,12 @@ import { formatScoreString } from '../utils/itfRules';
 import {
   compareMatchesByRound,
   computeGroupStandings,
+  computeQualifiedSeededEntries,
   dedupeMatches,
   formatAsuncionDate,
   generateKnockoutBracket,
+  getKnockoutStageRank,
+  isRealFinalMatch,
 } from '../utils/tournamentEngine';
 import { PublicTab, PWAInstallButton } from './TopBarAndPWA';
 import { TournamentAd as TournamentAdCard } from './TournamentAd';
@@ -720,16 +723,21 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     const ko = divisionMatches.filter(
       (m) => m.phase === 'eliminacion' && !m.isThirdPlace && m.roundName !== 'Tercer Puesto'
     );
-    const grouped = new Map<number, { roundName: string; matches: Match[] }>();
+    const grouped = new Map<string, { roundOrder: number; roundName: string; matches: Match[] }>();
     ko.forEach((m) => {
-      if (!grouped.has(m.roundOrder)) {
-        grouped.set(m.roundOrder, { roundName: m.roundName, matches: [] });
+      const key = `${m.roundOrder}::${m.roundName}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, { roundOrder: m.roundOrder, roundName: m.roundName, matches: [] });
       }
-      grouped.get(m.roundOrder)!.matches.push(m);
+      grouped.get(key)!.matches.push(m);
     });
-    return Array.from(grouped.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([, val]) => ({
+    return Array.from(grouped.values())
+      .sort(
+        (a, b) =>
+          a.roundOrder - b.roundOrder ||
+          getKnockoutStageRank(a.roundName) - getKnockoutStageRank(b.roundName)
+      )
+      .map((val) => ({
         roundName: val.roundName,
         matches: val.matches.sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0)),
       }));
@@ -744,14 +752,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   );
 
   const finalMatch = useMemo(
-    () =>
-      divisionMatches.find(
-        (m) =>
-          m.phase === 'eliminacion' &&
-          !m.nextMatchId &&
-          !m.isThirdPlace &&
-          m.roundName !== 'Tercer Puesto'
-      ) || null,
+    () => divisionMatches.find((m) => isRealFinalMatch(m, divisionMatches)) || null,
     [divisionMatches]
   );
 
@@ -794,24 +795,21 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     ) {
       return [];
     }
-    const qPerGroup = activeDivision.drawConfig.qualifiersPerGroup || 2;
-    const qualifiers: Registration[] = [];
-    liveDivisionGroups.forEach((g) => {
-      g.standings.slice(0, qPerGroup).forEach((row, rank) => {
-        const reg = divisionRegistrations.find((r) => r.id === row.entryId);
-        if (reg) {
-          qualifiers.push({
-            ...reg,
-            seed: rank === 0 ? 1 : null,
-          });
-        }
-      });
-    });
+    const qualifiers = computeQualifiedSeededEntries(
+      liveDivisionGroups,
+      divisionMatches,
+      divisionRegistrations,
+      activeDivision
+    );
     if (qualifiers.length < 2) return [];
     return generateKnockoutBracket(qualifiers, activeDivision, 10).filter(
-      (m) => m.roundOrder === 10 && !m.isBye && !m.isThirdPlace
+      (m) => m.roundOrder === 10 && !m.isThirdPlace
     );
-  }, [activeDivision, knockoutRounds.length, liveDivisionGroups, divisionRegistrations]);
+  }, [activeDivision, knockoutRounds.length, liveDivisionGroups, divisionMatches, divisionRegistrations]);
+
+  useEffect(() => {
+    setMobileBracketRoundIdx(0);
+  }, [activeDivision?.id]);
 
   const playersById = useMemo(
     () => new Map<string, PlayerPublic>(players.map((p) => [p.id, p])),
@@ -1867,15 +1865,21 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                           Se confirmará oficialmente al cierre de la fase de grupos
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                         {projectedFinalMatches.map((pm) => (
                           <div
                             key={pm.id}
-                            className="rounded-xl border border-dashed border-[#7C1FA2]/45 bg-[#FAFBF9] p-3.5 space-y-2"
+                            className={`rounded-xl border border-dashed p-3.5 space-y-2 ${
+                              pm.isBye
+                                ? 'border-emerald-300 bg-emerald-50/40'
+                                : 'border-[#7C1FA2]/45 bg-[#FAFBF9]'
+                            }`}
                           >
                             <div className="flex items-center justify-between gap-2 text-[11px]">
                               <span className="font-semibold text-[#7C1FA2]">{pm.roundName}</span>
-                              <span className="text-[#475569]">Proyectado</span>
+                              <span className="text-[#475569]">
+                                {pm.isBye ? 'Pase libre' : 'Proyectado'}
+                              </span>
                             </div>
                             <div className="space-y-1.5 text-xs">
                               <div className="px-2.5 py-2 rounded-lg bg-white border border-[#E2E8F0] font-semibold text-[#0A1633] truncate">
@@ -1943,8 +1947,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         <div className="space-y-3">
                           {knockoutRounds[mobileBracketRoundIdx]?.matches.map((m) => {
                             const isFinalCard =
-                              m.id === finalMatch?.id ||
-                              (!m.nextMatchId && !m.isThirdPlace && m.roundName.toLowerCase() === 'final');
+                              m.id === finalMatch?.id || isRealFinalMatch(m, divisionMatches);
                             return (
                               <BracketMatchCard
                                 key={m.id}
@@ -1980,8 +1983,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                         const lastRound = knockoutRounds[knockoutRounds.length - 1];
                         const lastIsFinalStage = Boolean(
                           lastRound &&
-                            (lastRound.matches.some((m) => m.id === finalMatch?.id) ||
-                              lastRound.roundName.toLowerCase() === 'final')
+                            (lastRound.matches.some(
+                              (m) => m.id === finalMatch?.id || isRealFinalMatch(m, divisionMatches)
+                            ) ||
+                              lastRound.roundName.trim().toLowerCase() === 'final')
                         );
                         const prelimRounds = lastIsFinalStage
                           ? knockoutRounds.slice(0, -1)

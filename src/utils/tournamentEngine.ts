@@ -243,10 +243,16 @@ export function computeGroupStandings(
     });
   });
 
+  const groupEntryIds = new Set(group.entryIds);
   const completedMatches = groupMatches.filter(
     (m) =>
-      m.groupId === group.id &&
-      m.winnerEntryId &&
+      (m.groupId === group.id ||
+        (m.phase === 'grupos' &&
+          Boolean(m.entryAId) &&
+          Boolean(m.entryBId) &&
+          groupEntryIds.has(m.entryAId!) &&
+          groupEntryIds.has(m.entryBId!))) &&
+      Boolean(m.winnerEntryId) &&
       ['finalizado', 'wo', 'retiro', 'descalificado'].includes(m.status)
   );
 
@@ -373,6 +379,119 @@ export function computeGroupStandings(
     ...r,
     qualified: idx < qCount,
   }));
+}
+
+export function getKnockoutStageRank(roundName: string): number {
+  const lower = (roundName || '').trim().toLowerCase();
+  if (lower.includes('octavo')) return 1;
+  if (lower.includes('cuarto')) return 2;
+  if (lower.includes('semifinal')) return 3;
+  if (lower.includes('tercer') || lower.includes('3er')) return 4;
+  if (lower === 'final') return 5;
+  return 0;
+}
+
+export function isRealFinalMatch(match: Match, koMatches: Match[]): boolean {
+  if (match.phase !== 'eliminacion' || match.isThirdPlace || match.roundName === 'Tercer Puesto') {
+    return false;
+  }
+  const lower = (match.roundName || '').trim().toLowerCase();
+  if (lower === 'final') return true;
+  if (/cuartos|semifinal|octavos|ronda de/i.test(lower)) return false;
+  if (match.nextMatchId) return false;
+  const nonThird = koMatches.filter(
+    (m) => m.phase === 'eliminacion' && !m.isThirdPlace && m.roundName !== 'Tercer Puesto'
+  );
+  if (nonThird.length === 0) return false;
+  const maxRound = Math.max(...nonThird.map((m) => m.roundOrder));
+  const lastRoundMatches = nonThird.filter((m) => m.roundOrder === maxRound);
+  return match.roundOrder === maxRound && lastRoundMatches.length === 1;
+}
+
+export function resolveNextKnockoutMatch(
+  match: Match,
+  divisionMatches: Match[]
+): { nextMatch: Match; slot: 'A' | 'B' } | null {
+  if (match.phase !== 'eliminacion' || match.isThirdPlace || match.roundName === 'Tercer Puesto') {
+    return null;
+  }
+  const koMatches = divisionMatches.filter(
+    (m) => m.phase === 'eliminacion' && !m.isThirdPlace && m.roundName !== 'Tercer Puesto'
+  );
+  if (match.nextMatchId) {
+    const direct = koMatches.find((m) => m.id === match.nextMatchId);
+    if (direct) {
+      const slot: 'A' | 'B' =
+        match.nextMatchSlot === 'A' || match.nextMatchSlot === 'B'
+          ? match.nextMatchSlot
+          : (match.bracketPosition || 1) % 2 === 1
+          ? 'A'
+          : 'B';
+      return { nextMatch: direct, slot };
+    }
+  }
+  if (isRealFinalMatch(match, koMatches)) return null;
+
+  const higherOrders = Array.from(
+    new Set(koMatches.filter((m) => m.roundOrder > match.roundOrder).map((m) => m.roundOrder))
+  ).sort((a, b) => a - b);
+  if (higherOrders.length === 0) return null;
+
+  const nextRoundOrder = higherOrders[0];
+  const nextRoundMatches = koMatches
+    .filter((m) => m.roundOrder === nextRoundOrder)
+    .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
+  if (nextRoundMatches.length === 0) return null;
+
+  const currentRoundMatches = koMatches
+    .filter((m) => m.roundOrder === match.roundOrder)
+    .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
+  const fallbackPos = Math.max(1, currentRoundMatches.findIndex((m) => m.id === match.id) + 1);
+  const pos = match.bracketPosition && match.bracketPosition >= 1 ? match.bracketPosition : fallbackPos;
+  const targetBracketPos = Math.ceil(pos / 2);
+
+  const structuralNext =
+    nextRoundMatches.find((m) => m.bracketPosition === targetBracketPos) ||
+    nextRoundMatches[targetBracketPos - 1];
+  if (!structuralNext) return null;
+
+  const slot: 'A' | 'B' = pos % 2 === 1 ? 'A' : 'B';
+  return { nextMatch: structuralNext, slot };
+}
+
+export function computeQualifiedSeededEntries(
+  groups: Group[],
+  matches: Match[],
+  registrations: Registration[],
+  division: Division
+): Registration[] {
+  if (division.format !== 'grupos_y_final' || groups.length === 0) return [];
+  const qPerGroup = Math.max(1, division.drawConfig.qualifiersPerGroup || 2);
+  const sortedGroups = [...groups].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  const groupCount = sortedGroups.length;
+  const standingsByGroup = sortedGroups.map((grp) =>
+    computeGroupStandings(grp, matches, registrations, division)
+  );
+  const regMap = new Map(registrations.map((r) => [r.id, r]));
+
+  const orderedEntries: Registration[] = [];
+  for (let rank = 0; rank < qPerGroup; rank++) {
+    // Rotar/alternar el orden de grupos en puestos impares para evitar cruces tempranos del mismo grupo
+    const shift = rank % 2 === 1 ? Math.ceil(groupCount / 2) : 0;
+    for (let i = 0; i < groupCount; i++) {
+      const gIdx = (i + shift) % groupCount;
+      const row = standingsByGroup[gIdx]?.[rank];
+      if (!row) continue;
+      const reg = regMap.get(row.entryId);
+      if (reg) {
+        orderedEntries.push({
+          ...reg,
+          seed: orderedEntries.length + 1,
+        });
+      }
+    }
+  }
+  return orderedEntries;
 }
 
 function getBracketRoundName(totalSlots: number, roundIndex: number): string {
@@ -575,16 +694,20 @@ export function findAffectedDownstreamMatches(
   allMatches: Match[],
   newWinnerId: string | null
 ): Match[] {
-  if (!match.nextMatchId || !match.winnerEntryId || match.winnerEntryId === newWinnerId) {
+  if (!match.winnerEntryId || match.winnerEntryId === newWinnerId) {
     return [];
   }
+  const divisionMatches = allMatches.filter((m) => m.divisionId === match.divisionId);
   const affected: Match[] = [];
-  let cursorId: string | null | undefined = match.nextMatchId;
-  const visited = new Set<string>();
-  while (cursorId && !visited.has(cursorId)) {
-    visited.add(cursorId);
-    const next = allMatches.find((m) => m.id === cursorId);
-    if (!next) break;
+  let cursorMatch: Match | undefined = match;
+  const visited = new Set<string>([match.id]);
+
+  while (cursorMatch) {
+    const resolved = resolveNextKnockoutMatch(cursorMatch, divisionMatches);
+    if (!resolved || visited.has(resolved.nextMatch.id)) break;
+    const next = resolved.nextMatch;
+    visited.add(next.id);
+
     if (
       next.scheduledDate ||
       next.sets.length > 0 ||
@@ -593,10 +716,10 @@ export function findAffectedDownstreamMatches(
     ) {
       affected.push(next);
     }
-    // Si este partido era una Semifinal cuyo siguiente cruce es la Final, revisar el partido de 3er puesto
-    if (!next.nextMatchId && !next.isThirdPlace) {
-      const thirdPlaceMatch = allMatches.find(
-        (m) => m.divisionId === match.divisionId && m.isThirdPlace
+    // Si este cruce era Semifinal hacia la Final, revisar el partido de 3er puesto
+    if (isRealFinalMatch(next, divisionMatches)) {
+      const thirdPlaceMatch = divisionMatches.find(
+        (m) => m.isThirdPlace || m.roundName === 'Tercer Puesto'
       );
       if (
         thirdPlaceMatch &&
@@ -608,7 +731,7 @@ export function findAffectedDownstreamMatches(
         affected.push(thirdPlaceMatch);
       }
     }
-    cursorId = next.nextMatchId;
+    cursorMatch = next;
   }
   return affected;
 }
@@ -914,13 +1037,11 @@ function getCanonicalMatchSignature(match: Match): string {
     return `${match.divisionId}::eliminacion::r${match.roundOrder}::pos${match.bracketPosition}`;
   }
 
-  const pair = [
-    match.entryAId || match.entryAName.trim().toLowerCase(),
-    match.entryBId || match.entryBName.trim().toLowerCase(),
-  ]
-    .sort()
-    .join('|');
-  return `${match.divisionId}::eliminacion::${match.roundName}::${pair}`;
+  if (match.entryAId && match.entryBId) {
+    const pair = [match.entryAId, match.entryBId].sort().join('|');
+    return `${match.divisionId}::eliminacion::${match.roundName}::${pair}`;
+  }
+  return `${match.divisionId}::eliminacion::id::${match.id}`;
 }
 
 function scoreMatchPriority(match: Match, incomingRefCounts: Map<string, number>): number {
