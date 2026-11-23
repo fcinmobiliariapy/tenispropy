@@ -107,11 +107,8 @@ service cloud.firestore {
       return val is string
         && val.size() >= 1
         && val.size() <= maxLen
-        && (val.matches('^https://.*')
-          || val.matches('^/uploads/.*')
-          || val.matches('^/assets/.*')
-          || val.matches('^/src/assets/.*')
-          || val.matches('^data:image/(png|jpeg|jpg|webp|svg\\+xml);.*'));
+        && ((val.size() <= 4096 && val.matches('(?is)^(https?://|/(uploads|assets|src/assets)/).*'))
+          || (val.size() >= 15 && val.split(',')[0].lower().matches('^data:image/(png|jpeg|jpg|webp|gif|avif|svg\\+xml)(;.*)?$')));
     }
 
     function isOptionalSafeImageUrl(val, maxLen) {

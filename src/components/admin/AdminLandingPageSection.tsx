@@ -96,12 +96,16 @@ function formatFirestoreError(err: unknown, fallback: string): string {
 }
 
 async function normalizeImageInput(raw: string, requiredFallback?: string): Promise<string | null> {
-  const trimmed = raw.trim();
+  let trimmed = raw.trim();
   if (!trimmed) {
     return requiredFallback ?? null;
   }
-  if (trimmed.startsWith('data:image/')) {
-    if (trimmed.startsWith('data:image/svg+xml')) {
+  if (trimmed.startsWith('./assets/')) trimmed = trimmed.slice(1);
+  if (trimmed.startsWith('./src/assets/')) trimmed = trimmed.slice(1);
+  if (trimmed.startsWith('uploads/')) trimmed = `/${trimmed}`;
+
+  if (/^data:image\//i.test(trimmed)) {
+    if (/^data:image\/svg\+xml/i.test(trimmed)) {
       if (trimmed.length > MAX_INLINE_DATA_URL_CHARS) {
         return compressImageDataUrl(trimmed, MAX_INLINE_DATA_URL_CHARS);
       }
@@ -109,8 +113,21 @@ async function normalizeImageInput(raw: string, requiredFallback?: string): Prom
     }
     return compressImageDataUrl(trimmed, MAX_INLINE_DATA_URL_CHARS);
   }
+
   if (trimmed.length > MAX_STORED_IMAGE_CHARS) {
     throw new Error('La URL de la imagen supera el tamaño máximo permitido (300.000 caracteres).');
+  }
+
+  const isAllowedPath =
+    /^https?:\/\//i.test(trimmed) ||
+    trimmed.startsWith('/uploads/') ||
+    trimmed.startsWith('/assets/') ||
+    trimmed.startsWith('/src/assets/');
+
+  if (!isAllowedPath) {
+    throw new Error(
+      'La ruta de imagen debe comenzar con https://, http://, /uploads/, /assets/ o ser una imagen subida.'
+    );
   }
   return trimmed;
 }
