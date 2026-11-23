@@ -781,6 +781,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {currentTab === 'inscripciones' && activeDivision && effectivePermissions.manageDraws && (
             <AdminRegistrationsDrawSection
               division={activeDivision}
+              divisions={tournamentDivisions}
+              onSelectDivision={onSelectDivision}
               allDivisions={divisions}
               players={tournamentPlayers}
               registrations={divisionRegistrations}
@@ -829,6 +831,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 allMatches={matches}
                 allDivisions={divisions}
                 divisionGroups={divisionGroups}
+                allGroups={groups}
                 divisionRegistrations={divisionRegistrations}
                 allRegistrations={registrations}
                 players={tournamentPlayers}

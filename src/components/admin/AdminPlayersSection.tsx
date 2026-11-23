@@ -96,11 +96,53 @@ export const AdminPlayersSection: React.FC<Props> = ({
     return Array.from(seen);
   }, [enabledCategories, playersPublic]);
 
+  const divisionById = useMemo(
+    () => new Map(divisions.map((d) => [d.id, d])),
+    [divisions]
+  );
+
+  const playerEnrolledMap = useMemo(() => {
+    const map = new Map<string, { categories: Set<string>; divisionNames: string[] }>();
+    registrations.forEach((r) => {
+      if (tournament && r.tournamentId !== tournament.id) return;
+      if (r.status === 'retirada') return;
+      const div = divisionById.get(r.divisionId);
+      if (!div) return;
+      r.playerIds.forEach((pid) => {
+        const entry = map.get(pid) || { categories: new Set<string>(), divisionNames: [] };
+        if (div.category?.trim()) {
+          entry.categories.add(div.category.trim().toLowerCase());
+        }
+        if (!entry.divisionNames.includes(div.name)) {
+          entry.divisionNames.push(div.name);
+        }
+        map.set(pid, entry);
+      });
+    });
+    return map;
+  }, [registrations, tournament, divisionById]);
+
+  const matchesCategory = (p: PlayerPublic, cat: string) => {
+    const norm = cat.trim().toLowerCase();
+    if (p.habitualCategory.trim().toLowerCase() === norm) return true;
+    const enrolled = playerEnrolledMap.get(p.id);
+    return Boolean(enrolled && enrolled.categories.has(norm));
+  };
+
+  const categoryCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    filterCategoryOptions.forEach((cat) => {
+      map.set(cat, playersPublic.filter((p) => matchesCategory(p, cat)).length);
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterCategoryOptions, playersPublic, playerEnrolledMap]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return playersPublic
       .filter((p) => {
-        if (categoryFilter !== 'ALL' && p.habitualCategory !== categoryFilter) {
+        if (categoryFilter !== 'ALL' && !matchesCategory(p, categoryFilter)) {
           return false;
         }
         if (!q) return true;
@@ -114,7 +156,8 @@ export const AdminPlayersSection: React.FC<Props> = ({
         );
       })
       .sort((a, b) => a.fullName.localeCompare(b.fullName));
-  }, [playersPublic, playersPrivate, search, categoryFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playersPublic, playersPrivate, search, categoryFilter, playerEnrolledMap]);
 
   const startEdit = (p: PlayerPublic) => {
     const priv = playersPrivate[p.id];
@@ -689,39 +732,73 @@ export const AdminPlayersSection: React.FC<Props> = ({
 
       {/* Buscador y Tabla Privada */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-[#E2E8F0] flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto flex-1">
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 text-[#475569] absolute left-3 top-2.5" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nombre, documento, club o correo..."
-                className="w-full h-9 pl-9 pr-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
-              />
+        <div className="p-4 border-b border-[#E2E8F0] space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto flex-1">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-[#475569] absolute left-3 top-2.5" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar por nombre, documento, club o correo..."
+                  className="w-full h-9 pl-9 pr-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs"
+                />
+              </div>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                aria-label="Filtrar por categoría"
+                className="h-9 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633]"
+              >
+                <option value="ALL">Todas las categorías ({playersPublic.length})</option>
+                {filterCategoryOptions.map((cat) => (
+                  <option key={cat} value={cat}>
+                    Cat. {cat} ({categoryCounts.get(cat) ?? 0})
+                  </option>
+                ))}
+              </select>
             </div>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              aria-label="Filtrar por categoría"
-              className="h-9 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633]"
-            >
-              <option value="ALL">Todas las categorías</option>
-              {filterCategoryOptions.map((cat) => (
-                <option key={cat} value={cat}>
-                  Cat. {cat}
-                </option>
-              ))}
-            </select>
+            <span className="text-xs text-[#475569] font-mono tabular-nums">
+              {filtered.length} jugadores mostrados
+            </span>
           </div>
-          <span className="text-xs text-[#475569] font-mono tabular-nums">
-            {filtered.length} jugadores registrados
-          </span>
+
+          {filterCategoryOptions.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCategoryFilter('ALL')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                  categoryFilter === 'ALL'
+                    ? 'bg-[#7C1FA2] text-white'
+                    : 'bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] hover:text-[#0A1633]'
+                }`}
+              >
+                Todas ({playersPublic.length})
+              </button>
+              {filterCategoryOptions.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                    categoryFilter === cat
+                      ? 'bg-[#7C1FA2] text-white'
+                      : 'bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] hover:text-[#0A1633]'
+                  }`}
+                >
+                  Cat. {cat} ({categoryCounts.get(cat) ?? 0})
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {filtered.length === 0 ? (
           <div className="p-8 text-center text-xs text-[#475569]">
-            Este torneo todavía no tiene jugadores cargados. Registrá jugadores manualmente o importalos desde Excel / CSV.
+            {categoryFilter !== 'ALL' || search.trim()
+              ? 'No hay jugadores que coincidan con el filtro o categoría seleccionada.'
+              : 'Este torneo todavía no tiene jugadores cargados. Registrá jugadores manualmente o importalos desde Excel / CSV.'}
           </div>
         ) : (
           <>
@@ -732,6 +809,7 @@ export const AdminPlayersSection: React.FC<Props> = ({
                 const activeRegCount = registrations.filter(
                   (r) => r.tournamentId === p.tournamentId && r.status !== 'retirada' && r.playerIds.includes(p.id)
                 ).length;
+                const enrolledDivs = playerEnrolledMap.get(p.id)?.divisionNames || [];
                 return (
                   <div key={p.id} className="p-4 space-y-3">
                     <div className="flex items-start justify-between gap-3">
@@ -754,6 +832,11 @@ export const AdminPlayersSection: React.FC<Props> = ({
                           <p className="text-xs text-[#475569] truncate">
                             {p.club} · Cat. {p.habitualCategory}
                           </p>
+                          {enrolledDivs.length > 0 && (
+                            <p className="text-[11px] text-[#7C1FA2] truncate">
+                              {enrolledDivs.join(' · ')}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -890,6 +973,11 @@ export const AdminPlayersSection: React.FC<Props> = ({
                         <td className="py-3 px-4">
                           <div className="text-[#0A1633] font-medium">{p.club}</div>
                           <div className="text-[#475569]">Cat. {p.habitualCategory}</div>
+                          {(playerEnrolledMap.get(p.id)?.divisionNames || []).length > 0 && (
+                            <div className="text-[11px] text-[#7C1FA2]">
+                              {playerEnrolledMap.get(p.id)!.divisionNames.join(' · ')}
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-right font-mono tabular-nums">
                           {p.stats.wins}G - {p.stats.losses}P

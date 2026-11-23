@@ -7,6 +7,7 @@ import {
   Filter,
   History,
   Medal,
+  RefreshCw,
   Search,
   Shield,
   Sparkles,
@@ -30,14 +31,17 @@ import {
   analyzeDuplicateMatches,
   compareMatchesByRound,
   computeGroupStandings,
+  computeKnockoutPodiumUpdate,
   computePlayerStatsFromMatches,
   computeQualifiedSeededEntries,
   dedupeMatches,
   findAffectedDownstreamMatches,
+  findUnpropagatedKnockoutMatches,
   generateKnockoutBracket,
   getKnockoutStageRank,
   isRealFinalMatch,
   makeId,
+  reconcileKnockoutBracket,
   resolveNextKnockoutMatch,
 } from '../../utils/tournamentEngine';
 import {
@@ -60,6 +64,7 @@ interface Props {
   allMatches: Match[];
   allDivisions: Division[];
   divisionGroups: Group[];
+  allGroups?: Group[];
   divisionRegistrations: Registration[];
   allRegistrations: Registration[];
   players: PlayerPublic[];
@@ -80,6 +85,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
   allMatches,
   allDivisions,
   divisionGroups,
+  allGroups,
   divisionRegistrations,
   allRegistrations,
   players,
@@ -125,6 +131,11 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
   const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
   const [savingScore, setSavingScore] = useState(false);
   const [generatingFinalBracket, setGeneratingFinalBracket] = useState(false);
+  const [refreshingBrackets, setRefreshingBrackets] = useState(false);
+  const [editingKoSlotMatchId, setEditingKoSlotMatchId] = useState<string | null>(null);
+  const [manualSlotEntryAId, setManualSlotEntryAId] = useState<string>('');
+  const [manualSlotEntryBId, setManualSlotEntryBId] = useState<string>('');
+  const [savingKoSlot, setSavingKoSlot] = useState(false);
 
   const tournamentDivisions = useMemo(() => {
     if (divisions && divisions.length > 0) return divisions;
@@ -151,13 +162,13 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
 
   const divisionMatchCounts = useMemo(() => {
     const source = tournamentMatches || allMatches.filter((m) => m.tournamentId === tournament.id);
-    const map = new Map<string, { total: number; pending: number }>();
+    const map = new Map<string, { total: number; pending: number; unpropagated: number }>();
     tournamentDivisions.forEach((d) => {
-      const deduped = dedupeMatches(
-        source.filter((m) => m.divisionId === d.id && !m.isBye && m.entryAId && m.entryBId)
-      );
-      const pending = deduped.filter((m) => !m.winnerEntryId).length;
-      map.set(d.id, { total: deduped.length, pending });
+      const divAll = dedupeMatches(source.filter((m) => m.divisionId === d.id));
+      const playable = divAll.filter((m) => !m.isBye && m.entryAId && m.entryBId);
+      const pending = playable.filter((m) => !m.winnerEntryId).length;
+      const unpropagated = findUnpropagatedKnockoutMatches(divAll, d).length;
+      map.set(d.id, { total: playable.length, pending, unpropagated });
     });
     return map;
   }, [tournamentMatches, allMatches, tournament.id, tournamentDivisions]);
@@ -305,6 +316,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     setFeedback(null);
     setPendingAffectedMatches(null);
     setConfirmDeleteMatchId(null);
+    setEditingKoSlotMatchId(null);
     const firstPending = allPlayableMatches.find((m) => !m.winnerEntryId) || allPlayableMatches[0];
     setSelectedMatchId(firstPending?.id || '');
     if (firstPending) {
@@ -394,18 +406,21 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     );
     const grouped = new Map<string, { roundOrder: number; roundName: string; matches: Match[] }>();
     ko.forEach((m) => {
-      const key = `${m.roundOrder}::${m.roundName}`;
+      const key = m.roundName.trim().toLowerCase() || `r${m.roundOrder}`;
       if (!grouped.has(key)) {
         grouped.set(key, { roundOrder: m.roundOrder, roundName: m.roundName, matches: [] });
+      } else {
+        const entry = grouped.get(key)!;
+        if (m.roundOrder < entry.roundOrder) entry.roundOrder = m.roundOrder;
       }
       grouped.get(key)!.matches.push(m);
     });
     return Array.from(grouped.values())
-      .sort(
-        (a, b) =>
-          a.roundOrder - b.roundOrder ||
-          getKnockoutStageRank(a.roundName) - getKnockoutStageRank(b.roundName)
-      )
+      .sort((a, b) => {
+        const rankDiff = getKnockoutStageRank(a.roundName) - getKnockoutStageRank(b.roundName);
+        if (rankDiff !== 0) return rankDiff;
+        return a.roundOrder - b.roundOrder;
+      })
       .map((val) => ({
         roundName: val.roundName,
         matches: val.matches.sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0)),
@@ -441,10 +456,43 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     try {
       const now = new Date().toISOString();
       const existingKoMatches = rawDivisionMatches.filter((m) => m.phase === 'eliminacion');
+      let koMatches = generateKnockoutBracket(liveQualifiers, division, 10);
+
       if (canDelete && existingKoMatches.length > 0) {
         await deleteMatchesBatch(existingKoMatches.map((m) => m.id));
+      } else if (existingKoMatches.length > 0) {
+        const usedIds = new Set<string>();
+        const idRemap = new Map<string, string>();
+        const unplayedPool = existingKoMatches.filter(
+          (m) => !m.winnerEntryId && m.sets.length === 0
+        );
+        for (const km of koMatches) {
+          const candidate = unplayedPool.find(
+            (em) =>
+              !usedIds.has(em.id) &&
+              em.roundOrder === km.roundOrder &&
+              em.bracketPosition === km.bracketPosition &&
+              Boolean(em.isThirdPlace) === Boolean(km.isThirdPlace)
+          );
+          if (candidate) {
+            usedIds.add(candidate.id);
+            idRemap.set(km.id, candidate.id);
+          }
+        }
+        if (idRemap.size > 0) {
+          koMatches = koMatches.map((km) => {
+            const targetId = idRemap.get(km.id) || km.id;
+            const prevDoc = existingKoMatches.find((em) => em.id === targetId);
+            return {
+              ...km,
+              id: targetId,
+              nextMatchId: km.nextMatchId ? idRemap.get(km.nextMatchId) || km.nextMatchId : null,
+              createdAt: prevDoc?.createdAt || km.createdAt,
+            };
+          });
+        }
       }
-      const koMatches = generateKnockoutBracket(liveQualifiers, division, 10);
+
       for (const m of koMatches) {
         await saveEntity('matches', {
           ...m,
@@ -466,6 +514,324 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
       setErrorMsg(formatFirestoreError(err, 'No se pudo generar el cuadro final desde grupos.'));
     } finally {
       setGeneratingFinalBracket(false);
+    }
+  };
+
+  const divisionCategoryEntries = useMemo(() => {
+    const base = divisionRegistrations.filter(
+      (r) => r.divisionId === division.id && r.status !== 'retirada'
+    );
+    const qualIds = new Set(liveQualifiers.map((q) => q.id));
+    return [...base].sort((a, b) => {
+      const qa = qualIds.has(a.id) ? 0 : 1;
+      const qb = qualIds.has(b.id) ? 0 : 1;
+      if (qa !== qb) return qa - qb;
+      if ((a.seed ?? 999) !== (b.seed ?? 999)) return (a.seed ?? 999) - (b.seed ?? 999);
+      return a.displayName.localeCompare(b.displayName, 'es');
+    });
+  }, [divisionRegistrations, division.id, liveQualifiers]);
+
+  const confirmedDivisionEntries = useMemo(
+    () => divisionCategoryEntries.filter((r) => r.status === 'confirmada'),
+    [divisionCategoryEntries]
+  );
+
+  const pendingKoSlotMatches = useMemo(
+    () =>
+      dedupedDivisionMatches.filter(
+        (m) => m.phase === 'eliminacion' && !m.isBye && (!m.entryAId || !m.entryBId)
+      ),
+    [dedupedDivisionMatches]
+  );
+
+  const unpropagatedMatches = useMemo(
+    () => findUnpropagatedKnockoutMatches(dedupedDivisionMatches, division),
+    [dedupedDivisionMatches, division]
+  );
+
+  const tournamentUnpropagatedSummary = useMemo(() => {
+    const affectedDivisions: Array<{ division: Division; count: number }> = [];
+    let total = 0;
+    for (const d of tournamentDivisions) {
+      const counts = divisionMatchCounts.get(d.id);
+      if (counts && counts.unpropagated > 0) {
+        total += counts.unpropagated;
+        affectedDivisions.push({ division: d, count: counts.unpropagated });
+      }
+    }
+    return { total, affectedDivisions };
+  }, [tournamentDivisions, divisionMatchCounts]);
+
+  const reconcileSingleDivisionInDb = async (
+    targetDiv: Division,
+    targetRawMatches: Match[],
+    targetGroups: Group[],
+    targetRegistrations: Registration[],
+    now: string
+  ) => {
+    const targetDeduped = dedupeMatches(targetRawMatches);
+
+    // 1. Re-sincronizar tablas de grupo si existen
+    for (const grp of targetGroups) {
+      const recalculated = computeGroupStandings(
+        grp,
+        targetDeduped,
+        targetRegistrations,
+        targetDiv
+      );
+      const prevSig = JSON.stringify(
+        grp.standings.map((s) => `${s.entryId}:${s.points}:${s.won}:${s.gamesDiff}`)
+      );
+      const nextSig = JSON.stringify(
+        recalculated.map((s) => `${s.entryId}:${s.points}:${s.won}:${s.gamesDiff}`)
+      );
+      if (prevSig !== nextSig) {
+        await saveEntity('groups', {
+          ...grp,
+          standings: recalculated,
+          published: true,
+          updatedAt: now,
+        });
+      }
+    }
+
+    // 2. Reconciliar cuadro eliminatorio completo (links, colisiones, ganadores pendientes, BYEs)
+    const qualifiers =
+      targetDiv.format === 'grupos_y_final' && targetGroups.length > 0
+        ? computeQualifiedSeededEntries(targetGroups, targetDeduped, targetRegistrations, targetDiv)
+        : [];
+    const confirmedInTarget = targetRegistrations.filter((r) => r.status === 'confirmada');
+    const fallbackPool = qualifiers.length > 0 ? qualifiers : confirmedInTarget;
+
+    const res = reconcileKnockoutBracket(targetDeduped, targetDiv, fallbackPool);
+    for (const m of res.updatedMatches) {
+      await saveEntity('matches', { ...m, updatedAt: now });
+    }
+
+    // 3. Limpiar llaves vacías heredadas en Ronda 1 si corresponde
+    let removedEmptyCount = 0;
+    const koOnly = targetDeduped.filter((m) => m.phase === 'eliminacion' && !m.isThirdPlace);
+    if (canDelete && res.emptyMatchIds.length > 0 && koOnly.length > 0) {
+      const minRo = Math.min(...koOnly.map((m) => m.roundOrder));
+      const emptyR1Ids = targetDeduped
+        .filter(
+          (m) =>
+            res.emptyMatchIds.includes(m.id) &&
+            m.roundOrder === minRo &&
+            !m.winnerEntryId &&
+            m.sets.length === 0
+        )
+        .map((m) => m.id);
+      if (emptyR1Ids.length > 0) {
+        await deleteMatchesBatch(emptyR1Ids);
+        removedEmptyCount = emptyR1Ids.length;
+      }
+    }
+
+    // 4. Sincronizar podio (Campeón / Vicecampeón / 3er Puesto) si la Final o 3er Puesto ya tienen ganador
+    const updatedMap = new Map(res.updatedMatches.map((m) => [m.id, m]));
+    const afterMatches = targetDeduped.map((m) => updatedMap.get(m.id) || m);
+    const podiumPatch = computeKnockoutPodiumUpdate(targetDiv, afterMatches);
+    if (podiumPatch) {
+      await saveEntity('divisions', {
+        ...targetDiv,
+        ...podiumPatch,
+        updatedAt: now,
+      });
+    }
+
+    return {
+      res,
+      removedEmptyCount,
+      podiumUpdated: Boolean(podiumPatch),
+    };
+  };
+
+  const handleRefreshKnockoutBrackets = async () => {
+    if (!canEdit || refreshingBrackets) return;
+    setRefreshingBrackets(true);
+    setErrorMsg(null);
+    setFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      const { res, removedEmptyCount, podiumUpdated } = await reconcileSingleDivisionInDb(
+        division,
+        rawDivisionMatches,
+        divisionGroups,
+        divisionRegistrations,
+        now
+      );
+
+      if (res.updatedMatches.length > 0 || removedEmptyCount > 0 || podiumUpdated) {
+        const details: string[] = [];
+        if (res.propagatedWinners > 0) details.push(`${res.propagatedWinners} avances de ronda`);
+        if (res.repairedLinks > 0) details.push(`${res.repairedLinks} enlaces reparados`);
+        if (res.filledSlots > 0) details.push(`${res.filledSlots} cupos completados`);
+        if (removedEmptyCount > 0) details.push(`${removedEmptyCount} llaves vacías depuradas`);
+        if (podiumUpdated) details.push('podio actualizado');
+        setFeedback(
+          `Cruces de ${division.name} actualizados (${res.updatedMatches.length} llaves sincronizadas${
+            details.length > 0 ? `: ${details.join(', ')}` : ''
+          }).${
+            res.pendingSlotMatches.length > 0
+              ? ` Quedan ${res.pendingSlotMatches.length} llaves esperando partido previo.`
+              : ''
+          }`
+        );
+      } else if (res.pendingSlotMatches.length > 0) {
+        setFeedback(
+          `Todos los resultados disponibles de ${division.name} ya pasaron de ronda. Quedan ${res.pendingSlotMatches.length} llaves esperando que finalice su cruce previo.`
+        );
+      } else {
+        setFeedback(`Todos los cruces de ${division.name} están 100% actualizados y completos.`);
+      }
+    } catch (err) {
+      setErrorMsg(formatFirestoreError(err, 'No se pudieron actualizar los cruces del cuadro.'));
+    } finally {
+      setRefreshingBrackets(false);
+    }
+  };
+
+  const handleRefreshAllTournamentBrackets = async () => {
+    if (!canEdit || refreshingBrackets) return;
+    setRefreshingBrackets(true);
+    setErrorMsg(null);
+    setFeedback(null);
+    try {
+      const now = new Date().toISOString();
+      const sourceMatches =
+        tournamentMatches || allMatches.filter((m) => m.tournamentId === tournament.id);
+      const sourceGroups = allGroups || divisionGroups;
+
+      let totalMatchesUpdated = 0;
+      let totalPropagated = 0;
+      let totalRepaired = 0;
+      let totalEmptyRemoved = 0;
+      const updatedDivNames: string[] = [];
+
+      for (const div of tournamentDivisions) {
+        const divMatches = sourceMatches.filter((m) => m.divisionId === div.id);
+        const divGroups = sourceGroups.filter((g) => g.divisionId === div.id);
+        const divRegs = allRegistrations.filter((r) => r.divisionId === div.id);
+        const { res, removedEmptyCount, podiumUpdated } = await reconcileSingleDivisionInDb(
+          div,
+          divMatches,
+          divGroups,
+          divRegs,
+          now
+        );
+        if (res.updatedMatches.length > 0 || removedEmptyCount > 0 || podiumUpdated) {
+          updatedDivNames.push(div.name);
+        }
+        totalMatchesUpdated += res.updatedMatches.length;
+        totalPropagated += res.propagatedWinners;
+        totalRepaired += res.repairedLinks;
+        totalEmptyRemoved += removedEmptyCount;
+      }
+
+      if (updatedDivNames.length > 0) {
+        setFeedback(
+          `Actualización total completada (${updatedDivNames.join(', ')}): ${totalMatchesUpdated} llaves guardadas, ${totalPropagated} avances de ronda y ${totalRepaired} enlaces reparados${
+            totalEmptyRemoved > 0 ? `, ${totalEmptyRemoved} llaves vacías depuradas` : ''
+          }.`
+        );
+      } else {
+        setFeedback(
+          'Todas las categorías del torneo ya tienen todos sus resultados propagados y cruces al día.'
+        );
+      }
+    } catch (err) {
+      setErrorMsg(
+        formatFirestoreError(err, 'No se pudieron actualizar todos los cruces del torneo.')
+      );
+    } finally {
+      setRefreshingBrackets(false);
+    }
+  };
+
+  const openKoSlotEditor = (m: Match) => {
+    setEditingKoSlotMatchId(m.id);
+    setManualSlotEntryAId(m.entryAId || '');
+    setManualSlotEntryBId(m.entryBId || '');
+    setErrorMsg(null);
+    setFeedback(null);
+  };
+
+  const handleSaveManualKoSlot = async (targetMatch: Match) => {
+    if (!canEdit || savingKoSlot) return;
+    setErrorMsg(null);
+    setFeedback(null);
+
+    if (!manualSlotEntryAId && !manualSlotEntryBId) {
+      setErrorMsg('Ninguna llave puede quedar vacía. Elegí al menos un participante de la categoría.');
+      return;
+    }
+    if (manualSlotEntryAId && manualSlotEntryBId && manualSlotEntryAId === manualSlotEntryBId) {
+      setErrorMsg('Los participantes de ambos lados de la llave deben ser distintos.');
+      return;
+    }
+
+    const entryA = manualSlotEntryAId
+      ? divisionCategoryEntries.find((e) => e.id === manualSlotEntryAId) || null
+      : null;
+    const entryB = manualSlotEntryBId
+      ? divisionCategoryEntries.find((e) => e.id === manualSlotEntryBId) || null
+      : null;
+
+    setSavingKoSlot(true);
+    try {
+      const now = new Date().toISOString();
+      const singleSideBye = Boolean((entryA && !entryB) || (!entryA && entryB));
+      const byeWinner = entryA || entryB;
+      const entrantsChanged =
+        (entryA?.id || null) !== targetMatch.entryAId ||
+        (entryB?.id || null) !== targetMatch.entryBId;
+
+      const updatedMatch: Match = {
+        ...targetMatch,
+        entryAId: entryA?.id || null,
+        entryAName: entryA ? entryA.displayName : 'BYE',
+        playerIdsA: entryA ? entryA.playerIds : [],
+        entryBId: entryB?.id || null,
+        entryBName: entryB ? entryB.displayName : 'BYE',
+        playerIdsB: entryB ? entryB.playerIds : [],
+        isBye: singleSideBye,
+        status: singleSideBye
+          ? 'finalizado'
+          : entrantsChanged
+          ? 'programado'
+          : targetMatch.status,
+        sets: singleSideBye || entrantsChanged ? [] : targetMatch.sets,
+        winnerEntryId: singleSideBye && byeWinner ? byeWinner.id : entrantsChanged ? null : targetMatch.winnerEntryId,
+        winnerName: singleSideBye && byeWinner ? byeWinner.displayName : entrantsChanged ? null : targetMatch.winnerName,
+        outcomeNote: singleSideBye ? 'Pase libre (BYE)' : entrantsChanged ? null : targetMatch.outcomeNote,
+        published: true,
+        updatedAt: now,
+      };
+
+      await saveEntity('matches', updatedMatch);
+
+      // Re-sincronizar inmediatamente rondas siguientes si esta llave quedó con BYE o actualizó participantes
+      const nextList = dedupedDivisionMatches.map((m) => (m.id === updatedMatch.id ? updatedMatch : m));
+      const fallbackPool =
+        division.format === 'grupos_y_final' && liveQualifiers.length > 0
+          ? liveQualifiers
+          : confirmedDivisionEntries;
+      const cascaded = reconcileKnockoutBracket(nextList, division, fallbackPool);
+      for (const cm of cascaded.updatedMatches) {
+        if (cm.id !== updatedMatch.id) {
+          await saveEntity('matches', { ...cm, updatedAt: now });
+        }
+      }
+
+      setEditingKoSlotMatchId(null);
+      setFeedback(
+        `Llave de ${targetMatch.roundName} actualizada: ${updatedMatch.entryAName} vs ${updatedMatch.entryBName}.`
+      );
+    } catch (err) {
+      setErrorMsg(formatFirestoreError(err, 'No se pudo guardar el cruce manual.'));
+    } finally {
+      setSavingKoSlot(false);
     }
   };
 
@@ -705,6 +1071,20 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
         }
       }
 
+      // 2b. Reconciliar el resto del cuadro eliminatorio para que ningún ganador previo o BYE quede sin pasar de ronda
+      if (updatedMatch.phase === 'eliminacion') {
+        const fallbackPool =
+          division.format === 'grupos_y_final' && liveQualifiers.length > 0
+            ? liveQualifiers
+            : confirmedDivisionEntries;
+        const cascadedReconcile = reconcileKnockoutBracket(nextDivMatches, division, fallbackPool);
+        for (const extraMatch of cascadedReconcile.updatedMatches) {
+          if (extraMatch.id !== updatedMatch.id) {
+            await saveEntity('matches', { ...extraMatch, updatedAt: now });
+          }
+        }
+      }
+
       // 3. Actualizar o limpiar podio de la división según Final / 3er Puesto
       let updatedDivisions = allDivisions;
       const isUpdatedThirdPlace =
@@ -815,6 +1195,48 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
             Carga y Corrección de Marcadores — {division.name}
           </h2>
         </div>
+
+        {canEdit && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={refreshingBrackets}
+              onClick={handleRefreshKnockoutBrackets}
+              title="Actualizar y avanzar todos los resultados pendientes en esta categoría"
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold disabled:opacity-60 transition-colors ${
+                unpropagatedMatches.length > 0
+                  ? 'border-amber-600 bg-amber-600 text-white hover:bg-amber-700'
+                  : 'border-[#7C1FA2] bg-white text-[#7C1FA2] hover:bg-purple-50'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshingBrackets ? 'animate-spin' : ''}`} />
+              {refreshingBrackets
+                ? 'Actualizando...'
+                : unpropagatedMatches.length > 0
+                ? `Actualizar cruces (${unpropagatedMatches.length} sin avanzar)`
+                : 'Actualizar cruces'}
+            </button>
+
+            {tournamentDivisions.length > 1 && (
+              <button
+                type="button"
+                disabled={refreshingBrackets}
+                onClick={handleRefreshAllTournamentBrackets}
+                title="Sincronizar y avanzar ganadores en TODAS las categorías del torneo"
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-60 transition-colors ${
+                  tournamentUnpropagatedSummary.total > 0
+                    ? 'bg-[#0A1633] text-white hover:bg-[#7C1FA2]'
+                    : 'border border-[#E2E8F0] bg-[#F8FAFC] text-[#0A1633] hover:bg-slate-100'
+                }`}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshingBrackets ? 'animate-spin' : ''}`} />
+                {tournamentUnpropagatedSummary.total > 0
+                  ? `Actualizar todas las categorías (${tournamentUnpropagatedSummary.total})`
+                  : 'Actualizar todas las categorías'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Selector / Filtro estricto por Categoría y División para no mezclar partidos */}
@@ -865,7 +1287,11 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
           <div className="flex flex-wrap gap-2">
             {filteredDivisionChips.map((d) => {
               const active = d.id === division.id;
-              const counts = divisionMatchCounts.get(d.id) || { total: 0, pending: 0 };
+              const counts = divisionMatchCounts.get(d.id) || {
+                total: 0,
+                pending: 0,
+                unpropagated: 0,
+              };
               return (
                 <button
                   key={d.id}
@@ -890,10 +1316,64 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                   >
                     {counts.pending > 0 ? `${counts.pending} pend.` : `${counts.total}/${counts.total}`}
                   </span>
+                  {counts.unpropagated > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-red-600 text-white font-mono tabular-nums text-[10px] font-bold">
+                      {counts.unpropagated} sin avanzar
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
+        </div>
+      )}
+
+      {(unpropagatedMatches.length > 0 || tournamentUnpropagatedSummary.total > 0) && canEdit && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-950 space-y-1">
+              <p className="font-bold">
+                {unpropagatedMatches.length > 0
+                  ? `Hay ${unpropagatedMatches.length} ${
+                      unpropagatedMatches.length === 1
+                        ? 'resultado finalizado en ' + division.name + ' que aún no pasó de ronda'
+                        : 'resultados finalizados en ' + division.name + ' que aún no pasaron de ronda'
+                    }`
+                  : `Hay ${tournamentUnpropagatedSummary.total} resultados pendientes de avanzar de ronda en otras categorías (${tournamentUnpropagatedSummary.affectedDivisions
+                      .map((x) => `${x.division.name}: ${x.count}`)
+                      .join(', ')})`}
+              </p>
+              {unpropagatedMatches.length > 0 && (
+                <ul className="space-y-0.5 text-[11px] text-amber-900">
+                  {unpropagatedMatches.slice(0, 4).map((info) => (
+                    <li key={info.match.id}>
+                      • {info.match.roundName}: <strong>{info.winnerName}</strong> →{' '}
+                      {info.targetRoundName || 'Siguiente ronda'}
+                    </li>
+                  ))}
+                  {unpropagatedMatches.length > 4 && (
+                    <li>• …y {unpropagatedMatches.length - 4} más</li>
+                  )}
+                </ul>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={refreshingBrackets}
+            onClick={
+              tournamentUnpropagatedSummary.total > unpropagatedMatches.length
+                ? handleRefreshAllTournamentBrackets
+                : handleRefreshKnockoutBrackets
+            }
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-700 text-white text-xs font-semibold hover:bg-amber-800 disabled:opacity-60 shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshingBrackets ? 'animate-spin' : ''}`} />
+            {refreshingBrackets
+              ? 'Sincronizando...'
+              : 'Actualizar y pasar todos de ronda ahora'}
+          </button>
         </div>
       )}
 
@@ -1537,22 +2017,47 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
             </h3>
           </div>
 
-          {division.format === 'grupos_y_final' &&
-            knockoutRounds.length === 0 &&
-            liveQualifiers.length >= 2 &&
-            canGenerateFinalBracket && (
+          <div className="flex flex-wrap items-center gap-2">
+            {(knockoutRounds.length > 0 || thirdPlaceMatch || divisionGroups.length > 0) && canEdit && (
               <button
                 type="button"
-                disabled={generatingFinalBracket}
-                onClick={handleGenerateAndPublishFinalBracket}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0A1633] text-white text-xs font-semibold hover:bg-[#7C1FA2] disabled:opacity-60 transition-colors"
+                disabled={refreshingBrackets}
+                onClick={handleRefreshKnockoutBrackets}
+                title="Sincronizar ganadores pendientes, reparar enlaces de cuadro y completar vacíos"
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold disabled:opacity-60 transition-colors ${
+                  unpropagatedMatches.length > 0
+                    ? 'border-amber-600 bg-amber-600 text-white hover:bg-amber-700'
+                    : 'border-[#7C1FA2] bg-white text-[#7C1FA2] hover:bg-purple-50'
+                }`}
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                {generatingFinalBracket
-                  ? 'Generando cuadro...'
-                  : `Generar cuadro final (${liveQualifiers.length} clasificados)`}
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshingBrackets ? 'animate-spin' : ''}`} />
+                {refreshingBrackets
+                  ? 'Actualizando...'
+                  : unpropagatedMatches.length > 0
+                  ? `Actualizar cruces (${unpropagatedMatches.length} sin avanzar)`
+                  : pendingKoSlotMatches.length > 0
+                  ? `Actualizar cruces (${pendingKoSlotMatches.length} pend.)`
+                  : 'Actualizar cruces'}
               </button>
             )}
+
+            {division.format === 'grupos_y_final' &&
+              knockoutRounds.length === 0 &&
+              liveQualifiers.length >= 2 &&
+              canGenerateFinalBracket && (
+                <button
+                  type="button"
+                  disabled={generatingFinalBracket}
+                  onClick={handleGenerateAndPublishFinalBracket}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0A1633] text-white text-xs font-semibold hover:bg-[#7C1FA2] disabled:opacity-60 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {generatingFinalBracket
+                    ? 'Generando cuadro...'
+                    : `Generar cuadro final (${liveQualifiers.length} clasificados)`}
+                </button>
+              )}
+          </div>
         </div>
 
         <div className="p-5 space-y-6">
@@ -1743,9 +2248,100 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
           {/* Cuadro Eliminatorio Oficial (o proyección desde grupos) */}
           {knockoutRounds.length > 0 || thirdPlaceMatch ? (
             <div className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[#475569]">
-                Cuadro de Eliminación Directa y Cruces Finales
-              </h4>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#475569]">
+                  Cuadro de Eliminación Directa y Cruces Finales
+                </h4>
+                {pendingKoSlotMatches.length > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-900">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                    {pendingKoSlotMatches.length}{' '}
+                    {pendingKoSlotMatches.length === 1 ? 'llave pendiente' : 'llaves pendientes'} — usá “Actualizar cruces” o “Asignar” en cada tarjeta
+                  </span>
+                )}
+              </div>
+
+              {editingKoSlotMatchId && (() => {
+                const targetKo = dedupedDivisionMatches.find((m) => m.id === editingKoSlotMatchId);
+                if (!targetKo) return null;
+                return (
+                  <div className="p-4 rounded-xl bg-purple-50/60 border border-[#7C1FA2]/40 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold text-[#0A1633]">
+                          Cargar / Completar llave manualmente · {targetKo.roundName}
+                          {targetKo.bracketPosition ? ` (Llave #${targetKo.bracketPosition})` : ''}
+                        </p>
+                        <p className="text-[11px] text-[#475569]">
+                          Solo se muestran jugadores/parejas inscriptos en {division.name} (Cat. {division.category}). Ninguna llave puede quedar vacía.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingKoSlotMatchId(null)}
+                        className="px-2.5 py-1 rounded-lg border border-[#E2E8F0] bg-white text-xs text-[#475569]"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#0A1633] mb-1">
+                          Lado A (Participante)
+                        </label>
+                        <select
+                          value={manualSlotEntryAId}
+                          onChange={(e) => setManualSlotEntryAId(e.target.value)}
+                          className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] bg-white text-xs text-[#0A1633]"
+                        >
+                          <option value="">BYE / Pase libre (solo si Lado B tiene jugador)</option>
+                          {divisionCategoryEntries.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                              {entry.displayName} {entry.seed ? `[Seed ${entry.seed}]` : ''} ({entry.status})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#0A1633] mb-1">
+                          Lado B (Participante)
+                        </label>
+                        <select
+                          value={manualSlotEntryBId}
+                          onChange={(e) => setManualSlotEntryBId(e.target.value)}
+                          className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] bg-white text-xs text-[#0A1633]"
+                        >
+                          <option value="">BYE / Pase libre (solo si Lado A tiene jugador)</option>
+                          {divisionCategoryEntries.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                              {entry.displayName} {entry.seed ? `[Seed ${entry.seed}]` : ''} ({entry.status})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingKoSlotMatchId(null)}
+                        className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] bg-white text-xs text-[#0A1633]"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={savingKoSlot}
+                        onClick={() => handleSaveManualKoSlot(targetKo)}
+                        className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#7C1FA2] text-white text-xs font-semibold hover:bg-[#6B1A8B] disabled:opacity-60"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {savingKoSlot ? 'Guardando...' : 'Guardar cruce manual'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="overflow-x-auto pb-2">
                 <div className="flex items-stretch gap-4 min-w-max">
                   {knockoutRounds.map((round) => (
@@ -1762,6 +2358,8 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                       <div className="flex-1 flex flex-col justify-around gap-2.5">
                         {round.matches.map((m) => {
                           const canLoad = !m.isBye && Boolean(m.entryAId && m.entryBId);
+                          const isPendingSlot = !m.isBye && (!m.entryAId || !m.entryBId);
+                          const canAssignSlot = canEdit && !m.winnerEntryId && m.sets.length === 0;
                           const isSelected = activeMatch?.id === m.id;
                           return (
                             <div
@@ -1769,6 +2367,8 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                               className={`p-3 rounded-xl border text-xs space-y-1.5 ${
                                 isSelected
                                   ? 'bg-purple-50/70 border-[#7C1FA2]'
+                                  : isPendingSlot
+                                  ? 'bg-amber-50/40 border-amber-300'
                                   : m.winnerEntryId
                                   ? 'bg-white border-emerald-200'
                                   : 'bg-[#F8FAFC] border-[#E2E8F0]'
@@ -1780,17 +2380,30 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                                     ? 'BYE'
                                     : m.winnerEntryId
                                     ? formatScoreString(m.sets, m.status)
+                                    : isPendingSlot
+                                    ? 'Llave pendiente'
                                     : 'Por disputar'}
                                 </span>
-                                {canLoad && (
-                                  <button
-                                    type="button"
-                                    onClick={() => loadMatchIntoEditor(m)}
-                                    className="text-[10px] font-semibold text-[#7C1FA2] hover:underline"
-                                  >
-                                    {m.winnerEntryId ? 'Corregir' : 'Cargar'}
-                                  </button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  {(isPendingSlot || canAssignSlot) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openKoSlotEditor(m)}
+                                      className="text-[10px] font-semibold text-[#0284C7] hover:underline"
+                                    >
+                                      {isPendingSlot ? 'Asignar' : 'Editar cruce'}
+                                    </button>
+                                  )}
+                                  {canLoad && (
+                                    <button
+                                      type="button"
+                                      onClick={() => loadMatchIntoEditor(m)}
+                                      className="text-[10px] font-semibold text-[#7C1FA2] hover:underline"
+                                    >
+                                      {m.winnerEntryId ? 'Corregir' : 'Cargar'}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                               <div
                                 className={`px-2 py-1 rounded border flex items-center justify-between gap-2 ${
@@ -1840,17 +2453,30 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                           <span className="text-[10px] text-[#9A3412] font-medium">
                             {thirdPlaceMatch.winnerEntryId
                               ? formatScoreString(thirdPlaceMatch.sets, thirdPlaceMatch.status)
+                              : !thirdPlaceMatch.entryAId || !thirdPlaceMatch.entryBId
+                              ? 'Llave pendiente'
                               : 'Por disputar'}
                           </span>
-                          {thirdPlaceMatch.entryAId && thirdPlaceMatch.entryBId && (
-                            <button
-                              type="button"
-                              onClick={() => loadMatchIntoEditor(thirdPlaceMatch)}
-                              className="text-[10px] font-semibold text-[#7C1FA2] hover:underline"
-                            >
-                              {thirdPlaceMatch.winnerEntryId ? 'Corregir' : 'Cargar'}
-                            </button>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {canEdit && !thirdPlaceMatch.winnerEntryId && thirdPlaceMatch.sets.length === 0 && (
+                              <button
+                                type="button"
+                                onClick={() => openKoSlotEditor(thirdPlaceMatch)}
+                                className="text-[10px] font-semibold text-[#0284C7] hover:underline"
+                              >
+                                {!thirdPlaceMatch.entryAId || !thirdPlaceMatch.entryBId ? 'Asignar' : 'Editar cruce'}
+                              </button>
+                            )}
+                            {thirdPlaceMatch.entryAId && thirdPlaceMatch.entryBId && (
+                              <button
+                                type="button"
+                                onClick={() => loadMatchIntoEditor(thirdPlaceMatch)}
+                                className="text-[10px] font-semibold text-[#7C1FA2] hover:underline"
+                              >
+                                {thirdPlaceMatch.winnerEntryId ? 'Corregir' : 'Cargar'}
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div
                           className={`px-2 py-1 rounded border flex items-center justify-between gap-2 ${

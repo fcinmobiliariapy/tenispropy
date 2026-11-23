@@ -572,6 +572,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
   // Player profile modal, Head-to-Head, QR & Flyer modal state
   const [playerSearch, setPlayerSearch] = useState('');
+  const [playerCategoryFilter, setPlayerCategoryFilter] = useState<string>('ALL');
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerPublic | null>(null);
   const [selectedH2HMatch, setSelectedH2HMatch] = useState<Match | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -594,6 +595,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   useEffect(() => {
     setSelectedPlayer(null);
     setPlayerSearch('');
+    setPlayerCategoryFilter('ALL');
   }, [activeTournament?.id]);
 
   const activeTournamentAds = useMemo(
@@ -720,23 +722,30 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   }, [tournaments]);
 
   const knockoutRounds = useMemo(() => {
-    const ko = divisionMatches.filter(
+    const rawKo = divisionMatches.filter(
       (m) => m.phase === 'eliminacion' && !m.isThirdPlace && m.roundName !== 'Tercer Puesto'
+    );
+    const minKoOrder = rawKo.length > 0 ? Math.min(...rawKo.map((m) => m.roundOrder)) : 0;
+    const ko = rawKo.filter(
+      (m) => !(m.roundOrder === minKoOrder && !m.entryAId && !m.entryBId && !m.winnerEntryId)
     );
     const grouped = new Map<string, { roundOrder: number; roundName: string; matches: Match[] }>();
     ko.forEach((m) => {
-      const key = `${m.roundOrder}::${m.roundName}`;
+      const key = m.roundName.trim().toLowerCase() || `r${m.roundOrder}`;
       if (!grouped.has(key)) {
         grouped.set(key, { roundOrder: m.roundOrder, roundName: m.roundName, matches: [] });
+      } else {
+        const entry = grouped.get(key)!;
+        if (m.roundOrder < entry.roundOrder) entry.roundOrder = m.roundOrder;
       }
       grouped.get(key)!.matches.push(m);
     });
     return Array.from(grouped.values())
-      .sort(
-        (a, b) =>
-          a.roundOrder - b.roundOrder ||
-          getKnockoutStageRank(a.roundName) - getKnockoutStageRank(b.roundName)
-      )
+      .sort((a, b) => {
+        const rankDiff = getKnockoutStageRank(a.roundName) - getKnockoutStageRank(b.roundName);
+        if (rankDiff !== 0) return rankDiff;
+        return a.roundOrder - b.roundOrder;
+      })
       .map((val) => ({
         roundName: val.roundName,
         matches: val.matches.sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0)),
@@ -899,19 +908,78 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     };
   }, [activeDivision, divisionRegistrations, registrations, players, finalMatch, thirdPlaceMatch]);
 
+  const tournamentPlayers = useMemo(
+    () => players.filter((p) => p.tournamentId === activeTournament?.id),
+    [players, activeTournament?.id]
+  );
+
+  const playerDivisionEnrollmentMap = useMemo(() => {
+    const divMap = new Map(tournamentDivisions.map((d) => [d.id, d]));
+    const map = new Map<string, { categories: Set<string>; divisionNames: string[] }>();
+    registrations.forEach((r) => {
+      if (r.tournamentId !== activeTournament?.id || r.status === 'retirada') return;
+      const div = divMap.get(r.divisionId);
+      if (!div) return;
+      r.playerIds.forEach((pid) => {
+        const entry = map.get(pid) || { categories: new Set<string>(), divisionNames: [] };
+        if (div.category?.trim()) {
+          entry.categories.add(div.category.trim().toLowerCase());
+        }
+        if (!entry.divisionNames.includes(div.name)) {
+          entry.divisionNames.push(div.name);
+        }
+        map.set(pid, entry);
+      });
+    });
+    return map;
+  }, [registrations, activeTournament?.id, tournamentDivisions]);
+
+  const playerCategoryOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    tournamentDivisions.forEach((d) => {
+      const c = d.category?.trim();
+      if (c && !seen.has(c.toLowerCase())) {
+        seen.add(c.toLowerCase());
+        list.push(c);
+      }
+    });
+    tournamentPlayers.forEach((p) => {
+      const c = p.habitualCategory?.trim();
+      if (c && !seen.has(c.toLowerCase())) {
+        seen.add(c.toLowerCase());
+        list.push(c);
+      }
+    });
+    return list;
+  }, [tournamentDivisions, tournamentPlayers]);
+
+  const playerMatchesCategory = (p: PlayerPublic, cat: string) => {
+    const norm = cat.trim().toLowerCase();
+    if (p.habitualCategory.trim().toLowerCase() === norm) return true;
+    const enrolled = playerDivisionEnrollmentMap.get(p.id);
+    return Boolean(enrolled && enrolled.categories.has(norm));
+  };
+
   const filteredPlayers = useMemo(() => {
     const q = playerSearch.trim().toLowerCase();
-    return players
-      .filter(
-        (p) =>
-          p.tournamentId === activeTournament?.id &&
-          (!q ||
-            p.fullName.toLowerCase().includes(q) ||
-            p.club.toLowerCase().includes(q) ||
-            p.habitualCategory.toLowerCase().includes(q))
-      )
+    return tournamentPlayers
+      .filter((p) => {
+        if (playerCategoryFilter !== 'ALL' && !playerMatchesCategory(p, playerCategoryFilter)) {
+          return false;
+        }
+        if (!q) return true;
+        const enrolledDivs = playerDivisionEnrollmentMap.get(p.id)?.divisionNames || [];
+        return (
+          p.fullName.toLowerCase().includes(q) ||
+          p.club.toLowerCase().includes(q) ||
+          p.habitualCategory.toLowerCase().includes(q) ||
+          enrolledDivs.some((dn) => dn.toLowerCase().includes(q))
+        );
+      })
       .sort((a, b) => b.stats.wins - a.stats.wins || a.fullName.localeCompare(b.fullName));
-  }, [players, activeTournament?.id, playerSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournamentPlayers, playerSearch, playerCategoryFilter, playerDivisionEnrollmentMap]);
 
   const activeFixtureFiltersCount = useMemo(() => {
     let count = 0;
@@ -2887,36 +2955,95 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
         {/* TAB 5: JUGADORES, PERFILES Y ESTADÍSTICAS */}
         {activeTab === 'jugadores' && (
           <div className="mt-6 space-y-5">
-            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-base font-semibold text-[#0A1633]">
-                  Jugadores del torneo · {activeTournament?.name || 'Certamen activo'}
-                </h2>
-                <p className="text-xs text-[#475569]">
-                  Plantel privado de este torneo. Tocá un jugador para ver su ficha y estadísticas.
-                </p>
+            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-semibold text-[#0A1633]">
+                    Jugadores del torneo · {activeTournament?.name || 'Certamen activo'}
+                  </h2>
+                  <p className="text-xs text-[#475569]">
+                    Filtrá por categoría o buscá por nombre/club. Tocá un jugador para ver su ficha y estadísticas ({filteredPlayers.length} mostrados).
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                  {playerCategoryOptions.length > 0 && (
+                    <select
+                      value={playerCategoryFilter}
+                      onChange={(e) => setPlayerCategoryFilter(e.target.value)}
+                      aria-label="Filtrar jugadores por categoría"
+                      className="h-10 px-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633]"
+                    >
+                      <option value="ALL">Todas las categorías ({tournamentPlayers.length})</option>
+                      {playerCategoryOptions.map((cat) => {
+                        const count = tournamentPlayers.filter((p) =>
+                          playerMatchesCategory(p, cat)
+                        ).length;
+                        return (
+                          <option key={cat} value={cat}>
+                            Cat. {cat} ({count})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                  <div className="relative flex-1 sm:w-72">
+                    <Search className="w-4 h-4 text-[#475569] absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre, club o categoría..."
+                      value={playerSearch}
+                      onChange={(e) => setPlayerSearch(e.target.value)}
+                      className="w-full h-10 pl-9 pr-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-sm text-[#0A1633]"
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="relative w-full sm:w-72">
-                <Search className="w-4 h-4 text-[#475569] absolute left-3 top-3" />
-                <input
-                  type="text"
-                  placeholder="Buscar por nombre, club o categoría..."
-                  value={playerSearch}
-                  onChange={(e) => setPlayerSearch(e.target.value)}
-                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-sm text-[#0A1633]"
-                />
-              </div>
+
+              {playerCategoryOptions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-[#E2E8F0]">
+                  <button
+                    type="button"
+                    onClick={() => setPlayerCategoryFilter('ALL')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      playerCategoryFilter === 'ALL'
+                        ? 'bg-[#7C1FA2] text-white'
+                        : 'bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] hover:text-[#0A1633]'
+                    }`}
+                  >
+                    Todas ({tournamentPlayers.length})
+                  </button>
+                  {playerCategoryOptions.map((cat) => {
+                    const count = tournamentPlayers.filter((p) =>
+                      playerMatchesCategory(p, cat)
+                    ).length;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setPlayerCategoryFilter(cat)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          playerCategoryFilter === cat
+                            ? 'bg-[#7C1FA2] text-white'
+                            : 'bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] hover:text-[#0A1633]'
+                        }`}
+                      >
+                        Cat. {cat} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {filteredPlayers.length === 0 ? (
               <div className="bg-white border border-[#E2E8F0] rounded-2xl p-8 text-center">
                 <p className="text-sm font-medium text-[#0A1633]">
-                  {playerSearch.trim()
-                    ? 'No se encontraron jugadores que coincidan con tu búsqueda en este torneo.'
+                  {playerSearch.trim() || playerCategoryFilter !== 'ALL'
+                    ? 'No se encontraron jugadores que coincidan con el filtro seleccionado.'
                     : 'Este torneo todavía no tiene jugadores cargados.'}
                 </p>
                 <p className="text-xs text-[#475569] mt-1">
-                  Cada torneo gestiona su propio registro de jugadores de forma independiente.
+                  Cada torneo gestiona sus categorías y plantel de jugadores de forma independiente.
                 </p>
               </div>
             ) : (
@@ -2927,6 +3054,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                     ? Math.round((p.stats.wins / p.stats.matchesPlayed) * 100)
                     : 0;
                 const isFollowing = followedPlayerIds.includes(p.id);
+                const enrolledDivs = playerDivisionEnrollmentMap.get(p.id)?.divisionNames || [];
                 return (
                   <div
                     key={p.id}
@@ -2941,6 +3069,11 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                             <p className="text-xs text-[#475569] mt-0.5 truncate">
                               {p.club} · Cat. {p.habitualCategory} · {p.dominantHand}
                             </p>
+                            {enrolledDivs.length > 0 && (
+                              <p className="text-[11px] font-medium text-[#7C1FA2] mt-0.5 truncate">
+                                {enrolledDivs.join(' · ')}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <button

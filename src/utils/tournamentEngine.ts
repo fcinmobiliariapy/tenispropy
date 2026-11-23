@@ -383,6 +383,8 @@ export function computeGroupStandings(
 
 export function getKnockoutStageRank(roundName: string): number {
   const lower = (roundName || '').trim().toLowerCase();
+  if (lower.includes('64') || lower.includes('32avos')) return -1;
+  if (lower.includes('32') || lower.includes('16avos') || lower.includes('dieciseisavo')) return 0;
   if (lower.includes('octavo')) return 1;
   if (lower.includes('cuarto')) return 2;
   if (lower.includes('semifinal')) return 3;
@@ -391,13 +393,30 @@ export function getKnockoutStageRank(roundName: string): number {
   return 0;
 }
 
+function isKnownKnockoutStage(roundName: string): boolean {
+  const lower = (roundName || '').trim().toLowerCase();
+  return (
+    lower.includes('64') ||
+    lower.includes('32') ||
+    lower.includes('16avos') ||
+    lower.includes('32avos') ||
+    lower.includes('dieciseisavo') ||
+    lower.includes('octavo') ||
+    lower.includes('cuarto') ||
+    lower.includes('semifinal') ||
+    lower.includes('tercer') ||
+    lower.includes('3er') ||
+    lower === 'final'
+  );
+}
+
 export function isRealFinalMatch(match: Match, koMatches: Match[]): boolean {
   if (match.phase !== 'eliminacion' || match.isThirdPlace || match.roundName === 'Tercer Puesto') {
     return false;
   }
   const lower = (match.roundName || '').trim().toLowerCase();
   if (lower === 'final') return true;
-  if (/cuartos|semifinal|octavos|ronda de/i.test(lower)) return false;
+  if (/cuartos|semifinal|octavos|16avos|32avos|dieciseisavos|ronda de/i.test(lower)) return false;
   if (match.nextMatchId) return false;
   const nonThird = koMatches.filter(
     (m) => m.phase === 'eliminacion' && !m.isThirdPlace && m.roundName !== 'Tercer Puesto'
@@ -406,6 +425,68 @@ export function isRealFinalMatch(match: Match, koMatches: Match[]): boolean {
   const maxRound = Math.max(...nonThird.map((m) => m.roundOrder));
   const lastRoundMatches = nonThird.filter((m) => m.roundOrder === maxRound);
   return match.roundOrder === maxRound && lastRoundMatches.length === 1;
+}
+
+function resolveStructuralNextKnockoutMatch(
+  match: Match,
+  koMatches: Match[]
+): { nextMatch: Match; slot: 'A' | 'B' } | null {
+  if (isRealFinalMatch(match, koMatches)) return null;
+
+  const higherOrders = Array.from(
+    new Set(koMatches.filter((m) => m.roundOrder > match.roundOrder).map((m) => m.roundOrder))
+  ).sort((a, b) => a - b);
+
+  let nextRoundMatches: Match[] = [];
+  if (higherOrders.length > 0) {
+    const nextRoundOrder = higherOrders[0];
+    nextRoundMatches = koMatches
+      .filter((m) => m.roundOrder === nextRoundOrder)
+      .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
+  } else if (isKnownKnockoutStage(match.roundName)) {
+    const myRank = getKnockoutStageRank(match.roundName);
+    const higherRanks = Array.from(
+      new Set(
+        koMatches
+          .filter((m) => isKnownKnockoutStage(m.roundName) && getKnockoutStageRank(m.roundName) > myRank)
+          .map((m) => getKnockoutStageRank(m.roundName))
+      )
+    ).sort((a, b) => a - b);
+    if (higherRanks.length > 0) {
+      const targetRank = higherRanks[0];
+      nextRoundMatches = koMatches
+        .filter((m) => getKnockoutStageRank(m.roundName) === targetRank)
+        .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
+    }
+  }
+
+  if (nextRoundMatches.length === 0) return null;
+
+  const currentRoundMatches = koMatches
+    .filter(
+      (m) =>
+        m.roundOrder === match.roundOrder &&
+        m.roundName.trim().toLowerCase() === match.roundName.trim().toLowerCase()
+    )
+    .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
+  const sameOrderMatches =
+    currentRoundMatches.length > 0
+      ? currentRoundMatches
+      : koMatches
+          .filter((m) => m.roundOrder === match.roundOrder)
+          .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
+
+  const fallbackPos = Math.max(1, sameOrderMatches.findIndex((m) => m.id === match.id) + 1);
+  const pos = match.bracketPosition && match.bracketPosition >= 1 ? match.bracketPosition : fallbackPos;
+  const targetBracketPos = Math.ceil(pos / 2);
+
+  const structuralNext =
+    nextRoundMatches.find((m) => m.bracketPosition === targetBracketPos) ||
+    nextRoundMatches[targetBracketPos - 1];
+  if (!structuralNext || structuralNext.id === match.id) return null;
+
+  const slot: 'A' | 'B' = pos % 2 === 1 ? 'A' : 'B';
+  return { nextMatch: structuralNext, slot };
 }
 
 export function resolveNextKnockoutMatch(
@@ -420,43 +501,37 @@ export function resolveNextKnockoutMatch(
   );
   if (match.nextMatchId) {
     const direct = koMatches.find((m) => m.id === match.nextMatchId);
-    if (direct) {
+    if (
+      direct &&
+      direct.id !== match.id &&
+      (direct.roundOrder > match.roundOrder ||
+        (isKnownKnockoutStage(match.roundName) &&
+          isKnownKnockoutStage(direct.roundName) &&
+          getKnockoutStageRank(direct.roundName) > getKnockoutStageRank(match.roundName)))
+    ) {
       const slot: 'A' | 'B' =
         match.nextMatchSlot === 'A' || match.nextMatchSlot === 'B'
           ? match.nextMatchSlot
           : (match.bracketPosition || 1) % 2 === 1
           ? 'A'
           : 'B';
-      return { nextMatch: direct, slot };
+      // Evitar colisiones donde 2 llaves del mismo cuadro apuntan al mismo slot destino
+      const collides = koMatches.some((other) => {
+        if (other.id === match.id || other.nextMatchId !== direct.id) return false;
+        const otherSlot: 'A' | 'B' =
+          other.nextMatchSlot === 'A' || other.nextMatchSlot === 'B'
+            ? other.nextMatchSlot
+            : (other.bracketPosition || 1) % 2 === 1
+            ? 'A'
+            : 'B';
+        return otherSlot === slot;
+      });
+      if (!collides) {
+        return { nextMatch: direct, slot };
+      }
     }
   }
-  if (isRealFinalMatch(match, koMatches)) return null;
-
-  const higherOrders = Array.from(
-    new Set(koMatches.filter((m) => m.roundOrder > match.roundOrder).map((m) => m.roundOrder))
-  ).sort((a, b) => a - b);
-  if (higherOrders.length === 0) return null;
-
-  const nextRoundOrder = higherOrders[0];
-  const nextRoundMatches = koMatches
-    .filter((m) => m.roundOrder === nextRoundOrder)
-    .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
-  if (nextRoundMatches.length === 0) return null;
-
-  const currentRoundMatches = koMatches
-    .filter((m) => m.roundOrder === match.roundOrder)
-    .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
-  const fallbackPos = Math.max(1, currentRoundMatches.findIndex((m) => m.id === match.id) + 1);
-  const pos = match.bracketPosition && match.bracketPosition >= 1 ? match.bracketPosition : fallbackPos;
-  const targetBracketPos = Math.ceil(pos / 2);
-
-  const structuralNext =
-    nextRoundMatches.find((m) => m.bracketPosition === targetBracketPos) ||
-    nextRoundMatches[targetBracketPos - 1];
-  if (!structuralNext) return null;
-
-  const slot: 'A' | 'B' = pos % 2 === 1 ? 'A' : 'B';
-  return { nextMatch: structuralNext, slot };
+  return resolveStructuralNextKnockoutMatch(match, koMatches);
 }
 
 export function computeQualifiedSeededEntries(
@@ -508,15 +583,53 @@ export function generateKnockoutBracketFromSlotPairs(
   division: Division,
   startingRoundOrder = 10
 ): Match[] {
-  if (slotPairs.length === 0) return [];
+  const cleanedPairs = slotPairs.filter(([a, b]) => Boolean(a || b));
+  if (cleanedPairs.length === 0) return [];
+
+  const allEntries: Registration[] = [];
+  cleanedPairs.forEach(([a, b]) => {
+    if (a) allEntries.push(a);
+    if (b) allEntries.push(b);
+  });
+
   const now = new Date().toISOString();
   let bracketSize = 2;
-  while (bracketSize < slotPairs.length * 2) bracketSize *= 2;
-
-  const paddedPairs: Array<[Registration | null, Registration | null]> = [];
-  for (let i = 0; i < bracketSize / 2; i++) {
-    paddedPairs.push(slotPairs[i] || [null, null]);
+  while (bracketSize < cleanedPairs.length * 2) bracketSize *= 2;
+  // Si hay menos participantes únicos que la mitad del cuadro elegido, reducimos el tamaño para evitar llaves vacías
+  while (bracketSize > 2 && allEntries.length < bracketSize / 2) {
+    bracketSize /= 2;
   }
+
+  const targetPairsCount = bracketSize / 2;
+  const paddedPairs: Array<[Registration | null, Registration | null]> = [];
+
+  if (cleanedPairs.length > targetPairsCount) {
+    // Reempaquetar entradas cuando el tamaño de cuadro fue ajustado
+    for (let i = 0; i < targetPairsCount; i++) {
+      paddedPairs.push([allEntries[i] || null, allEntries[i + targetPairsCount] || null]);
+    }
+  } else {
+    for (let i = 0; i < targetPairsCount; i++) {
+      paddedPairs.push(cleanedPairs[i] ? [cleanedPairs[i][0], cleanedPairs[i][1]] : [null, null]);
+    }
+    // Nunca dejar una llave completamente vacía ([null, null]): balancear tomando un jugador de una llave llena
+    for (let i = 0; i < paddedPairs.length; i++) {
+      if (!paddedPairs[i][0] && !paddedPairs[i][1]) {
+        const donorIdx = [...paddedPairs]
+          .reverse()
+          .findIndex(([a, b]) => Boolean(a && b));
+        if (donorIdx !== -1) {
+          const realDonorIdx = paddedPairs.length - 1 - donorIdx;
+          const moved = paddedPairs[realDonorIdx][1];
+          paddedPairs[realDonorIdx] = [paddedPairs[realDonorIdx][0], null];
+          paddedPairs[i] = [moved, null];
+        }
+      }
+    }
+  }
+
+  const finalPairs = paddedPairs.filter(([a, b]) => Boolean(a || b));
+  if (finalPairs.length === 0) return [];
 
   const numRounds = Math.log2(bracketSize);
   const roundsMatches: Match[][] = [];
@@ -573,12 +686,12 @@ export function generateKnockoutBracketFromSlotPairs(
   }
 
   roundsMatches[0].forEach((m, idx) => {
-    const [a, b] = paddedPairs[idx];
+    const [a, b] = paddedPairs[idx] || [null, null];
     m.entryAId = a?.id || null;
-    m.entryAName = a ? a.displayName : 'BYE';
+    m.entryAName = a ? a.displayName : b ? 'BYE' : 'Por definir';
     m.playerIdsA = a?.playerIds || [];
     m.entryBId = b?.id || null;
-    m.entryBName = b ? b.displayName : 'BYE';
+    m.entryBName = b ? b.displayName : a ? 'BYE' : 'Por definir';
     m.playerIdsB = b?.playerIds || [];
 
     if ((a && !b) || (!a && b)) {
@@ -646,6 +759,645 @@ export function generateKnockoutBracketFromSlotPairs(
   }
 
   return result;
+}
+
+export interface KnockoutReconcileResult {
+  updatedMatches: Match[];
+  pendingSlotMatches: Match[];
+  emptyMatchIds: string[];
+  repairedLinks: number;
+  filledSlots: number;
+  propagatedWinners: number;
+}
+
+export interface UnpropagatedMatchInfo {
+  match: Match;
+  winnerId: string;
+  winnerName: string;
+  targetMatchId: string | null;
+  targetRoundName: string | null;
+  reason: 'missing_in_next_round' | 'wrong_slot_or_name' | 'unpublished_next_round' | 'missing_winner_id';
+}
+
+function recoverCompletedMatchWinner(
+  m: Match,
+  division: Division
+): { winnerId: string; winnerName: string; changed: boolean } | null {
+  if (m.isBye) {
+    if (m.winnerEntryId) {
+      const isA = m.winnerEntryId === m.entryAId;
+      const expectedName = isA ? m.entryAName : m.entryBName;
+      return {
+        winnerId: m.winnerEntryId,
+        winnerName: expectedName || m.winnerName || 'BYE',
+        changed: false,
+      };
+    }
+    return null;
+  }
+
+  // Caso 1: ya tiene winnerEntryId válido
+  if (m.winnerEntryId) {
+    if (m.winnerEntryId === m.entryAId) {
+      const changed = m.winnerName !== m.entryAName;
+      if (changed) m.winnerName = m.entryAName;
+      return { winnerId: m.entryAId, winnerName: m.entryAName, changed };
+    }
+    if (m.winnerEntryId === m.entryBId) {
+      const changed = m.winnerName !== m.entryBName;
+      if (changed) m.winnerName = m.entryBName;
+      return { winnerId: m.entryBId, winnerName: m.entryBName, changed };
+    }
+  }
+
+  // Caso 2: partido marcado como finalizado/retiro/dq/wo o con sets cargados pero sin winnerEntryId
+  const isFinishedStatus = ['finalizado', 'wo', 'retiro', 'descalificado'].includes(m.status);
+  if (!isFinishedStatus && m.sets.length === 0) return null;
+
+  // 2a. Intentar por winnerName coincidente
+  if (m.winnerName) {
+    const wn = m.winnerName.trim().toLowerCase();
+    if (m.entryAId && m.entryAName.trim().toLowerCase() === wn) {
+      m.winnerEntryId = m.entryAId;
+      m.winnerName = m.entryAName;
+      return { winnerId: m.entryAId, winnerName: m.entryAName, changed: true };
+    }
+    if (m.entryBId && m.entryBName.trim().toLowerCase() === wn) {
+      m.winnerEntryId = m.entryBId;
+      m.winnerName = m.entryBName;
+      return { winnerId: m.entryBId, winnerName: m.entryBName, changed: true };
+    }
+  }
+
+  // 2b. Intentar calcular ganador desde sets cuando está finalizado normalmente
+  if (m.status === 'finalizado' && m.sets.length > 0 && m.entryAId && m.entryBId) {
+    let setsA = 0;
+    let setsB = 0;
+    for (const s of m.sets) {
+      if (s.a > s.b) setsA++;
+      else if (s.b > s.a) setsB++;
+    }
+    const setsToWin = division.itfConfig?.setsToWin ?? 2;
+    if (setsA !== setsB && (setsA >= setsToWin || setsB >= setsToWin || m.sets.length >= 1)) {
+      const aWon = setsA > setsB;
+      m.winnerEntryId = aWon ? m.entryAId : m.entryBId;
+      m.winnerName = aWon ? m.entryAName : m.entryBName;
+      return { winnerId: m.winnerEntryId, winnerName: m.winnerName, changed: true };
+    }
+  }
+
+  return null;
+}
+
+export function reconcileKnockoutBracket(
+  divisionMatches: Match[],
+  division: Division,
+  fallbackEntries: Registration[]
+): KnockoutReconcileResult {
+  const now = new Date().toISOString();
+  const koMatches: Match[] = divisionMatches
+    .filter((m) => m.phase === 'eliminacion')
+    .sort(compareMatchesByRound)
+    .map((m) => ({
+      ...m,
+      playerIdsA: [...(m.playerIdsA || [])],
+      playerIdsB: [...(m.playerIdsB || [])],
+      sets: [...(m.sets || [])],
+      correctionHistory: [...(m.correctionHistory || [])],
+      rescheduleHistory: [...(m.rescheduleHistory || [])],
+    }));
+
+  const nonThirdKo = koMatches.filter(
+    (m) => !m.isThirdPlace && m.roundName !== 'Tercer Puesto'
+  );
+  if (nonThirdKo.length === 0) {
+    return {
+      updatedMatches: [],
+      pendingSlotMatches: [],
+      emptyMatchIds: [],
+      repairedLinks: 0,
+      filledSlots: 0,
+      propagatedWinners: 0,
+    };
+  }
+
+  const changedIds = new Set<string>();
+  const regMap = new Map(fallbackEntries.map((r) => [r.id, r]));
+  const shouldBePublished =
+    divisionMatches.some((m) => m.published) || division.drawStatus === 'publicado';
+
+  let repairedLinks = 0;
+  let filledSlots = 0;
+  let propagatedWinners = 0;
+
+  const markChanged = (m: Match) => {
+    m.updatedAt = now;
+    if (shouldBePublished) m.published = true;
+    changedIds.add(m.id);
+  };
+
+  if (shouldBePublished) {
+    for (const m of koMatches) {
+      if (!m.published) {
+        m.published = true;
+        changedIds.add(m.id);
+      }
+    }
+  }
+
+  // 0. Normalizar roundOrder inconsistentes entre partidos de una misma ronda y posiciones duplicadas/faltantes
+  const roundsByName = new Map<string, Match[]>();
+  for (const m of nonThirdKo) {
+    const key = m.roundName.trim().toLowerCase() || `r${m.roundOrder}`;
+    const list = roundsByName.get(key);
+    if (list) list.push(m);
+    else roundsByName.set(key, [m]);
+  }
+
+  for (const group of roundsByName.values()) {
+    const distinctOrders = new Set(group.map((m) => m.roundOrder));
+    if (distinctOrders.size > 1) {
+      const targetOrder = Math.min(...group.map((m) => m.roundOrder));
+      for (const m of group) {
+        if (m.roundOrder !== targetOrder) {
+          m.roundOrder = targetOrder;
+          markChanged(m);
+          repairedLinks++;
+        }
+      }
+    }
+  }
+
+  const sortedRoundGroups = Array.from(roundsByName.values()).sort((a, b) => {
+    const nameA = a[0].roundName;
+    const nameB = b[0].roundName;
+    if (isKnownKnockoutStage(nameA) && isKnownKnockoutStage(nameB)) {
+      const rankDiff = getKnockoutStageRank(nameA) - getKnockoutStageRank(nameB);
+      if (rankDiff !== 0) return rankDiff;
+    }
+    return a[0].roundOrder - b[0].roundOrder;
+  });
+
+  // Asegurar que cada etapa tenga roundOrder estrictamente creciente respecto a la anterior
+  for (let i = 1; i < sortedRoundGroups.length; i++) {
+    const prevOrder = sortedRoundGroups[i - 1][0].roundOrder;
+    const currGroup = sortedRoundGroups[i];
+    if (currGroup[0].roundOrder <= prevOrder) {
+      const fixedOrder = prevOrder + 1;
+      for (const m of currGroup) {
+        m.roundOrder = fixedOrder;
+        markChanged(m);
+        repairedLinks++;
+      }
+    }
+  }
+
+  // Garantizar bracketPosition único 1..N en cada ronda si falta o hay duplicados
+  for (const group of sortedRoundGroups) {
+    group.sort(
+      (a, b) =>
+        (a.bracketPosition ?? 9999) - (b.bracketPosition ?? 9999) ||
+        (a.createdAt || '').localeCompare(b.createdAt || '') ||
+        a.id.localeCompare(b.id)
+    );
+    const seenPos = new Set<number>();
+    const needsRenumber = group.some((m) => {
+      if (!m.bracketPosition || m.bracketPosition < 1 || seenPos.has(m.bracketPosition)) return true;
+      seenPos.add(m.bracketPosition);
+      return false;
+    });
+    if (needsRenumber) {
+      group.forEach((m, idx) => {
+        const expectedPos = idx + 1;
+        if (m.bracketPosition !== expectedPos) {
+          m.bracketPosition = expectedPos;
+          markChanged(m);
+          repairedLinks++;
+        }
+      });
+    }
+  }
+
+  // 1. Reparar enlaces nextMatchId / nextMatchSlot evitando colisiones de ranura en el cuadro
+  const claimedTargetSlots = new Set<string>();
+  const finalRoundOrder =
+    sortedRoundGroups.length > 0 ? sortedRoundGroups[sortedRoundGroups.length - 1][0].roundOrder : 99;
+
+  for (let rIdx = 0; rIdx < sortedRoundGroups.length; rIdx++) {
+    const group = sortedRoundGroups[rIdx];
+    const nextGroup = sortedRoundGroups[rIdx + 1] || null;
+    for (const m of group) {
+      if (!nextGroup || isRealFinalMatch(m, nonThirdKo)) {
+        if (m.roundOrder === finalRoundOrder && (m.nextMatchId || m.nextMatchSlot)) {
+          m.nextMatchId = null;
+          m.nextMatchSlot = null;
+          markChanged(m);
+          repairedLinks++;
+        }
+        continue;
+      }
+
+      const directTarget = m.nextMatchId
+        ? nextGroup.find((nm) => nm.id === m.nextMatchId)
+        : undefined;
+      const directSlot: 'A' | 'B' =
+        m.nextMatchSlot === 'A' || m.nextMatchSlot === 'B'
+          ? m.nextMatchSlot
+          : (m.bracketPosition || 1) % 2 === 1
+          ? 'A'
+          : 'B';
+      const directKey = directTarget ? `${directTarget.id}::${directSlot}` : '';
+
+      if (directTarget && !claimedTargetSlots.has(directKey)) {
+        claimedTargetSlots.add(directKey);
+        if (m.nextMatchSlot !== directSlot) {
+          m.nextMatchSlot = directSlot;
+          markChanged(m);
+          repairedLinks++;
+        }
+        continue;
+      }
+
+      // Reparar mediante mapeo estructural determinístico
+      const pos = m.bracketPosition || group.indexOf(m) + 1;
+      const targetBracketPos = Math.ceil(pos / 2);
+      const structuralTarget =
+        nextGroup.find((nm) => nm.bracketPosition === targetBracketPos) ||
+        nextGroup[targetBracketPos - 1];
+      if (!structuralTarget) continue;
+
+      const structuralSlot: 'A' | 'B' = pos % 2 === 1 ? 'A' : 'B';
+      claimedTargetSlots.add(`${structuralTarget.id}::${structuralSlot}`);
+      if (m.nextMatchId !== structuralTarget.id || m.nextMatchSlot !== structuralSlot) {
+        m.nextMatchId = structuralTarget.id;
+        m.nextMatchSlot = structuralSlot;
+        markChanged(m);
+        repairedLinks++;
+      }
+    }
+  }
+
+  // 2. Completar espacios vacíos en Ronda 1 con clasificados/inscriptos disponibles y resolver BYEs reales
+  const minRoundOrder = Math.min(...nonThirdKo.map((m) => m.roundOrder));
+  const round1Matches = nonThirdKo
+    .filter((m) => m.roundOrder === minRoundOrder)
+    .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
+
+  const assignedInR1 = new Set<string>();
+  round1Matches.forEach((m) => {
+    if (m.entryAId) assignedInR1.add(m.entryAId);
+    if (m.entryBId) assignedInR1.add(m.entryBId);
+  });
+
+  const unassignedQueue = fallbackEntries.filter((e) => !assignedInR1.has(e.id));
+
+  // Primer paso: asegurarse de que ninguna llave completamente vacía quede sin participante
+  for (const m of round1Matches) {
+    if (m.winnerEntryId || m.sets.length > 0) continue;
+    if (!m.entryAId && !m.entryBId && unassignedQueue.length > 0) {
+      const nextEntry = unassignedQueue.shift()!;
+      m.entryAId = nextEntry.id;
+      m.entryAName = nextEntry.displayName;
+      m.playerIdsA = nextEntry.playerIds;
+      markChanged(m);
+      filledSlots++;
+    }
+  }
+
+  // Segundo paso: completar huecos de lado B / lado A si quedaron cupos sin asignar en Ronda 1
+  for (const m of round1Matches) {
+    if ((m.winnerEntryId && !m.isBye) || m.sets.length > 0) continue;
+    if (!m.entryAId && unassignedQueue.length > 0) {
+      const nextEntry = unassignedQueue.shift()!;
+      m.entryAId = nextEntry.id;
+      m.entryAName = nextEntry.displayName;
+      m.playerIdsA = nextEntry.playerIds;
+      markChanged(m);
+      filledSlots++;
+    }
+    if (!m.entryBId && unassignedQueue.length > 0) {
+      const nextEntry = unassignedQueue.shift()!;
+      m.entryBId = nextEntry.id;
+      m.entryBName = nextEntry.displayName;
+      m.playerIdsB = nextEntry.playerIds;
+      markChanged(m);
+      filledSlots++;
+    }
+  }
+
+  // Tercer paso: normalizar Ronda 1 (BYEs reales vs partidos con ambos participantes)
+  for (const m of round1Matches) {
+    if (m.sets.length > 0) continue;
+    if (m.entryAId && m.entryBId && m.isBye) {
+      m.isBye = false;
+      m.status = 'programado';
+      m.winnerEntryId = null;
+      m.winnerName = null;
+      m.outcomeNote = null;
+      markChanged(m);
+    } else if ((m.entryAId && !m.entryBId) || (!m.entryAId && m.entryBId)) {
+      const winnerIsA = Boolean(m.entryAId);
+      const soleId = winnerIsA ? m.entryAId! : m.entryBId!;
+      const soleName = winnerIsA ? m.entryAName : m.entryBName;
+      const missingSideName = winnerIsA ? m.entryBName : m.entryAName;
+      if (!m.isBye || !m.winnerEntryId || missingSideName !== 'BYE') {
+        if (winnerIsA) {
+          m.entryBName = 'BYE';
+          m.playerIdsB = [];
+        } else {
+          m.entryAName = 'BYE';
+          m.playerIdsA = [];
+        }
+        m.isBye = true;
+        m.status = 'finalizado';
+        m.winnerEntryId = soleId;
+        m.winnerName = soleName;
+        m.outcomeNote = m.outcomeNote || 'Pase libre (BYE)';
+        markChanged(m);
+        propagatedWinners++;
+      }
+    }
+  }
+
+  // 3. Recuperar ganadores faltantes en partidos ya finalizados y propagar ronda por ronda
+  const sortedRoundOrders = Array.from(new Set(nonThirdKo.map((m) => m.roundOrder))).sort(
+    (a, b) => a - b
+  );
+  const thirdPlaceMatch =
+    koMatches.find((m) => m.isThirdPlace || m.roundName === 'Tercer Puesto') || null;
+
+  for (const rOrder of sortedRoundOrders) {
+    const roundMatches = nonThirdKo
+      .filter((m) => m.roundOrder === rOrder)
+      .sort((a, b) => (a.bracketPosition || 0) - (b.bracketPosition || 0));
+
+    for (const m of roundMatches) {
+      const recovered = recoverCompletedMatchWinner(m, division);
+      if (recovered?.changed) {
+        markChanged(m);
+        propagatedWinners++;
+      }
+      if (!m.winnerEntryId) continue;
+
+      const winnerIsA = m.winnerEntryId === m.entryAId;
+      const winnerId = m.winnerEntryId;
+      const winnerName =
+        (winnerIsA ? m.entryAName : m.entryBName) || m.winnerName || 'Ganador';
+      let winnerPids = winnerIsA ? m.playerIdsA : m.playerIdsB;
+      if (winnerPids.length === 0 && regMap.has(winnerId)) {
+        winnerPids = regMap.get(winnerId)!.playerIds;
+      }
+
+      const resolved = resolveNextKnockoutMatch(m, nonThirdKo);
+      if (!resolved) continue;
+
+      const nextMatch = nonThirdKo.find((x) => x.id === resolved.nextMatch.id);
+      if (!nextMatch) continue;
+
+      const slot = resolved.slot;
+      const currentTargetId = slot === 'A' ? nextMatch.entryAId : nextMatch.entryBId;
+      const currentTargetName = slot === 'A' ? nextMatch.entryAName : nextMatch.entryBName;
+
+      if (currentTargetId !== winnerId || currentTargetName !== winnerName || nextMatch.isBye) {
+        const participantChanged = Boolean(currentTargetId && currentTargetId !== winnerId);
+        if (slot === 'A') {
+          nextMatch.entryAId = winnerId;
+          nextMatch.entryAName = winnerName;
+          nextMatch.playerIdsA = [...winnerPids];
+        } else {
+          nextMatch.entryBId = winnerId;
+          nextMatch.entryBName = winnerName;
+          nextMatch.playerIdsB = [...winnerPids];
+        }
+        if (nextMatch.isBye && nextMatch.entryAId && nextMatch.entryBId) {
+          nextMatch.isBye = false;
+          if (!participantChanged && nextMatch.outcomeNote === 'Pase libre (BYE)') {
+            nextMatch.sets = [];
+            nextMatch.winnerEntryId = null;
+            nextMatch.winnerName = null;
+            nextMatch.outcomeNote = null;
+            nextMatch.status = 'programado';
+          }
+        }
+        if (participantChanged) {
+          nextMatch.sets = [];
+          nextMatch.winnerEntryId = null;
+          nextMatch.winnerName = null;
+          nextMatch.outcomeNote = null;
+          nextMatch.status = 'programado';
+        }
+        markChanged(nextMatch);
+        propagatedWinners++;
+      }
+
+      // Propagar perdedor de semifinales al partido por el 3er Puesto
+      if (thirdPlaceMatch && isRealFinalMatch(nextMatch, nonThirdKo) && !m.isBye) {
+        const loserId = winnerIsA ? m.entryBId : m.entryAId;
+        const loserName = winnerIsA ? m.entryBName : m.entryAName;
+        let loserPids = winnerIsA ? m.playerIdsB : m.playerIdsA;
+        if (loserId && loserPids.length === 0 && regMap.has(loserId)) {
+          loserPids = regMap.get(loserId)!.playerIds;
+        }
+        if (loserId) {
+          const curTpId = slot === 'A' ? thirdPlaceMatch.entryAId : thirdPlaceMatch.entryBId;
+          const curTpName =
+            slot === 'A' ? thirdPlaceMatch.entryAName : thirdPlaceMatch.entryBName;
+          if (curTpId !== loserId || curTpName !== loserName) {
+            const tpChanged = Boolean(curTpId && curTpId !== loserId);
+            if (slot === 'A') {
+              thirdPlaceMatch.entryAId = loserId;
+              thirdPlaceMatch.entryAName = loserName;
+              thirdPlaceMatch.playerIdsA = [...loserPids];
+            } else {
+              thirdPlaceMatch.entryBId = loserId;
+              thirdPlaceMatch.entryBName = loserName;
+              thirdPlaceMatch.playerIdsB = [...loserPids];
+            }
+            if (tpChanged) {
+              thirdPlaceMatch.sets = [];
+              thirdPlaceMatch.winnerEntryId = null;
+              thirdPlaceMatch.winnerName = null;
+              thirdPlaceMatch.outcomeNote = null;
+              thirdPlaceMatch.status = 'programado';
+            }
+            markChanged(thirdPlaceMatch);
+            propagatedWinners++;
+          }
+        }
+      }
+    }
+  }
+
+  // Sincronizar orden de ronda del partido de Tercer Puesto con la Final
+  if (thirdPlaceMatch) {
+    const realFinal = nonThirdKo.find((m) => isRealFinalMatch(m, nonThirdKo));
+    if (realFinal && thirdPlaceMatch.roundOrder !== realFinal.roundOrder) {
+      thirdPlaceMatch.roundOrder = realFinal.roundOrder;
+      markChanged(thirdPlaceMatch);
+      repairedLinks++;
+    }
+    const recoveredTp = recoverCompletedMatchWinner(thirdPlaceMatch, division);
+    if (recoveredTp?.changed) {
+      markChanged(thirdPlaceMatch);
+      propagatedWinners++;
+    }
+  }
+
+  const emptyMatchIds = koMatches
+    .filter((m) => !m.entryAId && !m.entryBId)
+    .map((m) => m.id);
+
+  const pendingSlotMatches = koMatches.filter(
+    (m) => !m.isBye && (!m.entryAId || !m.entryBId)
+  );
+
+  return {
+    updatedMatches: koMatches.filter((m) => changedIds.has(m.id)),
+    pendingSlotMatches,
+    emptyMatchIds,
+    repairedLinks,
+    filledSlots,
+    propagatedWinners,
+  };
+}
+
+export function findUnpropagatedKnockoutMatches(
+  divisionMatches: Match[],
+  division: Division
+): UnpropagatedMatchInfo[] {
+  const deduped = dedupeMatches(
+    divisionMatches.filter((m) => m.divisionId === division.id && m.phase === 'eliminacion')
+  );
+  if (deduped.length === 0) return [];
+
+  const nonThirdKo = deduped.filter((m) => !m.isThirdPlace && m.roundName !== 'Tercer Puesto');
+  const shouldBePublished =
+    divisionMatches.some((m) => m.published) || division.drawStatus === 'publicado';
+  const result: UnpropagatedMatchInfo[] = [];
+
+  for (const m of nonThirdKo) {
+    if (isRealFinalMatch(m, nonThirdKo)) continue;
+    const isFinished =
+      Boolean(m.winnerEntryId) ||
+      ['finalizado', 'wo', 'retiro', 'descalificado'].includes(m.status) ||
+      m.sets.length > 0;
+    if (!isFinished) continue;
+
+    // Clonar para recuperar ganador si faltara
+    const clone: Match = { ...m, sets: [...m.sets] };
+    const hadWinnerId = Boolean(m.winnerEntryId);
+    const recovered = recoverCompletedMatchWinner(clone, division);
+    if (!recovered) {
+      if (!m.isBye && (m.entryAId || m.entryBId)) {
+        result.push({
+          match: m,
+          winnerId: '',
+          winnerName: m.winnerName || 'Sin ganador definido',
+          targetMatchId: m.nextMatchId || null,
+          targetRoundName: null,
+          reason: 'missing_winner_id',
+        });
+      }
+      continue;
+    }
+
+    const nextResolved = resolveNextKnockoutMatch(m, nonThirdKo);
+    if (!nextResolved) continue;
+
+    const target = nextResolved.nextMatch;
+    const slot = nextResolved.slot;
+    const targetEntryId = slot === 'A' ? target.entryAId : target.entryBId;
+    const targetEntryName = slot === 'A' ? target.entryAName : target.entryBName;
+
+    if (!hadWinnerId) {
+      result.push({
+        match: m,
+        winnerId: recovered.winnerId,
+        winnerName: recovered.winnerName,
+        targetMatchId: target.id,
+        targetRoundName: target.roundName,
+        reason: 'missing_winner_id',
+      });
+    } else if (!targetEntryId) {
+      result.push({
+        match: m,
+        winnerId: recovered.winnerId,
+        winnerName: recovered.winnerName,
+        targetMatchId: target.id,
+        targetRoundName: target.roundName,
+        reason: 'missing_in_next_round',
+      });
+    } else if (targetEntryId !== recovered.winnerId || targetEntryName !== recovered.winnerName) {
+      result.push({
+        match: m,
+        winnerId: recovered.winnerId,
+        winnerName: recovered.winnerName,
+        targetMatchId: target.id,
+        targetRoundName: target.roundName,
+        reason: 'wrong_slot_or_name',
+      });
+    } else if (shouldBePublished && !target.published) {
+      result.push({
+        match: m,
+        winnerId: recovered.winnerId,
+        winnerName: recovered.winnerName,
+        targetMatchId: target.id,
+        targetRoundName: target.roundName,
+        reason: 'unpublished_next_round',
+      });
+    }
+  }
+
+  return result;
+}
+
+export function computeKnockoutPodiumUpdate(
+  division: Division,
+  divisionMatches: Match[]
+): Partial<Division> | null {
+  const deduped = dedupeMatches(
+    divisionMatches.filter((m) => m.divisionId === division.id && m.phase === 'eliminacion')
+  );
+  if (deduped.length === 0) return null;
+
+  const finalMatch = deduped.find((m) => isRealFinalMatch(m, deduped));
+  const thirdMatch = deduped.find((m) => m.isThirdPlace || m.roundName === 'Tercer Puesto');
+
+  let nextChampId = division.championEntryId ?? null;
+  let nextChampName = division.championName ?? null;
+  let nextRunnerUpName = division.runnerUpName ?? null;
+  let nextThirdId = division.thirdPlaceEntryId ?? null;
+  let nextThirdName = division.thirdPlaceName ?? null;
+
+  if (finalMatch && finalMatch.winnerEntryId) {
+    const winnerIsA = finalMatch.winnerEntryId === finalMatch.entryAId;
+    nextChampId = finalMatch.winnerEntryId;
+    nextChampName = winnerIsA ? finalMatch.entryAName : finalMatch.entryBName;
+    nextRunnerUpName = winnerIsA ? finalMatch.entryBName : finalMatch.entryAName;
+  }
+
+  if (thirdMatch && thirdMatch.winnerEntryId) {
+    const winnerIsA = thirdMatch.winnerEntryId === thirdMatch.entryAId;
+    nextThirdId = thirdMatch.winnerEntryId;
+    nextThirdName = winnerIsA ? thirdMatch.entryAName : thirdMatch.entryBName;
+  }
+
+  if (
+    nextChampId !== (division.championEntryId ?? null) ||
+    nextChampName !== (division.championName ?? null) ||
+    nextRunnerUpName !== (division.runnerUpName ?? null) ||
+    nextThirdId !== (division.thirdPlaceEntryId ?? null) ||
+    nextThirdName !== (division.thirdPlaceName ?? null)
+  ) {
+    return {
+      championEntryId: nextChampId,
+      championName: nextChampName,
+      runnerUpName: nextRunnerUpName,
+      thirdPlaceEntryId: nextThirdId,
+      thirdPlaceName: nextThirdName,
+    };
+  }
+  return null;
 }
 
 export function generateKnockoutBracket(
