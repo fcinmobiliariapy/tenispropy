@@ -338,6 +338,9 @@ export const TournamentQrModal: React.FC<TournamentQrModalProps> = ({
                   <img
                     src={qrDataUrl}
                     alt={`Código QR de ${tournament.name}`}
+                    width={192}
+                    height={192}
+                    decoding="async"
                     className="w-48 h-48 object-contain"
                   />
                 ) : (

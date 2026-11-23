@@ -103,6 +103,21 @@ service cloud.firestore {
       return val is list && val.size() <= maxLen;
     }
 
+    function isSafeImageUrl(val, maxLen) {
+      return val is string
+        && val.size() >= 1
+        && val.size() <= maxLen
+        && (val.matches('^https://.*')
+          || val.matches('^/uploads/.*')
+          || val.matches('^/assets/.*')
+          || val.matches('^/src/assets/.*')
+          || val.matches('^data:image/(png|jpeg|jpg|webp|svg\\+xml);.*'));
+    }
+
+    function isOptionalSafeImageUrl(val, maxLen) {
+      return val == null || val == '' || isSafeImageUrl(val, maxLen);
+    }
+
     function isNonNegNum(val, maxVal) {
       return val is number && val >= 0 && val <= maxVal;
     }
@@ -248,7 +263,7 @@ service cloud.firestore {
         && data.minRestMinutes is number && data.minRestMinutes >= 0 && data.minRestMinutes <= 480
         && isNonEmptyStr(data.itfEdition, 60)
         && data.status in ['borrador', 'inscripciones', 'en_curso', 'finalizado']
-        && (!('coverImageUrl' in data) || isOptionalStr(data.coverImageUrl, 300000))
+        && (!('coverImageUrl' in data) || isOptionalSafeImageUrl(data.coverImageUrl, 300000))
         && (!('isDemo' in data) || data.isDemo is bool)
         && isNonEmptyStr(data.createdAt, 40)
         && isNonEmptyStr(data.updatedAt, 40);
@@ -293,7 +308,7 @@ service cloud.firestore {
         && data.dominantHand in ['Diestro', 'Zurdo']
         && data.backhand in ['Una mano', 'Dos manos']
         && (!('bio' in data) || isOptionalStr(data.bio, 400))
-        && (!('photoUrl' in data) || isOptionalStr(data.photoUrl, 2000))
+        && (!('photoUrl' in data) || isOptionalSafeImageUrl(data.photoUrl, 2000))
         && isValidPlayerStats(data.stats)
         && isNonEmptyStr(data.createdAt, 40)
         && isNonEmptyStr(data.updatedAt, 40);
@@ -406,8 +421,8 @@ service cloud.firestore {
         && isValidId(data.divisionId)
         && isValidId(data.matchdayId)
         && (!('matchId' in data) || isOptionalStr(data.matchId, 128))
-        && isNonEmptyStr(data.thumbUrl, 2000)
-        && isNonEmptyStr(data.fullUrl, 2000)
+        && isSafeImageUrl(data.thumbUrl, 2000)
+        && isSafeImageUrl(data.fullUrl, 2000)
         && (!('caption' in data) || isOptionalStr(data.caption, 240))
         && data.order is number && data.order >= 0 && data.order <= 500
         && data.isCover is bool
@@ -437,9 +452,9 @@ service cloud.firestore {
         && isNonEmptyStr(data.sponsorName, 120)
         && isNonEmptyStr(data.title, 120)
         && (!('subtitle' in data) || isOptionalStr(data.subtitle, 240))
-        && isNonEmptyStr(data.imageUrl, 300000)
-        && (!('horizontalImageUrl' in data) || isOptionalStr(data.horizontalImageUrl, 300000))
-        && (!('verticalImageUrl' in data) || isOptionalStr(data.verticalImageUrl, 300000))
+        && isSafeImageUrl(data.imageUrl, 300000)
+        && (!('horizontalImageUrl' in data) || isOptionalSafeImageUrl(data.horizontalImageUrl, 300000))
+        && (!('verticalImageUrl' in data) || isOptionalSafeImageUrl(data.verticalImageUrl, 300000))
         && (!('aiPrompt' in data) || isOptionalStr(data.aiPrompt, 500))
         && (!('targetUrl' in data) || isOptionalStr(data.targetUrl, 2000))
         && data.placement in ['banner_principal', 'lateral', 'pie']
@@ -465,7 +480,7 @@ service cloud.firestore {
         && isNonEmptyStr(data.engravingText, 200)
         && (!('customPrompt' in data) || isOptionalStr(data.customPrompt, 500))
         && (!('aiMotifNote' in data) || isOptionalStr(data.aiMotifNote, 300))
-        && isNonEmptyStr(data.imageUrl, 300000)
+        && isSafeImageUrl(data.imageUrl, 300000)
         && data.active is bool
         && data.order is number && data.order >= 0 && data.order <= 500
         && isNonEmptyStr(data.createdAt, 40)
@@ -484,14 +499,14 @@ service cloud.firestore {
           'pillars', 'selectorKicker', 'selectorTitle', 'selectorSubtitle', 'footerTagline', 'footerRightText', 'updatedAt', 'updatedBy'
         ])
         && isValidId(data.id) && data.id == settingId
-        && isNonEmptyStr(data.logoUrl, 300000)
+        && isSafeImageUrl(data.logoUrl, 300000)
         && isNonEmptyStr(data.platformBadge, 80)
         && isNonEmptyStr(data.brandFirst, 40)
         && (!('brandSecond' in data) || isOptionalStr(data.brandSecond, 40))
         && (!('brandSubtitle' in data) || isOptionalStr(data.brandSubtitle, 120))
         && isNonEmptyStr(data.heroTitle, 160)
         && (!('heroDescription' in data) || isOptionalStr(data.heroDescription, 500))
-        && (!('heroBackgroundImageUrl' in data) || isOptionalStr(data.heroBackgroundImageUrl, 300000))
+        && (!('heroBackgroundImageUrl' in data) || isOptionalSafeImageUrl(data.heroBackgroundImageUrl, 300000))
         && isNonEmptyStr(data.primaryCtaLabel, 60)
         && (!('secondaryCtaLabel' in data) || isOptionalStr(data.secondaryCtaLabel, 60))
         && (!('showItfButton' in data) || data.showItfButton is bool)
@@ -499,15 +514,15 @@ service cloud.firestore {
         && (!('bannerKicker' in data) || isOptionalStr(data.bannerKicker, 120))
         && (!('bannerTitle' in data) || isOptionalStr(data.bannerTitle, 180))
         && (!('bannerDescription' in data) || isOptionalStr(data.bannerDescription, 500))
-        && (!('bannerImageHorizontalUrl' in data) || isOptionalStr(data.bannerImageHorizontalUrl, 300000))
-        && (!('bannerImageVerticalUrl' in data) || isOptionalStr(data.bannerImageVerticalUrl, 300000))
-        && (!('bannerBadgeUrl' in data) || isOptionalStr(data.bannerBadgeUrl, 300000))
+        && (!('bannerImageHorizontalUrl' in data) || isOptionalSafeImageUrl(data.bannerImageHorizontalUrl, 300000))
+        && (!('bannerImageVerticalUrl' in data) || isOptionalSafeImageUrl(data.bannerImageVerticalUrl, 300000))
+        && (!('bannerBadgeUrl' in data) || isOptionalSafeImageUrl(data.bannerBadgeUrl, 300000))
         && (!('bannerCtaLabel' in data) || isOptionalStr(data.bannerCtaLabel, 60))
         && (!('bannerCtaUrl' in data) || isOptionalStr(data.bannerCtaUrl, 2000))
         && (!('bannerShowSpotlightAd' in data) || data.bannerShowSpotlightAd is bool)
         && (!('bannerFooterLeft' in data) || isOptionalStr(data.bannerFooterLeft, 140))
         && (!('bannerFooterRight' in data) || isOptionalStr(data.bannerFooterRight, 80))
-        && isNonEmptyStr(data.defaultTournamentCoverUrl, 300000)
+        && isSafeImageUrl(data.defaultTournamentCoverUrl, 300000)
         && data.useAutoMetrics is bool
         && (!('stat1Label' in data) || isOptionalStr(data.stat1Label, 80))
         && (!('stat1CustomValue' in data) || isOptionalStr(data.stat1CustomValue, 40))
@@ -605,7 +620,7 @@ service cloud.firestore {
 
     match /tournaments/{tournamentId} {
       allow get: if isValidId(tournamentId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(tournamentId) && isValidTournament(incoming(), tournamentId)
         && hasStaffPerm('manageTournaments') && hasStaffPerm('canCreate');
       allow update: if isValidId(tournamentId) && isValidTournament(incoming(), tournamentId)
@@ -621,7 +636,7 @@ service cloud.firestore {
 
     match /divisions/{divisionId} {
       allow get: if isValidId(divisionId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(divisionId) && isValidDivision(incoming(), divisionId)
         && (hasStaffPerm('manageTournaments') || hasStaffPerm('manageDraws'))
         && hasStaffPerm('canCreate')
@@ -641,7 +656,7 @@ service cloud.firestore {
 
     match /players_public/{playerId} {
       allow get: if isValidId(playerId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(playerId) && isValidPlayerPublic(incoming(), playerId)
         && (hasStaffPerm('managePlayers') || hasStaffPerm('manageTournaments'))
         && hasStaffPerm('canCreate')
@@ -679,7 +694,7 @@ service cloud.firestore {
 
     match /registrations/{registrationId} {
       allow get: if isValidId(registrationId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(registrationId) && isValidRegistration(incoming(), registrationId)
         && (hasStaffPerm('manageDraws') || hasStaffPerm('manageTournaments'))
         && hasStaffPerm('canCreate')
@@ -699,7 +714,7 @@ service cloud.firestore {
 
     match /groups/{groupId} {
       allow get: if isValidId(groupId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(groupId) && isValidGroup(incoming(), groupId)
         && (hasStaffPerm('manageDraws') || hasStaffPerm('manageTournaments'))
         && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
@@ -719,7 +734,7 @@ service cloud.firestore {
 
     match /matchdays/{matchdayId} {
       allow get: if isValidId(matchdayId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(matchdayId) && isValidMatchday(incoming(), matchdayId)
         && (hasStaffPerm('manageScheduleAndMedia') || hasStaffPerm('manageTournaments'))
         && hasStaffPerm('canCreate')
@@ -739,7 +754,7 @@ service cloud.firestore {
 
     match /matches/{matchId} {
       allow get: if isValidId(matchId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(matchId) && isValidMatch(incoming(), matchId)
         && (hasStaffPerm('manageDraws') || hasStaffPerm('manageTournaments') || (hasStaffPerm('manageScoring') && incoming().phase == 'eliminacion'))
         && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
@@ -760,7 +775,7 @@ service cloud.firestore {
 
     match /photos/{photoId} {
       allow get: if isValidId(photoId) && (existing().published == true || isActiveStaff());
-      allow list: if resource.data.published == true || isActiveStaff();
+      allow list: if isActiveStaff() || (resource.data.published == true && request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(photoId) && isValidPhoto(incoming(), photoId)
         && hasStaffPerm('manageScheduleAndMedia') && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
         && canAccessTournament(incoming().tournamentId)
@@ -805,7 +820,7 @@ service cloud.firestore {
 
     match /notifications/{notificationId} {
       allow get: if isValidId(notificationId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(notificationId) && isValidNotification(incoming(), notificationId)
         && isActiveStaff() && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId));
@@ -819,7 +834,7 @@ service cloud.firestore {
 
     match /tournament_ads/{adId} {
       allow get: if isValidId(adId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(adId) && isValidTournamentAd(incoming(), adId)
         && hasStaffPerm('manageTournaments') && hasStaffPerm('canCreate')
         && canAccessTournament(incoming().tournamentId)
@@ -837,7 +852,7 @@ service cloud.firestore {
 
     match /tournament_trophies/{trophyId} {
       allow get: if isValidId(trophyId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(trophyId) && isValidTournamentTrophy(incoming(), trophyId)
         && hasStaffPerm('manageTournaments') && hasStaffPerm('canCreate')
         && canAccessTournament(incoming().tournamentId)
@@ -855,7 +870,7 @@ service cloud.firestore {
 
     match /site_settings/{settingId} {
       allow get: if isValidId(settingId);
-      allow list: if true;
+      allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(settingId) && isValidSiteLandingConfig(incoming(), settingId)
         && (isSuperAdmin() || (hasStaffPerm('manageLandingPage') && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))));
       allow update: if isValidId(settingId) && isValidSiteLandingConfig(incoming(), settingId)

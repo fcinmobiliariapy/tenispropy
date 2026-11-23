@@ -20,6 +20,7 @@ import { formatScoreString } from '../utils/itfRules';
 import { formatAsuncionDate } from '../utils/tournamentEngine';
 import { buildHeadToHeadWhatsAppMessage } from '../utils/whatsappShare';
 import { WhatsAppShareButton } from './WhatsAppShareButton';
+import { getOptimizedImageUrl } from '../utils/imageOptimizer';
 
 interface HeadToHeadModalProps {
   match: Match | null;
@@ -74,8 +75,12 @@ const SideAvatarGroup: React.FC<{
     if (p.photoUrl && !failedIds[p.id]) {
       return (
         <img
-          src={p.photoUrl}
+          src={getOptimizedImageUrl(p.photoUrl, 128)}
           alt={p.fullName}
+          width={48}
+          height={48}
+          loading="lazy"
+          decoding="async"
           referrerPolicy="no-referrer"
           onError={() => setFailedIds((prev) => ({ ...prev, [p.id]: true }))}
           className="w-12 h-12 rounded-xl object-cover border border-[#E2E8F0] bg-slate-100 shrink-0"
@@ -97,8 +102,12 @@ const SideAvatarGroup: React.FC<{
         p.photoUrl && !failedIds[p.id] ? (
           <img
             key={p.id}
-            src={p.photoUrl}
+            src={getOptimizedImageUrl(p.photoUrl, 128)}
             alt={p.fullName}
+            width={40}
+            height={40}
+            loading="lazy"
+            decoding="async"
             referrerPolicy="no-referrer"
             onError={() => setFailedIds((prev) => ({ ...prev, [p.id]: true }))}
             className="w-10 h-10 rounded-xl object-cover border-2 border-white bg-slate-100"

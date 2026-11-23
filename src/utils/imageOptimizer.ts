@@ -1,4 +1,37 @@
+import imageCompression from 'browser-image-compression';
+
 const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|webp|gif|avif|bmp|svg|heic|heif)$/i;
+const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env || {};
+
+const CLOUDINARY_CLOUD_NAME = (env.VITE_CLOUDINARY_CLOUD_NAME || '').trim();
+const CLOUDINARY_UPLOAD_PRESET = (env.VITE_CLOUDINARY_UPLOAD_PRESET || '').trim();
+const CLOUDINARY_BASE_FOLDER = (env.VITE_CLOUDINARY_FOLDER || 'playpy').trim() || 'playpy';
+
+let cachedR2Configured: boolean | null = null;
+
+export function isCloudImageStorageConfigured(): boolean {
+  return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET) || cachedR2Configured === true;
+}
+
+/**
+ * Aplica transformaciones automáticas de Cloudinary (WebP/AVIF, calidad automática y recorte máximo)
+ * sin tocar URLs locales, DataURLs ni rutas externas ajenas a Cloudinary.
+ */
+export function getOptimizedImageUrl(url: string, width?: number): string {
+  const cleaned = String(url || '').trim();
+  if (!cleaned) return '';
+  if (
+    cleaned.startsWith('https://res.cloudinary.com/') &&
+    cleaned.includes('/image/upload/') &&
+    !cleaned.includes('/image/upload/f_auto')
+  ) {
+    const transform = width
+      ? `f_auto,q_auto,c_limit,w_${Math.round(width)}`
+      : 'f_auto,q_auto';
+    return cleaned.replace('/image/upload/', `/image/upload/${transform}/`);
+  }
+  return cleaned;
+}
 
 function isAcceptableImageFile(file: File): boolean {
   const mime = (file.type || '').toLowerCase();
@@ -24,17 +57,17 @@ function loadImageFromSrc(src: string, fileName: string): Promise<HTMLImageEleme
   });
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
+function readFileAsDataUrl(file: Blob, name = 'imagen'): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
         resolve(reader.result);
       } else {
-        reject(new Error(`No se pudo leer el archivo "${file.name}".`));
+        reject(new Error(`No se pudo leer el archivo "${name}".`));
       }
     };
-    reader.onerror = () => reject(new Error(`No se pudo leer el archivo "${file.name}".`));
+    reader.onerror = () => reject(new Error(`No se pudo leer el archivo "${name}".`));
     reader.readAsDataURL(file);
   });
 }
@@ -44,7 +77,7 @@ async function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   try {
     return await loadImageFromSrc(objectUrl, file.name);
   } catch {
-    const dataUrl = await readFileAsDataUrl(file);
+    const dataUrl = await readFileAsDataUrl(file, file.name);
     return await loadImageFromSrc(dataUrl, file.name);
   } finally {
     URL.revokeObjectURL(objectUrl);
@@ -108,7 +141,125 @@ function fitDataUrlWithinLimit(img: HTMLImageElement, maxChars: number): string 
   return last;
 }
 
-async function postUpload(payload: {
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  return res.blob();
+}
+
+/**
+ * Comprime cualquier imagen en el cliente usando `browser-image-compression`
+ * y la convierte a formato WebP con resolución máxima acotada antes de subirla.
+ */
+async function compressToWebpBlob(
+  file: File,
+  options: { maxSizeMB: number; maxWidthOrHeight: number; initialQuality: number }
+): Promise<Blob> {
+  try {
+    const compressed = await imageCompression(file, {
+      maxSizeMB: options.maxSizeMB,
+      maxWidthOrHeight: options.maxWidthOrHeight,
+      useWebWorker: true,
+      fileType: 'image/webp',
+      initialQuality: options.initialQuality,
+    });
+    if (compressed && compressed.size > 0) {
+      return compressed;
+    }
+  } catch {
+    // Fallback a Canvas cuando el navegador o tipo de archivo no admite worker
+  }
+
+  const img = await loadImageFromFile(file);
+  const fallbackDataUrl = renderToDataUrl(img, options.maxWidthOrHeight, options.initialQuality);
+  return dataUrlToBlob(fallbackDataUrl);
+}
+
+async function uploadToCloudinary(
+  blob: Blob,
+  folder: 'photos' | 'avatars' | 'banners',
+  baseName: string,
+  thumbWidth: number
+): Promise<{ thumbUrl: string; fullUrl: string }> {
+  const formData = new FormData();
+  const safeName = `${baseName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'playpy'}.webp`;
+  formData.append('file', blob, safeName);
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  formData.append('folder', `${CLOUDINARY_BASE_FOLDER}/${folder}`);
+
+  const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(
+    CLOUDINARY_CLOUD_NAME
+  )}/image/upload`;
+  const res = await fetch(endpoint, { method: 'POST', body: formData });
+  const data = (await res.json().catch(() => ({}))) as {
+    secure_url?: string;
+    error?: { message?: string };
+  };
+
+  if (!res.ok || !data.secure_url) {
+    throw new Error(
+      data.error?.message || `Cloudinary rechazó la subida (${res.status}). Verificá tu Upload Preset.`
+    );
+  }
+
+  return {
+    fullUrl: getOptimizedImageUrl(data.secure_url),
+    thumbUrl: getOptimizedImageUrl(data.secure_url, thumbWidth),
+  };
+}
+
+async function checkServerR2Configured(): Promise<boolean> {
+  if (cachedR2Configured !== null) return cachedR2Configured;
+  try {
+    const res = await fetch('/api/uploads/storage-info');
+    if (!res.ok) {
+      cachedR2Configured = false;
+      return false;
+    }
+    const data = (await res.json()) as { r2Configured?: boolean };
+    cachedR2Configured = Boolean(data.r2Configured);
+    return cachedR2Configured;
+  } catch {
+    cachedR2Configured = false;
+    return false;
+  }
+}
+
+async function uploadBlobToR2(
+  blob: Blob,
+  folder: 'photos' | 'avatars' | 'banners',
+  baseName: string
+): Promise<string> {
+  const contentType = blob.type || 'image/webp';
+  const presignRes = await fetch('/api/uploads/presign-r2', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      folder,
+      filename: `${baseName}.webp`,
+      contentType,
+    }),
+  });
+  const presignData = (await presignRes.json().catch(() => ({}))) as {
+    uploadUrl?: string;
+    publicUrl?: string;
+    error?: string;
+  };
+  if (!presignRes.ok || !presignData.uploadUrl || !presignData.publicUrl) {
+    throw new Error(presignData.error || 'No se pudo obtener la URL firmada de Cloudflare R2.');
+  }
+
+  const putRes = await fetch(presignData.uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    body: blob,
+  });
+  if (!putRes.ok) {
+    throw new Error(`Error al subir la imagen a Cloudflare R2 (${putRes.status}).`);
+  }
+  return presignData.publicUrl;
+}
+
+async function postUploadLocalFallback(payload: {
   baseName: string;
   thumbDataUrl: string;
   fullDataUrl: string;
@@ -139,12 +290,51 @@ async function postUpload(payload: {
   return { thumbUrl: data.thumbUrl, fullUrl: data.fullUrl };
 }
 
+async function uploadOptimizedPair(params: {
+  file: File;
+  folder: 'photos' | 'avatars' | 'banners';
+  baseName: string;
+  thumbBlob: Blob;
+  fullBlob: Blob;
+  thumbWidth: number;
+}): Promise<{ thumbUrl: string; fullUrl: string }> {
+  const { folder, baseName, thumbBlob, fullBlob, thumbWidth } = params;
+
+  // 1. Cloudinary Free Tier directo desde cliente ($0 egress en Vercel / Firebase)
+  if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET) {
+    return uploadToCloudinary(fullBlob, folder, baseName, thumbWidth);
+  }
+
+  // 2. Cloudflare R2 vía URL firmada S3v4 ($0 egress)
+  if (await checkServerR2Configured()) {
+    const [thumbUrl, fullUrl] = await Promise.all([
+      uploadBlobToR2(thumbBlob, folder, `${baseName}_thumb`),
+      uploadBlobToR2(fullBlob, folder, `${baseName}_full`),
+    ]);
+    return { thumbUrl, fullUrl };
+  }
+
+  // 3. Fallback local de desarrollo en Express (/api/uploads) con WebP comprimido
+  const [thumbDataUrl, fullDataUrl] = await Promise.all([
+    readFileAsDataUrl(thumbBlob, `${baseName}_thumb.webp`),
+    readFileAsDataUrl(fullBlob, `${baseName}_full.webp`),
+  ]);
+
+  return postUploadLocalFallback({
+    baseName,
+    thumbDataUrl,
+    fullDataUrl,
+  });
+}
+
 export async function compressImageDataUrl(dataUrl: string, maxChars = 220000): Promise<string> {
   if (dataUrl.length <= maxChars) return dataUrl;
   const img = await loadImageFromSrc(dataUrl, 'imagen');
   const compressed = fitDataUrlWithinLimit(img, maxChars);
   if (compressed.length > maxChars) {
-    throw new Error('La imagen es demasiado pesada para guardarse directamente. Probá subir una más liviana o usar un enlace externo.');
+    throw new Error(
+      'La imagen es demasiado pesada para guardarse directamente. Probá subir una más liviana o usar un enlace externo.'
+    );
   }
   return compressed;
 }
@@ -156,14 +346,19 @@ export async function optimizeAndUploadPhoto(
     throw new Error(`Formato no admitido (${file.name}). Usá JPG, PNG, WebP o GIF.`);
   }
 
-  const img = await loadImageFromFile(file);
-  const thumbDataUrl = renderToDataUrl(img, 420, 0.78);
-  const fullDataUrl = renderToDataUrl(img, 1440, 0.85);
+  const baseName = file.name.replace(/\.[^.]+$/, '');
+  const [thumbBlob, fullBlob] = await Promise.all([
+    compressToWebpBlob(file, { maxSizeMB: 0.12, maxWidthOrHeight: 420, initialQuality: 0.78 }),
+    compressToWebpBlob(file, { maxSizeMB: 0.55, maxWidthOrHeight: 1440, initialQuality: 0.84 }),
+  ]);
 
-  return postUpload({
-    baseName: file.name.replace(/\.[^.]+$/, ''),
-    thumbDataUrl,
-    fullDataUrl,
+  return uploadOptimizedPair({
+    file,
+    folder: 'photos',
+    baseName,
+    thumbBlob,
+    fullBlob,
+    thumbWidth: 420,
   });
 }
 
@@ -196,13 +391,18 @@ export async function optimizeAndUploadAvatar(file: File): Promise<string> {
   }
 
   const img = await loadImageFromFile(file);
-  const thumbDataUrl = resizeSquareAvatarDataUrl(img, 192, 0.82);
-  const fullDataUrl = resizeSquareAvatarDataUrl(img, 420, 0.86);
+  const [thumbBlob, fullBlob] = await Promise.all([
+    dataUrlToBlob(resizeSquareAvatarDataUrl(img, 192, 0.82)),
+    dataUrlToBlob(resizeSquareAvatarDataUrl(img, 420, 0.86)),
+  ]);
 
-  const data = await postUpload({
+  const data = await uploadOptimizedPair({
+    file,
+    folder: 'avatars',
     baseName: `avatar_${file.name.replace(/\.[^.]+$/, '')}`,
-    thumbDataUrl,
-    fullDataUrl,
+    thumbBlob,
+    fullBlob,
+    thumbWidth: 192,
   });
   return data.fullUrl;
 }
@@ -212,23 +412,29 @@ export async function optimizeAndUploadAdBanner(file: File): Promise<string> {
     throw new Error(`Formato no admitido (${file.name}). Usá JPG, PNG, WebP o GIF.`);
   }
 
-  const img = await loadImageFromFile(file);
-  const thumbDataUrl = renderToDataUrl(img, 480, 0.8);
-  const fullDataUrl = renderToDataUrl(img, 1280, 0.84);
+  const baseName = `sponsor_${file.name.replace(/\.[^.]+$/, '')}`;
+  const [thumbBlob, fullBlob] = await Promise.all([
+    compressToWebpBlob(file, { maxSizeMB: 0.14, maxWidthOrHeight: 480, initialQuality: 0.8 }),
+    compressToWebpBlob(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1280, initialQuality: 0.84 }),
+  ]);
 
   try {
-    const data = await postUpload({
-      baseName: `sponsor_${file.name.replace(/\.[^.]+$/, '')}`,
-      thumbDataUrl,
-      fullDataUrl,
+    const data = await uploadOptimizedPair({
+      file,
+      folder: 'banners',
+      baseName,
+      thumbBlob,
+      fullBlob,
+      thumbWidth: 480,
     });
     return data.fullUrl;
   } catch {
-    // Fallback resiliente si el endpoint de archivos no está disponible (p.ej. preview estático)
+    // Fallback resiliente si ningún endpoint de archivos está disponible (p.ej. preview estático)
+    const img = await loadImageFromFile(file);
     const compact = fitDataUrlWithinLimit(img, 180000);
     if (compact.length > 260000) {
       throw new Error(
-        'No se pudo subir la imagen al servidor y el archivo comprimido supera el límite. Probá con una imagen más liviana o pegá una URL.'
+        'No se pudo subir la imagen al almacenamiento y el archivo comprimido supera el límite. Configurá Cloudinary o pegá una URL.'
       );
     }
     return compact;

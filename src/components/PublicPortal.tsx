@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
   Award,
@@ -20,6 +20,8 @@ import {
   Trophy,
   X,
 } from 'lucide-react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import {
   Division,
   Group,
@@ -33,6 +35,10 @@ import {
   TournamentAd,
   TournamentTrophy,
 } from '../types/tennis';
+import {
+  fetchPaginatedPlayersByTournament,
+  fetchPaginatedPublishedPhotos,
+} from '../services/firestoreService';
 import { formatScoreString } from '../utils/itfRules';
 import {
   compareMatchesByRound,
@@ -46,7 +52,6 @@ import {
 } from '../utils/tournamentEngine';
 import { PublicTab, PWAInstallButton } from './TopBarAndPWA';
 import { TournamentAd as TournamentAdCard } from './TournamentAd';
-import { TournamentTrophiesViewer } from './TournamentTrophiesViewer';
 import {
   buildFixtureAgendaWhatsAppMessage,
   buildMatchWhatsAppMessage,
@@ -54,9 +59,21 @@ import {
 } from '../utils/whatsappShare';
 import { buildTournamentDirectUrl } from '../utils/tournamentLinks';
 import { WhatsAppShareButton } from './WhatsAppShareButton';
-import { HeadToHeadModal } from './HeadToHeadModal';
-import { TournamentQrModal } from './TournamentQrModal';
-import { MatchupsFlyerModal } from './MatchupsFlyerModal';
+import { OptimizedImage } from './OptimizedImage';
+import { GalleryGridSkeleton, ModalSkeleton, PlayersGridSkeleton } from './Skeletons';
+
+const TournamentTrophiesViewer = lazy(() =>
+  import('./TournamentTrophiesViewer').then((m) => ({ default: m.TournamentTrophiesViewer }))
+);
+const HeadToHeadModal = lazy(() =>
+  import('./HeadToHeadModal').then((m) => ({ default: m.HeadToHeadModal }))
+);
+const TournamentQrModal = lazy(() =>
+  import('./TournamentQrModal').then((m) => ({ default: m.TournamentQrModal }))
+);
+const MatchupsFlyerModal = lazy(() =>
+  import('./MatchupsFlyerModal').then((m) => ({ default: m.MatchupsFlyerModal }))
+);
 
 interface PublicPortalProps {
   tournaments: Tournament[];
@@ -117,12 +134,6 @@ const PlayerAvatar: React.FC<{
   sizeClass = 'w-11 h-11 text-xs',
   toneClass = 'bg-[#7C1FA2] text-white',
 }) => {
-  const [imgError, setImgError] = useState(false);
-
-  useEffect(() => {
-    setImgError(false);
-  }, [player?.photoUrl]);
-
   const initials = useMemo(() => {
     if (player) {
       const f = player.firstName?.trim()?.[0] || '';
@@ -134,25 +145,29 @@ const PlayerAvatar: React.FC<{
     return (parts[0]?.slice(0, 2) || 'TC').toUpperCase();
   }, [player, fallbackName]);
 
-  if (player?.photoUrl && !imgError) {
-    return (
-      <img
-        src={player.photoUrl}
-        alt={player.fullName || fallbackName || 'Foto del jugador'}
-        referrerPolicy="no-referrer"
-        onError={() => setImgError(true)}
-        className={`${sizeClass} rounded-xl object-cover border border-[#E2E8F0] bg-slate-100 shrink-0`}
-      />
-    );
-  }
-
-  return (
+  const initialsFallback = (
     <div
       className={`${sizeClass} rounded-xl flex items-center justify-center font-bold tracking-tight shrink-0 ${toneClass}`}
     >
       {initials}
     </div>
   );
+
+  if (player?.photoUrl) {
+    return (
+      <OptimizedImage
+        src={player.photoUrl}
+        alt={player.fullName || fallbackName || 'Foto del jugador'}
+        width={64}
+        height={64}
+        transformWidth={160}
+        fallback={initialsFallback}
+        className={`${sizeClass} rounded-xl object-cover border border-[#E2E8F0] bg-slate-100 shrink-0`}
+      />
+    );
+  }
+
+  return initialsFallback;
 };
 
 const EntryAvatars: React.FC<{
@@ -577,11 +592,53 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   const [selectedH2HMatch, setSelectedH2HMatch] = useState<Match | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [flyerModalOpen, setFlyerModalOpen] = useState(false);
+  const [visiblePlayersLimit, setVisiblePlayersLimit] = useState(18);
+  const [visibleFixtureLimit, setVisibleFixtureLimit] = useState(24);
+  const playersSentinelRef = useRef<HTMLDivElement | null>(null);
+  const photosSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const activeTournament = useMemo(
     () => tournaments.find((t) => t.id === selectedTournamentId) || tournaments[0] || null,
     [tournaments, selectedTournamentId]
   );
+
+  // Paginación infinita basada en cursor para Jugadores (reduce lecturas iniciales)
+  const paginatedPlayersQuery = useInfiniteQuery({
+    queryKey: ['players_paginated', activeTournament?.id || 'none'],
+    initialPageParam: null as QueryDocumentSnapshot<DocumentData> | null,
+    queryFn: ({ pageParam }) =>
+      fetchPaginatedPlayersByTournament({
+        tournamentId: activeTournament!.id,
+        pageSize: 18,
+        cursor: pageParam,
+      }),
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
+    enabled: Boolean(
+      activeTab === 'jugadores' && activeTournament?.id && !activeTournament?.isDemo
+    ),
+  });
+
+  // Paginación infinita basada en cursor para Fotos publicadas de jornadas
+  const paginatedPhotosQuery = useInfiniteQuery({
+    queryKey: ['photos_paginated'],
+    initialPageParam: null as QueryDocumentSnapshot<DocumentData> | null,
+    queryFn: ({ pageParam }) =>
+      fetchPaginatedPublishedPhotos({
+        pageSize: 24,
+        cursor: pageParam,
+      }),
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
+    enabled: activeTab === 'jornadas',
+  });
+
+  const mergedPhotos = useMemo(() => {
+    const map = new Map<string, MatchdayPhoto>();
+    photos.forEach((ph) => map.set(ph.id, ph));
+    paginatedPhotosQuery.data?.pages.forEach((page) => {
+      page.items.forEach((ph) => map.set(ph.id, ph));
+    });
+    return Array.from(map.values());
+  }, [photos, paginatedPhotosQuery.data]);
 
   const heroCoverUrl =
     activeTournament?.coverImageUrl ||
@@ -596,7 +653,24 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     setSelectedPlayer(null);
     setPlayerSearch('');
     setPlayerCategoryFilter('ALL');
+    setVisiblePlayersLimit(18);
   }, [activeTournament?.id]);
+
+  useEffect(() => {
+    setVisiblePlayersLimit(18);
+  }, [playerSearch, playerCategoryFilter]);
+
+  useEffect(() => {
+    setVisibleFixtureLimit(24);
+  }, [
+    filterTournamentId,
+    filterDivisionId,
+    filterMatchdayId,
+    filterDate,
+    filterCourt,
+    filterPlayerQuery,
+    fixtureSortBy,
+  ]);
 
   const activeTournamentAds = useMemo(
     () =>
@@ -908,10 +982,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     };
   }, [activeDivision, divisionRegistrations, registrations, players, finalMatch, thirdPlaceMatch]);
 
-  const tournamentPlayers = useMemo(
-    () => players.filter((p) => p.tournamentId === activeTournament?.id),
-    [players, activeTournament?.id]
-  );
+  const tournamentPlayers = useMemo(() => {
+    const map = new Map<string, PlayerPublic>();
+    players
+      .filter((p) => p.tournamentId === activeTournament?.id)
+      .forEach((p) => map.set(p.id, p));
+    paginatedPlayersQuery.data?.pages.forEach((page) => {
+      page.items
+        .filter((p) => p.tournamentId === activeTournament?.id)
+        .forEach((p) => map.set(p.id, p));
+    });
+    return Array.from(map.values());
+  }, [players, paginatedPlayersQuery.data, activeTournament?.id]);
 
   const playerDivisionEnrollmentMap = useMemo(() => {
     const divMap = new Map(tournamentDivisions.map((d) => [d.id, d]));
@@ -980,6 +1062,68 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       .sort((a, b) => b.stats.wins - a.stats.wins || a.fullName.localeCompare(b.fullName));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournamentPlayers, playerSearch, playerCategoryFilter, playerDivisionEnrollmentMap]);
+
+  const paginatedPlayers = useMemo(
+    () => filteredPlayers.slice(0, visiblePlayersLimit),
+    [filteredPlayers, visiblePlayersLimit]
+  );
+
+  const hasMorePlayersToShow =
+    visiblePlayersLimit < filteredPlayers.length || Boolean(paginatedPlayersQuery.hasNextPage);
+
+  // Infinite scroll automático vía IntersectionObserver para Jugadores y Galería de Fotos
+  useEffect(() => {
+    if (activeTab !== 'jugadores' || !hasMorePlayersToShow) return undefined;
+    const el = playersSentinelRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        setVisiblePlayersLimit((prev) => prev + 18);
+        if (paginatedPlayersQuery.hasNextPage && !paginatedPlayersQuery.isFetchingNextPage) {
+          void paginatedPlayersQuery.fetchNextPage();
+        }
+      },
+      { rootMargin: '220px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [
+    activeTab,
+    hasMorePlayersToShow,
+    paginatedPlayersQuery.hasNextPage,
+    paginatedPlayersQuery.isFetchingNextPage,
+    paginatedPlayersQuery.fetchNextPage,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== 'jornadas' || !paginatedPhotosQuery.hasNextPage) return undefined;
+    const el = photosSentinelRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        if (!paginatedPhotosQuery.isFetchingNextPage) {
+          void paginatedPhotosQuery.fetchNextPage();
+        }
+      },
+      { rootMargin: '240px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [
+    activeTab,
+    paginatedPhotosQuery.hasNextPage,
+    paginatedPhotosQuery.isFetchingNextPage,
+    paginatedPhotosQuery.fetchNextPage,
+  ]);
+
+  const paginatedFixtureMatches = useMemo(
+    () => filteredFixtureMatches.slice(0, visibleFixtureLimit),
+    [filteredFixtureMatches, visibleFixtureLimit]
+  );
 
   const activeFixtureFiltersCount = useMemo(() => {
     let count = 0;
@@ -1148,14 +1292,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             {/* Visual hero 16:9 */}
             <div className="lg:col-span-5 relative rounded-2xl overflow-hidden border border-[#E2E8F0] min-h-[190px] sm:min-h-[240px] bg-[#7C1FA2]">
               {!heroImgFailed ? (
-                <img
+                <OptimizedImage
                   src={heroCoverUrl}
                   alt={
                     activeTournament
                       ? `Portada de ${activeTournament.name}`
                       : 'Cancha principal de torneo PlayPy'
                   }
-                  referrerPolicy="no-referrer"
+                  width={960}
+                  height={540}
+                  transformWidth={960}
+                  priority
                   onError={() => setHeroImgFailed(true)}
                   className="w-full h-full object-cover"
                 />
@@ -2291,12 +2438,16 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
         {/* Premios del Torneo (Trofeos por Categoría) */}
         {activeTab === 'resumen' && (
-          <TournamentTrophiesViewer
-            trophies={tournamentTrophies}
-            divisions={tournamentDivisions}
-            tournament={activeTournament || null}
-            activeDivisionId={activeDivision?.id}
-          />
+          <Suspense
+            fallback={<div className="mt-6 h-48 rounded-2xl bg-slate-200/70 animate-pulse" />}
+          >
+            <TournamentTrophiesViewer
+              trophies={tournamentTrophies}
+              divisions={tournamentDivisions}
+              tournament={activeTournament || null}
+              activeDivisionId={activeDivision?.id}
+            />
+          </Suspense>
         )}
 
         {/* Publicidades personalizadas del torneo en portada (Resumen) */}
@@ -2547,7 +2698,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               <>
                 {/* Tarjetas móviles para Fixture (< md) */}
                 <div className="md:hidden space-y-3">
-                  {filteredFixtureMatches.map((m) => {
+                  {paginatedFixtureMatches.map((m) => {
                     const t = tournaments.find((x) => x.id === m.tournamentId);
                     const d = divisions.find((x) => x.id === m.divisionId);
                     return (
@@ -2629,7 +2780,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E2E8F0] text-sm">
-                      {filteredFixtureMatches.map((m) => {
+                      {paginatedFixtureMatches.map((m) => {
                         const t = tournaments.find((x) => x.id === m.tournamentId);
                         const d = divisions.find((x) => x.id === m.divisionId);
                         const hasOutcomeScore =
@@ -2716,7 +2867,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               /* Vista Calendario agrupada por fecha */
               <div className="space-y-4">
                 {Array.from(
-                  filteredFixtureMatches.reduce((acc, m) => {
+                  paginatedFixtureMatches.reduce((acc, m) => {
                     const key = m.scheduledDate || 'Sin fecha';
                     if (!acc.has(key)) acc.set(key, []);
                     acc.get(key)!.push(m);
@@ -2801,6 +2952,18 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 ))}
               </div>
             )}
+
+            {visibleFixtureLimit < filteredFixtureMatches.length && (
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setVisibleFixtureLimit((prev) => prev + 24)}
+                  className="px-5 min-h-[42px] rounded-xl border border-[#E2E8F0] bg-white text-xs font-semibold text-[#0A1633] hover:bg-slate-50 transition-colors"
+                >
+                  Mostrar más partidos ({filteredFixtureMatches.length - visibleFixtureLimit} restantes)
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -2815,7 +2978,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               divisionMatchdays.map((md) => {
                 const mdMatches = divisionMatches.filter((m) => m.matchdayId === md.id);
                 const mdPhotos = md.galleryPublished
-                  ? photos
+                  ? mergedPhotos
                       .filter((p) => p.matchdayId === md.id && p.published)
                       .sort((a, b) => a.order - b.order)
                   : [];
@@ -2914,7 +3077,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                             </span>
                           )}
                         </div>
-                        {mdPhotos.length === 0 ? (
+                        {paginatedPhotosQuery.isLoading && mdPhotos.length === 0 ? (
+                          <GalleryGridSkeleton count={6} />
+                        ) : mdPhotos.length === 0 ? (
                           <div className="rounded-xl border border-dashed border-[#E2E8F0] p-6 text-center text-xs text-[#475569]">
                             <Images className="w-6 h-6 mx-auto mb-2 text-slate-400" />
                             La galería de esta jornada aún no fue publicada.
@@ -2927,11 +3092,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                                 onClick={() => openLightbox(mdPhotos, idx)}
                                 className="group relative aspect-[4/3] rounded-xl overflow-hidden border border-[#E2E8F0] bg-slate-100 text-left focus-visible:outline-2 focus-visible:outline-[#7C1FA2]"
                               >
-                                <img
+                                <OptimizedImage
                                   src={ph.thumbUrl}
                                   alt={ph.caption || `Foto ${idx + 1} de ${md.name}`}
-                                  loading="lazy"
-                                  referrerPolicy="no-referrer"
+                                  width={420}
+                                  height={315}
+                                  transformWidth={420}
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                                 />
                                 {ph.caption && (
@@ -2948,6 +3114,22 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                   </article>
                 );
               })
+            )}
+
+            {paginatedPhotosQuery.hasNextPage && (
+              <div ref={photosSentinelRef} className="flex flex-col items-center gap-3 pt-2">
+                {paginatedPhotosQuery.isFetchingNextPage ? (
+                  <GalleryGridSkeleton count={3} />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void paginatedPhotosQuery.fetchNextPage()}
+                    className="px-5 min-h-[42px] rounded-xl border border-[#E2E8F0] bg-white text-xs font-semibold text-[#0A1633] hover:bg-slate-50 transition-colors"
+                  >
+                    Cargar más fotos de la galería
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -3035,7 +3217,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               )}
             </div>
 
-            {filteredPlayers.length === 0 ? (
+            {paginatedPlayersQuery.isLoading && tournamentPlayers.length === 0 ? (
+              <PlayersGridSkeleton count={6} />
+            ) : filteredPlayers.length === 0 ? (
               <div className="bg-white border border-[#E2E8F0] rounded-2xl p-8 text-center">
                 <p className="text-sm font-medium text-[#0A1633]">
                   {playerSearch.trim() || playerCategoryFilter !== 'ALL'
@@ -3047,80 +3231,106 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 </p>
               </div>
             ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredPlayers.map((p) => {
-                const winRate =
-                  p.stats.matchesPlayed > 0
-                    ? Math.round((p.stats.wins / p.stats.matchesPlayed) * 100)
-                    : 0;
-                const isFollowing = followedPlayerIds.includes(p.id);
-                const enrolledDivs = playerDivisionEnrollmentMap.get(p.id)?.divisionNames || [];
-                return (
-                  <div
-                    key={p.id}
-                    className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition-colors"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <PlayerAvatar player={p} sizeClass="w-12 h-12 text-sm" />
-                          <div className="min-w-0">
-                            <h3 className="text-base font-semibold text-[#0A1633] truncate">{p.fullName}</h3>
-                            <p className="text-xs text-[#475569] mt-0.5 truncate">
-                              {p.club} · Cat. {p.habitualCategory} · {p.dominantHand}
-                            </p>
-                            {enrolledDivs.length > 0 && (
-                              <p className="text-[11px] font-medium text-[#7C1FA2] mt-0.5 truncate">
-                                {enrolledDivs.join(' · ')}
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {paginatedPlayers.map((p) => {
+                    const winRate =
+                      p.stats.matchesPlayed > 0
+                        ? Math.round((p.stats.wins / p.stats.matchesPlayed) * 100)
+                        : 0;
+                    const isFollowing = followedPlayerIds.includes(p.id);
+                    const enrolledDivs = playerDivisionEnrollmentMap.get(p.id)?.divisionNames || [];
+                    return (
+                      <div
+                        key={p.id}
+                        className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition-colors"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <PlayerAvatar player={p} sizeClass="w-12 h-12 text-sm" />
+                              <div className="min-w-0">
+                                <h3 className="text-base font-semibold text-[#0A1633] truncate">{p.fullName}</h3>
+                                <p className="text-xs text-[#475569] mt-0.5 truncate">
+                                  {p.club} · Cat. {p.habitualCategory} · {p.dominantHand}
+                                </p>
+                                {enrolledDivs.length > 0 && (
+                                  <p className="text-[11px] font-medium text-[#7C1FA2] mt-0.5 truncate">
+                                    {enrolledDivs.join(' · ')}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => onToggleFollowPlayer(p.id)}
+                              title="Seguir notificaciones de este jugador"
+                              className={`min-h-[40px] sm:min-h-[36px] px-3 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
+                                isFollowing
+                                  ? 'bg-emerald-50 border-emerald-200 text-[#7C1FA2]'
+                                  : 'bg-white border-[#E2E8F0] text-[#475569] hover:text-[#0A1633]'
+                              }`}
+                            >
+                              {isFollowing ? 'Siguiendo' : 'Seguir'}
+                            </button>
+                          </div>
+
+                          <div className="mt-4 grid grid-cols-3 gap-2 pt-3 border-t border-[#E2E8F0] text-center">
+                            <div>
+                              <p className="text-[11px] text-[#475569]">Partidos</p>
+                              <p className="text-sm font-bold font-mono tabular-nums text-[#0A1633]">
+                                {p.stats.matchesPlayed}
                               </p>
-                            )}
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-[#475569]">Victorias</p>
+                              <p className="text-sm font-bold font-mono tabular-nums text-[#15803D]">
+                                {p.stats.wins} ({winRate}%)
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-[#475569]">Títulos</p>
+                              <p className="text-sm font-bold font-mono tabular-nums text-[#0A1633]">
+                                {p.stats.titles}
+                              </p>
+                            </div>
                           </div>
                         </div>
+
                         <button
-                          onClick={() => onToggleFollowPlayer(p.id)}
-                          title="Seguir notificaciones de este jugador"
-                          className={`min-h-[40px] sm:min-h-[36px] px-3 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
-                            isFollowing
-                              ? 'bg-emerald-50 border-emerald-200 text-[#7C1FA2]'
-                              : 'bg-white border-[#E2E8F0] text-[#475569] hover:text-[#0A1633]'
-                          }`}
+                          onClick={() => setSelectedPlayer(p)}
+                          className="mt-4 w-full min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#F8FAFC] hover:bg-slate-100 border border-[#E2E8F0] text-xs font-medium text-[#0A1633] transition-colors"
                         >
-                          {isFollowing ? 'Siguiendo' : 'Seguir'}
+                          Ver ficha y estadísticas
                         </button>
                       </div>
+                    );
+                  })}
+                </div>
 
-                      <div className="mt-4 grid grid-cols-3 gap-2 pt-3 border-t border-[#E2E8F0] text-center">
-                        <div>
-                          <p className="text-[11px] text-[#475569]">Partidos</p>
-                          <p className="text-sm font-bold font-mono tabular-nums text-[#0A1633]">
-                            {p.stats.matchesPlayed}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[11px] text-[#475569]">Victorias</p>
-                          <p className="text-sm font-bold font-mono tabular-nums text-[#15803D]">
-                            {p.stats.wins} ({winRate}%)
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[11px] text-[#475569]">Títulos</p>
-                          <p className="text-sm font-bold font-mono tabular-nums text-[#0A1633]">
-                            {p.stats.titles}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => setSelectedPlayer(p)}
-                      className="mt-4 w-full min-h-[44px] sm:min-h-[38px] rounded-xl sm:rounded-lg bg-[#F8FAFC] hover:bg-slate-100 border border-[#E2E8F0] text-xs font-medium text-[#0A1633] transition-colors"
-                    >
-                      Ver ficha y estadísticas
-                    </button>
+                {hasMorePlayersToShow && (
+                  <div ref={playersSentinelRef} className="flex flex-col items-center gap-3 pt-2">
+                    {paginatedPlayersQuery.isFetchingNextPage ? (
+                      <PlayersGridSkeleton count={3} />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisiblePlayersLimit((prev) => prev + 18);
+                          if (
+                            paginatedPlayersQuery.hasNextPage &&
+                            !paginatedPlayersQuery.isFetchingNextPage
+                          ) {
+                            void paginatedPlayersQuery.fetchNextPage();
+                          }
+                        }}
+                        className="px-5 min-h-[42px] rounded-xl border border-[#E2E8F0] bg-white text-xs font-semibold text-[#0A1633] hover:bg-slate-50 transition-colors"
+                      >
+                        Cargar más jugadores ({paginatedPlayers.length} mostrados)
+                      </button>
+                    )}
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -3189,11 +3399,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 <ChevronLeft className="w-6 h-6" />
               </button>
             )}
-            <img
+            <OptimizedImage
               src={lightboxPhotos[lightboxIndex]?.fullUrl}
               alt={lightboxPhotos[lightboxIndex]?.caption || 'Foto de jornada'}
-              referrerPolicy="no-referrer"
-              className="max-h-[75vh] max-w-full object-contain rounded-lg"
+              width={1440}
+              height={960}
+              transformWidth={1440}
+              priority
+              className="max-h-[75vh] w-auto max-w-full object-contain rounded-lg"
             />
             {lightboxPhotos.length > 1 && (
               <button
@@ -3366,37 +3579,49 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
       )}
 
       {/* Modal Cara a Cara (Head-to-Head) */}
-      <HeadToHeadModal
-        match={selectedH2HMatch}
-        allMatches={matches}
-        tournaments={tournaments}
-        divisions={divisions}
-        players={players}
-        registrations={registrations}
-        onClose={() => setSelectedH2HMatch(null)}
-      />
+      {selectedH2HMatch && (
+        <Suspense fallback={<ModalSkeleton />}>
+          <HeadToHeadModal
+            match={selectedH2HMatch}
+            allMatches={matches}
+            tournaments={tournaments}
+            divisions={divisions}
+            players={players}
+            registrations={registrations}
+            onClose={() => setSelectedH2HMatch(null)}
+          />
+        </Suspense>
+      )}
 
       {/* Modal Link Directo y QR del Torneo */}
-      <TournamentQrModal
-        open={qrModalOpen}
-        onClose={() => setQrModalOpen(false)}
-        tournament={activeTournament || null}
-        divisions={tournamentDivisions}
-        defaultDivisionId={activeDivision?.id}
-        logoUrl={logoUrl}
-      />
+      {qrModalOpen && (
+        <Suspense fallback={<ModalSkeleton />}>
+          <TournamentQrModal
+            open={qrModalOpen}
+            onClose={() => setQrModalOpen(false)}
+            tournament={activeTournament || null}
+            divisions={tournamentDivisions}
+            defaultDivisionId={activeDivision?.id}
+            logoUrl={logoUrl}
+          />
+        </Suspense>
+      )}
 
       {/* Modal Generador de Flyer de Cruces */}
-      <MatchupsFlyerModal
-        open={flyerModalOpen}
-        onClose={() => setFlyerModalOpen(false)}
-        tournament={activeTournament || null}
-        divisions={divisions}
-        matchdays={matchdays}
-        matches={matches}
-        defaultDivisionId={activeDivision?.id || 'ALL'}
-        logoUrl={logoUrl}
-      />
+      {flyerModalOpen && (
+        <Suspense fallback={<ModalSkeleton />}>
+          <MatchupsFlyerModal
+            open={flyerModalOpen}
+            onClose={() => setFlyerModalOpen(false)}
+            tournament={activeTournament || null}
+            divisions={divisions}
+            matchdays={matchdays}
+            matches={matches}
+            defaultDivisionId={activeDivision?.id || 'ALL'}
+            logoUrl={logoUrl}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

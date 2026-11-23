@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Bell, Calendar, Download, Home, Images, Trophy, Users, WifiOff, X } from 'lucide-react';
 import { LiveToast, useOnlineStatus, usePWAInstall } from '../hooks/usePWA';
 import { OFFICIAL_PLAYPY_LOGO } from '../data/siteConfigDefaults';
+import { getOptimizedImageUrl } from '../utils/imageOptimizer';
 
 export type PublicTab = 'resumen' | 'fixture' | 'jornadas' | 'jugadores';
 export type AppView = 'landing' | 'portal' | 'admin';
@@ -47,8 +48,11 @@ export const TopBar: React.FC<TopBarProps> = ({
           className="flex items-center gap-2.5 text-lg sm:text-xl font-bold tracking-tight whitespace-nowrap shrink-0 font-display focus-visible:outline-2 focus-visible:outline-[#7C1FA2] rounded min-h-[44px]"
         >
           <img
-            src={resolvedLogo}
+            src={getOptimizedImageUrl(resolvedLogo, 96)}
             alt={`${brandFirst}${brandSecond}`}
+            width={32}
+            height={32}
+            decoding="async"
             referrerPolicy="no-referrer"
             className="w-8 h-8 rounded-lg object-contain bg-white border border-[#E2E8F0] p-0.5 shrink-0"
           />

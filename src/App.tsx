@@ -2,12 +2,20 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { where } from 'firebase/firestore';
 import { auth, testConnection } from './firebase';
 import { buildDemoBundle } from './data/demoSeed';
 import { mergeSiteLandingConfig, SITE_LANDING_DOC_ID } from './data/siteConfigDefaults';
-import { subscribeCollection } from './services/firestoreService';
+import {
+  fetchCollectionLimited,
+  fetchSiteSettingsOnce,
+  fetchTournamentsOnce,
+  subscribeCollection,
+  subscribeTournamentCollection,
+} from './services/firestoreService';
 import {
   Division,
   Group,
@@ -24,7 +32,7 @@ import {
 } from './types/tennis';
 import { useRealtimePush } from './hooks/usePWA';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ItfReferenceModal } from './components/ItfReferenceModal';
+import { AdminSectionSkeleton, ModalSkeleton, PortalSkeleton } from './components/Skeletons';
 import {
   AppView,
   LiveToastOverlay,
@@ -34,11 +42,29 @@ import {
   TopBar,
 } from './components/TopBarAndPWA';
 import { EntryLandingPage } from './components/EntryLandingPage';
-import { PublicPortal } from './components/PublicPortal';
-import { AdminDashboard } from './components/AdminDashboard';
 import { parseTournamentUrlParams, syncBrowserTournamentUrl } from './utils/tournamentLinks';
 
+const PublicPortal = lazy(() =>
+  import('./components/PublicPortal').then((m) => ({ default: m.PublicPortal }))
+);
+const AdminDashboard = lazy(() =>
+  import('./components/AdminDashboard').then((m) => ({ default: m.AdminDashboard }))
+);
+const ItfReferenceModal = lazy(() =>
+  import('./components/ItfReferenceModal').then((m) => ({ default: m.ItfReferenceModal }))
+);
+
+function mergeById<T extends { id: string }>(cached: T[], scopedLive: T[]): T[] {
+  if (scopedLive.length === 0) return cached;
+  if (cached.length === 0) return scopedLive;
+  const map = new Map<string, T>();
+  cached.forEach((item) => map.set(item.id, item));
+  scopedLive.forEach((item) => map.set(item.id, item));
+  return Array.from(map.values());
+}
+
 export default function App() {
+  const queryClient = useQueryClient();
   const demoFallback = useMemo(() => buildDemoBundle(), []);
   const initialUrlParams = useMemo(() => parseTournamentUrlParams(), []);
 
@@ -51,8 +77,41 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [itfModalOpen, setItfModalOpen] = useState(false);
 
-  // Colecciones Firestore en tiempo real
-  const [fsTournaments, setFsTournaments] = useState<Tournament[]>([]);
+  // Consultas cacheadas con React Query para la portada (evita abrir 12 listeners al cargar)
+  const { data: queryTournaments = [], isFetched: tournamentsFetched } = useQuery({
+    queryKey: ['tournaments'],
+    queryFn: fetchTournamentsOnce,
+  });
+
+  const { data: querySiteSettings = [] } = useQuery({
+    queryKey: ['site_settings'],
+    queryFn: fetchSiteSettingsOnce,
+  });
+
+  const { data: cachedDivisions = [] } = useQuery({
+    queryKey: ['summary', 'divisions'],
+    queryFn: () => fetchCollectionLimited<Division>('divisions', 200),
+  });
+
+  const { data: cachedPlayers = [] } = useQuery({
+    queryKey: ['summary', 'players_public'],
+    queryFn: () => fetchCollectionLimited<PlayerPublic>('players_public', 300),
+  });
+
+  const { data: cachedMatches = [] } = useQuery({
+    queryKey: ['summary', 'matches_published'],
+    queryFn: () =>
+      fetchCollectionLimited<Match>('matches', 250, [where('published', '==', true)]),
+  });
+
+  const { data: cachedAds = [] } = useQuery({
+    queryKey: ['summary', 'tournament_ads'],
+    queryFn: () => fetchCollectionLimited<TournamentAd>('tournament_ads', 100),
+  });
+
+  // Colecciones en tiempo real acotadas al torneo activo (solo activas en Portal o Admin)
+  const [liveTournaments, setLiveTournaments] = useState<Tournament[] | null>(null);
+  const [liveSiteSettings, setLiveSiteSettings] = useState<SiteLandingConfig[] | null>(null);
   const [fsDivisions, setFsDivisions] = useState<Division[]>([]);
   const [fsPlayers, setFsPlayers] = useState<PlayerPublic[]>([]);
   const [fsRegistrations, setFsRegistrations] = useState<Registration[]>([]);
@@ -63,8 +122,10 @@ export default function App() {
   const [fsNotifications, setFsNotifications] = useState<NotificationAlert[]>([]);
   const [fsTournamentAds, setFsTournamentAds] = useState<TournamentAd[]>([]);
   const [fsTournamentTrophies, setFsTournamentTrophies] = useState<TournamentTrophy[]>([]);
-  const [fsSiteSettings, setFsSiteSettings] = useState<SiteLandingConfig[]>([]);
-  const [firestoreLoaded, setFirestoreLoaded] = useState(false);
+
+  const fsTournaments = liveTournaments ?? queryTournaments;
+  const fsSiteSettings = liveSiteSettings ?? querySiteSettings;
+  const firestoreLoaded = tournamentsFetched || liveTournaments !== null;
 
   // Seguimiento de jugadores para notificaciones push
   const [followedPlayerIds, setFollowedPlayerIds] = useState<string[]>(() => {
@@ -87,51 +148,50 @@ export default function App() {
       void testConnection();
     };
     window.addEventListener('online', handleOnline);
-
     const unsubAuth = onAuthStateChanged(auth, (u) => setUser(u));
-
-    const unsubs = [
-      subscribeCollection<Tournament>('tournaments', (data) => {
-        setFsTournaments(data);
-        setFirestoreLoaded(true);
-      }),
-      subscribeCollection<Division>('divisions', setFsDivisions),
-      subscribeCollection<PlayerPublic>('players_public', setFsPlayers),
-      subscribeCollection<Registration>('registrations', setFsRegistrations),
-      subscribeCollection<Group>('groups', setFsGroups),
-      subscribeCollection<Matchday>('matchdays', setFsMatchdays),
-      subscribeCollection<Match>('matches', setFsMatches),
-      subscribeCollection<MatchdayPhoto>('photos', setFsPhotos, true),
-      subscribeCollection<NotificationAlert>('notifications', setFsNotifications),
-      subscribeCollection<TournamentAd>('tournament_ads', setFsTournamentAds),
-      subscribeCollection<TournamentTrophy>('tournament_trophies', setFsTournamentTrophies),
-      subscribeCollection<SiteLandingConfig>('site_settings', setFsSiteSettings),
-    ];
 
     return () => {
       window.removeEventListener('online', handleOnline);
       unsubAuth();
-      unsubs.forEach((u) => u());
     };
   }, []);
 
   // Si Firestore aún está vacío antes del primer login de admin, mostrar los torneos demo en modo lectura
   const useSeededFallback = firestoreLoaded && fsTournaments.length === 0;
   const tournaments = useSeededFallback ? demoFallback.tournaments : fsTournaments;
-  const divisions = useSeededFallback ? demoFallback.divisions : fsDivisions;
-  const players = useSeededFallback ? demoFallback.playersPublic : fsPlayers;
+
+  const mergedDivisions = useMemo(
+    () => mergeById(cachedDivisions, fsDivisions),
+    [cachedDivisions, fsDivisions]
+  );
+  const mergedPlayers = useMemo(
+    () => mergeById(cachedPlayers, fsPlayers),
+    [cachedPlayers, fsPlayers]
+  );
+  const mergedMatches = useMemo(
+    () => mergeById(cachedMatches, fsMatches),
+    [cachedMatches, fsMatches]
+  );
+  const mergedAds = useMemo(
+    () => mergeById(cachedAds, fsTournamentAds),
+    [cachedAds, fsTournamentAds]
+  );
+
+  const divisions = useSeededFallback ? demoFallback.divisions : mergedDivisions;
+  const players = useSeededFallback ? demoFallback.playersPublic : mergedPlayers;
   const registrations = useSeededFallback ? demoFallback.registrations : fsRegistrations;
   const groups = useSeededFallback ? demoFallback.groups : fsGroups;
   const matchdays = useSeededFallback ? demoFallback.matchdays : fsMatchdays;
-  const matches = useSeededFallback ? demoFallback.matches : fsMatches;
+  const matches = useSeededFallback ? demoFallback.matches : mergedMatches;
   const photos = useSeededFallback ? demoFallback.photos : fsPhotos;
   const notifications = useSeededFallback
     ? demoFallback.notifications
     : [...fsNotifications].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const tournamentAds = useSeededFallback ? demoFallback.tournamentAds : fsTournamentAds;
+  const tournamentAds = useSeededFallback ? demoFallback.tournamentAds : mergedAds;
   const tournamentTrophies = useSeededFallback
     ? demoFallback.tournamentTrophies
     : fsTournamentTrophies;
+
   const siteConfig = useMemo(
     () =>
       mergeSiteLandingConfig(
@@ -158,6 +218,60 @@ export default function App() {
     if (tDivs.some((d) => d.id === selectedDivisionId)) return selectedDivisionId;
     return tDivs[0]?.id || '';
   }, [divisions, effectiveTournamentId, selectedDivisionId]);
+
+  const activeLiveTournamentId = useMemo(() => {
+    if (fsTournaments.length === 0) return '';
+    if (fsTournaments.some((t) => t.id === selectedTournamentId)) return selectedTournamentId;
+    return fsTournaments[0]?.id || '';
+  }, [fsTournaments, selectedTournamentId]);
+
+  // Suscripción en tiempo real bajo demanda: SOLO cuando el usuario entra al Portal o Panel Admin
+  // y filtrada estrictamente al torneo activo para reducir drásticamente las lecturas en Firestore.
+  useEffect(() => {
+    if (view === 'landing') {
+      return undefined;
+    }
+
+    const unsubs: Array<() => void> = [
+      subscribeCollection<Tournament>(
+        'tournaments',
+        (data) => {
+          setLiveTournaments(data);
+          queryClient.setQueryData(['tournaments'], data);
+        },
+        false,
+        50
+      ),
+      subscribeCollection<SiteLandingConfig>(
+        'site_settings',
+        (data) => {
+          setLiveSiteSettings(data);
+          queryClient.setQueryData(['site_settings'], data);
+        },
+        false,
+        5
+      ),
+      subscribeCollection<MatchdayPhoto>('photos', setFsPhotos, true, 120),
+    ];
+
+    if (activeLiveTournamentId) {
+      unsubs.push(
+        subscribeTournamentCollection<Division>('divisions', activeLiveTournamentId, setFsDivisions, 100),
+        subscribeTournamentCollection<PlayerPublic>('players_public', activeLiveTournamentId, setFsPlayers, 350),
+        subscribeTournamentCollection<Registration>('registrations', activeLiveTournamentId, setFsRegistrations, 400),
+        subscribeTournamentCollection<Group>('groups', activeLiveTournamentId, setFsGroups, 100),
+        subscribeTournamentCollection<Matchday>('matchdays', activeLiveTournamentId, setFsMatchdays, 100),
+        subscribeTournamentCollection<Match>('matches', activeLiveTournamentId, setFsMatches, 450),
+        subscribeTournamentCollection<NotificationAlert>('notifications', activeLiveTournamentId, setFsNotifications, 100),
+        subscribeTournamentCollection<TournamentAd>('tournament_ads', activeLiveTournamentId, setFsTournamentAds, 50),
+        subscribeTournamentCollection<TournamentTrophy>('tournament_trophies', activeLiveTournamentId, setFsTournamentTrophies, 80)
+      );
+    }
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [view, activeLiveTournamentId, queryClient]);
 
   useEffect(() => {
     if (!firestoreLoaded) return;
@@ -192,7 +306,7 @@ export default function App() {
   };
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary scopeLabel="la aplicación">
       <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-[#0A1633]">
         <TopBar
           view={view}
@@ -214,73 +328,83 @@ export default function App() {
 
         <div className="flex-1">
           {view === 'landing' && (
-            <EntryLandingPage
-              tournaments={tournaments}
-              divisions={divisions}
-              players={players}
-              matches={matches}
-              tournamentAds={tournamentAds}
-              siteConfig={siteConfig}
-              selectedTournamentId={effectiveTournamentId}
-              onEnterTournament={handleEnterTournament}
-              onOpenItfModal={() => setItfModalOpen(true)}
-            />
+            <ErrorBoundary scopeLabel="la portada principal" inline>
+              <EntryLandingPage
+                tournaments={tournaments}
+                divisions={divisions}
+                players={players}
+                matches={matches}
+                tournamentAds={tournamentAds}
+                siteConfig={siteConfig}
+                selectedTournamentId={effectiveTournamentId}
+                onEnterTournament={handleEnterTournament}
+                onOpenItfModal={() => setItfModalOpen(true)}
+              />
+            </ErrorBoundary>
           )}
 
           {view === 'portal' && (
-            <PublicPortal
-              tournaments={tournaments}
-              divisions={divisions}
-              players={players}
-              registrations={registrations}
-              groups={groups}
-              matchdays={matchdays}
-              matches={matches}
-              photos={photos}
-              notifications={notifications}
-              tournamentAds={tournamentAds}
-              tournamentTrophies={tournamentTrophies}
-              activeTab={activePublicTab}
-              onSelectTab={setActivePublicTab}
-              onGoLanding={() => {
-                setView('landing');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              selectedTournamentId={effectiveTournamentId}
-              onSelectTournament={handleSelectTournament}
-              selectedDivisionId={effectiveDivisionId}
-              onSelectDivision={setSelectedDivisionId}
-              onOpenItfModal={() => setItfModalOpen(true)}
-              pushEnabled={pushEnabled}
-              onRequestPush={requestPushPermission}
-              followedPlayerIds={followedPlayerIds}
-              onToggleFollowPlayer={handleToggleFollowPlayer}
-              defaultTournamentCoverUrl={siteConfig.defaultTournamentCoverUrl}
-              logoUrl={siteConfig.logoUrl}
-            />
+            <ErrorBoundary scopeLabel="el portal público" inline>
+              <Suspense fallback={<PortalSkeleton />}>
+                <PublicPortal
+                  tournaments={tournaments}
+                  divisions={divisions}
+                  players={players}
+                  registrations={registrations}
+                  groups={groups}
+                  matchdays={matchdays}
+                  matches={matches}
+                  photos={photos}
+                  notifications={notifications}
+                  tournamentAds={tournamentAds}
+                  tournamentTrophies={tournamentTrophies}
+                  activeTab={activePublicTab}
+                  onSelectTab={setActivePublicTab}
+                  onGoLanding={() => {
+                    setView('landing');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  selectedTournamentId={effectiveTournamentId}
+                  onSelectTournament={handleSelectTournament}
+                  selectedDivisionId={effectiveDivisionId}
+                  onSelectDivision={setSelectedDivisionId}
+                  onOpenItfModal={() => setItfModalOpen(true)}
+                  pushEnabled={pushEnabled}
+                  onRequestPush={requestPushPermission}
+                  followedPlayerIds={followedPlayerIds}
+                  onToggleFollowPlayer={handleToggleFollowPlayer}
+                  defaultTournamentCoverUrl={siteConfig.defaultTournamentCoverUrl}
+                  logoUrl={siteConfig.logoUrl}
+                />
+              </Suspense>
+            </ErrorBoundary>
           )}
 
           {view === 'admin' && (
-            <AdminDashboard
-              user={user}
-              tournaments={tournaments}
-              divisions={divisions}
-              players={players}
-              registrations={registrations}
-              groups={groups}
-              matchdays={matchdays}
-              matches={matches}
-              publishedPhotos={photos}
-              notifications={notifications}
-              tournamentAds={tournamentAds}
-              tournamentTrophies={tournamentTrophies}
-              siteConfig={siteConfig}
-              selectedTournamentId={effectiveTournamentId}
-              onSelectTournament={handleSelectTournament}
-              selectedDivisionId={effectiveDivisionId}
-              onSelectDivision={setSelectedDivisionId}
-              onOpenItfModal={() => setItfModalOpen(true)}
-            />
+            <ErrorBoundary scopeLabel="el panel de administración" inline>
+              <Suspense fallback={<AdminSectionSkeleton />}>
+                <AdminDashboard
+                  user={user}
+                  tournaments={tournaments}
+                  divisions={divisions}
+                  players={players}
+                  registrations={registrations}
+                  groups={groups}
+                  matchdays={matchdays}
+                  matches={matches}
+                  publishedPhotos={photos}
+                  notifications={notifications}
+                  tournamentAds={tournamentAds}
+                  tournamentTrophies={tournamentTrophies}
+                  siteConfig={siteConfig}
+                  selectedTournamentId={effectiveTournamentId}
+                  onSelectTournament={handleSelectTournament}
+                  selectedDivisionId={effectiveDivisionId}
+                  onSelectDivision={setSelectedDivisionId}
+                  onOpenItfModal={() => setItfModalOpen(true)}
+                />
+              </Suspense>
+            </ErrorBoundary>
           )}
         </div>
 
@@ -312,7 +436,11 @@ export default function App() {
           />
         )}
 
-        <ItfReferenceModal open={itfModalOpen} onClose={() => setItfModalOpen(false)} />
+        {itfModalOpen && (
+          <Suspense fallback={<ModalSkeleton />}>
+            <ItfReferenceModal open={itfModalOpen} onClose={() => setItfModalOpen(false)} />
+          </Suspense>
+        )}
         <LiveToastOverlay toasts={toasts} onDismiss={dismissToast} />
         <OfflineIndicator />
       </div>

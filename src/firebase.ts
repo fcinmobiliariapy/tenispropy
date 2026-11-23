@@ -14,15 +14,52 @@ import {
   getFirestore,
   initializeFirestore,
   memoryLocalCache,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  persistentSingleTabManager,
   setLogLevel,
 } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import firebaseConfigJson from '../firebase-applet-config.json';
+
+const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env || {};
+
+const firebaseConfig = {
+  ...firebaseConfigJson,
+  apiKey: env.VITE_FIREBASE_API_KEY || firebaseConfigJson.apiKey,
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigJson.authDomain,
+  projectId: env.VITE_FIREBASE_PROJECT_ID || firebaseConfigJson.projectId,
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigJson.storageBucket,
+  messagingSenderId:
+    env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJson.messagingSenderId,
+  appId: env.VITE_FIREBASE_APP_ID || firebaseConfigJson.appId,
+};
+
+const firestoreDatabaseId = env.VITE_FIREBASE_DATABASE_ID || firebaseConfigJson.firestoreDatabaseId;
 
 const app = initializeApp(firebaseConfig);
 
 // Evita spam de warnings internos de WebChannelConnection en reconexiones transitorias
 // manteniendo visibles errores reales y los reportes JSON de handleFirestoreError.
 setLogLevel('error');
+
+function resolveLocalCache() {
+  if (typeof window === 'undefined') {
+    return memoryLocalCache();
+  }
+  try {
+    return persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+    });
+  } catch {
+    try {
+      return persistentLocalCache({
+        tabManager: persistentSingleTabManager({}),
+      });
+    } catch {
+      return memoryLocalCache();
+    }
+  }
+}
 
 function createFirestoreDb() {
   try {
@@ -32,12 +69,12 @@ function createFirestoreDb() {
         experimentalAutoDetectLongPolling: true,
         experimentalLongPollingOptions: { timeoutSeconds: 20 },
         ignoreUndefinedProperties: true,
-        localCache: memoryLocalCache(),
+        localCache: resolveLocalCache(),
       },
-      firebaseConfig.firestoreDatabaseId
+      firestoreDatabaseId
     );
   } catch {
-    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    return getFirestore(app, firestoreDatabaseId);
   }
 }
 

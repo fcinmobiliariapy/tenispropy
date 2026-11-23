@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -19,6 +19,7 @@ import {
   Users,
 } from 'lucide-react';
 import { signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { auth, googleProvider } from '../firebase';
 import {
   Division,
@@ -53,21 +54,55 @@ import {
   fetchAllPlayersPrivate,
   fetchAllStaffRoles,
   fetchDraftPhotosForAdmin,
+  fetchPlayersPrivateByTournament,
   fetchStaffInvites,
   fetchStaffRole,
   findStaffInviteByEmail,
   seedDemoTournamentsToFirestore,
 } from '../services/firestoreService';
-import { AdminTournamentsSection } from './admin/AdminTournamentsSection';
-import { AdminPlayersSection } from './admin/AdminPlayersSection';
-import { AdminRegistrationsDrawSection } from './admin/AdminRegistrationsDrawSection';
-import { AdminMatchdaysAndPhotosSection } from './admin/AdminMatchdaysAndPhotosSection';
-import { AdminScoringAndRolesSection } from './admin/AdminScoringAndRolesSection';
-import { AdminEliminationDiagnosticPanel } from './admin/AdminEliminationDiagnosticPanel';
-import { AdminLandingPageSection } from './admin/AdminLandingPageSection';
-import { AdminUsersPermissionsSection } from './admin/AdminUsersPermissionsSection';
-import { TournamentQrModal } from './TournamentQrModal';
-import { MatchupsFlyerModal } from './MatchupsFlyerModal';
+import { ErrorBoundary } from './ErrorBoundary';
+import { AdminSectionSkeleton, ModalSkeleton } from './Skeletons';
+
+const AdminTournamentsSection = lazy(() =>
+  import('./admin/AdminTournamentsSection').then((m) => ({ default: m.AdminTournamentsSection }))
+);
+const AdminPlayersSection = lazy(() =>
+  import('./admin/AdminPlayersSection').then((m) => ({ default: m.AdminPlayersSection }))
+);
+const AdminRegistrationsDrawSection = lazy(() =>
+  import('./admin/AdminRegistrationsDrawSection').then((m) => ({
+    default: m.AdminRegistrationsDrawSection,
+  }))
+);
+const AdminMatchdaysAndPhotosSection = lazy(() =>
+  import('./admin/AdminMatchdaysAndPhotosSection').then((m) => ({
+    default: m.AdminMatchdaysAndPhotosSection,
+  }))
+);
+const AdminScoringAndRolesSection = lazy(() =>
+  import('./admin/AdminScoringAndRolesSection').then((m) => ({
+    default: m.AdminScoringAndRolesSection,
+  }))
+);
+const AdminEliminationDiagnosticPanel = lazy(() =>
+  import('./admin/AdminEliminationDiagnosticPanel').then((m) => ({
+    default: m.AdminEliminationDiagnosticPanel,
+  }))
+);
+const AdminLandingPageSection = lazy(() =>
+  import('./admin/AdminLandingPageSection').then((m) => ({ default: m.AdminLandingPageSection }))
+);
+const AdminUsersPermissionsSection = lazy(() =>
+  import('./admin/AdminUsersPermissionsSection').then((m) => ({
+    default: m.AdminUsersPermissionsSection,
+  }))
+);
+const TournamentQrModal = lazy(() =>
+  import('./TournamentQrModal').then((m) => ({ default: m.TournamentQrModal }))
+);
+const MatchupsFlyerModal = lazy(() =>
+  import('./MatchupsFlyerModal').then((m) => ({ default: m.MatchupsFlyerModal }))
+);
 
 type AdminTab =
   | 'torneos'
@@ -120,12 +155,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onSelectDivision,
   onOpenItfModal,
 }) => {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<AdminTab>('torneos');
   const [authError, setAuthError] = useState<string | null>(null);
   const [staffRole, setStaffRole] = useState<StaffRole | null>(null);
   const [allStaffRoles, setAllStaffRoles] = useState<StaffRole[]>([]);
   const [staffInvites, setStaffInvites] = useState<StaffInvite[]>([]);
-  const [playersPrivate, setPlayersPrivate] = useState<Record<string, PlayerPrivate>>({});
+  const [extraPlayersPrivate, setExtraPlayersPrivate] = useState<Record<string, PlayerPrivate>>({});
   const [draftPhotos, setDraftPhotos] = useState<MatchdayPhoto[]>([]);
   const [seeding, setSeeding] = useState(false);
   const [cleaningDuplicates, setCleaningDuplicates] = useState(false);
@@ -177,7 +213,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const resolvedPerms = resolveEffectivePermissions(roleDoc, bootstrapped);
 
     if (bootstrapped || resolvedPerms) {
-      await seedDemoTournamentsToFirestore(currentUser.uid, false).catch(() => false);
+      if (tournaments.length === 0) {
+        await seedDemoTournamentsToFirestore(currentUser.uid, false).catch(() => false);
+      }
       const drafts = await fetchDraftPhotosForAdmin();
       setDraftPhotos(drafts);
       if (bootstrapped || resolvedPerms?.manageUsers) {
@@ -199,16 +237,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setStaffRole(null);
       setAllStaffRoles([]);
       setStaffInvites([]);
-      setPlayersPrivate({});
+      setExtraPlayersPrivate({});
       setDraftPhotos([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
-  useEffect(() => {
-    if (user && effectivePermissions?.managePlayers && players.length > 0) {
-      fetchAllPlayersPrivate(players.map((p) => p.id)).then(setPlayersPrivate);
-    }
-  }, [user, effectivePermissions?.managePlayers, players]);
 
   const accessibleTournaments = useMemo(
     () =>
@@ -216,6 +249,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         canUserAccessTournament(staffRole, isBootstrappedSuperAdmin, t.id)
       ),
     [tournaments, staffRole, isBootstrappedSuperAdmin]
+  );
+
+  const activeTournament = useMemo(
+    () =>
+      accessibleTournaments.find((t) => t.id === selectedTournamentId) || accessibleTournaments[0],
+    [accessibleTournaments, selectedTournamentId]
+  );
+
+  // Consulta única cacheada con React Query en lugar de N llamadas getDoc individuales
+  const { data: queriedPlayersPrivate = {} } = useQuery({
+    queryKey: ['players_private', activeTournament?.id || 'none'],
+    queryFn: () => fetchPlayersPrivateByTournament(activeTournament!.id),
+    enabled: Boolean(user && effectivePermissions?.managePlayers && activeTournament?.id),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const playersPrivate = useMemo(
+    () => ({ ...queriedPlayersPrivate, ...extraPlayersPrivate }),
+    [queriedPlayersPrivate, extraPlayersPrivate]
   );
 
   const duplicateAnalysis = useMemo(() => analyzeDuplicateMatches(matches), [matches]);
@@ -330,8 +382,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
   }
 
-  const activeTournament =
-    accessibleTournaments.find((t) => t.id === selectedTournamentId) || accessibleTournaments[0];
   const tournamentDivisions = divisions.filter((d) => d.tournamentId === activeTournament?.id);
   const tournamentPlayers = players.filter((p) => p.tournamentId === activeTournament?.id);
   const activeDivision =
@@ -784,185 +834,230 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
 
           {currentTab === 'torneos' && effectivePermissions.manageTournaments && (
-            <AdminTournamentsSection
-              tournaments={accessibleTournaments}
-              divisions={divisions}
-              players={players}
-              registrations={registrations}
-              groups={groups}
-              matchdays={matchdays}
-              matches={matches}
-              publishedPhotos={publishedPhotos}
-              draftPhotos={draftPhotos}
-              notifications={notifications}
-              tournamentAds={tournamentAds}
-              tournamentTrophies={tournamentTrophies}
-              selectedTournamentId={activeTournament?.id || ''}
-              onSelectTournament={onSelectTournament}
-              selectedDivisionId={activeDivision?.id || ''}
-              onSelectDivision={onSelectDivision}
-              currentUid={user.uid}
-              isSuperAdmin={isSuperAdmin}
-              permissions={effectivePermissions}
-              onOpenItfModal={onOpenItfModal}
-              onOpenQrModal={() => setQrModalOpen(true)}
-              onOpenFlyerModal={() => setFlyerModalOpen(true)}
-            />
+            <ErrorBoundary scopeLabel="la gestión de torneos" inline>
+              <Suspense fallback={<AdminSectionSkeleton />}>
+                <AdminTournamentsSection
+                  tournaments={accessibleTournaments}
+                  divisions={divisions}
+                  players={players}
+                  registrations={registrations}
+                  groups={groups}
+                  matchdays={matchdays}
+                  matches={matches}
+                  publishedPhotos={publishedPhotos}
+                  draftPhotos={draftPhotos}
+                  notifications={notifications}
+                  tournamentAds={tournamentAds}
+                  tournamentTrophies={tournamentTrophies}
+                  selectedTournamentId={activeTournament?.id || ''}
+                  onSelectTournament={onSelectTournament}
+                  selectedDivisionId={activeDivision?.id || ''}
+                  onSelectDivision={onSelectDivision}
+                  currentUid={user.uid}
+                  isSuperAdmin={isSuperAdmin}
+                  permissions={effectivePermissions}
+                  onOpenItfModal={onOpenItfModal}
+                  onOpenQrModal={() => setQrModalOpen(true)}
+                  onOpenFlyerModal={() => setFlyerModalOpen(true)}
+                />
+              </Suspense>
+            </ErrorBoundary>
           )}
 
           {currentTab === 'jugadores' && effectivePermissions.managePlayers && (
-            <AdminPlayersSection
-              tournament={activeTournament || null}
-              divisions={tournamentDivisions}
-              playersPublic={tournamentPlayers}
-              playersPrivate={playersPrivate}
-              registrations={registrations}
-              isSuperAdmin={isSuperAdmin}
-              permissions={effectivePermissions}
-              onRefreshPrivate={async (ids) => {
-                const fetched = await fetchAllPlayersPrivate(ids);
-                setPlayersPrivate((prev) => ({ ...prev, ...fetched }));
-              }}
-            />
+            <ErrorBoundary scopeLabel="el padrón de jugadores" inline>
+              <Suspense fallback={<AdminSectionSkeleton />}>
+                <AdminPlayersSection
+                  tournament={activeTournament || null}
+                  divisions={tournamentDivisions}
+                  playersPublic={tournamentPlayers}
+                  playersPrivate={playersPrivate}
+                  registrations={registrations}
+                  isSuperAdmin={isSuperAdmin}
+                  permissions={effectivePermissions}
+                  onRefreshPrivate={async (ids) => {
+                    const fetched = await fetchAllPlayersPrivate(ids);
+                    setExtraPlayersPrivate((prev) => ({ ...prev, ...fetched }));
+                    if (activeTournament?.id) {
+                      void queryClient.invalidateQueries({
+                        queryKey: ['players_private', activeTournament.id],
+                      });
+                    }
+                  }}
+                />
+              </Suspense>
+            </ErrorBoundary>
           )}
 
           {currentTab === 'inscripciones' && activeDivision && effectivePermissions.manageDraws && (
-            <AdminRegistrationsDrawSection
-              division={activeDivision}
-              divisions={tournamentDivisions}
-              onSelectDivision={onSelectDivision}
-              allDivisions={divisions}
-              players={tournamentPlayers}
-              registrations={divisionRegistrations}
-              allRegistrations={registrations}
-              groups={divisionGroups}
-              matches={divisionMatches}
-              isSuperAdmin={isSuperAdmin}
-              permissions={effectivePermissions}
-            />
+            <ErrorBoundary scopeLabel="las inscripciones y sorteos" inline>
+              <Suspense fallback={<AdminSectionSkeleton />}>
+                <AdminRegistrationsDrawSection
+                  division={activeDivision}
+                  divisions={tournamentDivisions}
+                  onSelectDivision={onSelectDivision}
+                  allDivisions={divisions}
+                  players={tournamentPlayers}
+                  registrations={divisionRegistrations}
+                  allRegistrations={registrations}
+                  groups={divisionGroups}
+                  matches={divisionMatches}
+                  isSuperAdmin={isSuperAdmin}
+                  permissions={effectivePermissions}
+                />
+              </Suspense>
+            </ErrorBoundary>
           )}
 
           {currentTab === 'jornadas' &&
             activeTournament &&
             activeDivision &&
             effectivePermissions.manageScheduleAndMedia && (
-              <AdminMatchdaysAndPhotosSection
-                tournament={activeTournament}
-                tournaments={accessibleTournaments}
-                division={activeDivision}
-                divisions={tournamentDivisions}
-                onSelectDivision={onSelectDivision}
-                matchdays={divisionMatchdays}
-                divisionMatches={divisionMatches}
-                allMatches={matches}
-                publishedPhotos={publishedPhotos}
-                draftPhotos={draftPhotos}
-                onDraftPhotosChange={setDraftPhotos}
-                userEmail={user.email || 'staff'}
-                isSuperAdmin={isSuperAdmin}
-                permissions={effectivePermissions}
-                onOpenFlyerModal={() => setFlyerModalOpen(true)}
-              />
+              <ErrorBoundary scopeLabel="las jornadas y galerías" inline>
+                <Suspense fallback={<AdminSectionSkeleton />}>
+                  <AdminMatchdaysAndPhotosSection
+                    tournament={activeTournament}
+                    tournaments={accessibleTournaments}
+                    division={activeDivision}
+                    divisions={tournamentDivisions}
+                    onSelectDivision={onSelectDivision}
+                    matchdays={divisionMatchdays}
+                    divisionMatches={divisionMatches}
+                    allMatches={matches}
+                    publishedPhotos={publishedPhotos}
+                    draftPhotos={draftPhotos}
+                    onDraftPhotosChange={setDraftPhotos}
+                    userEmail={user.email || 'staff'}
+                    isSuperAdmin={isSuperAdmin}
+                    permissions={effectivePermissions}
+                    onOpenFlyerModal={() => setFlyerModalOpen(true)}
+                  />
+                </Suspense>
+              </ErrorBoundary>
             )}
 
           {currentTab === 'marcadores' &&
             activeTournament &&
             activeDivision &&
             effectivePermissions.manageScoring && (
-              <AdminScoringAndRolesSection
-                tournament={activeTournament}
-                division={activeDivision}
-                divisions={tournamentDivisions}
-                onSelectDivision={onSelectDivision}
-                divisionMatches={divisionMatches}
-                tournamentMatches={tournamentMatches}
-                allMatches={matches}
-                allDivisions={divisions}
-                divisionGroups={divisionGroups}
-                allGroups={groups}
-                divisionRegistrations={divisionRegistrations}
-                allRegistrations={registrations}
-                players={tournamentPlayers}
-                userEmail={user.email || 'staff'}
-                isSuperAdmin={isSuperAdmin}
-                permissions={effectivePermissions}
-                canOpenUsersTab={Boolean(isSuperAdmin || effectivePermissions.manageUsers)}
-                onOpenUsersTab={() => setActiveTab('usuarios')}
-                onOpenDiagnosticTab={() => setActiveTab('diagnostico')}
-              />
+              <ErrorBoundary scopeLabel="los marcadores oficiales" inline>
+                <Suspense fallback={<AdminSectionSkeleton />}>
+                  <AdminScoringAndRolesSection
+                    tournament={activeTournament}
+                    division={activeDivision}
+                    divisions={tournamentDivisions}
+                    onSelectDivision={onSelectDivision}
+                    divisionMatches={divisionMatches}
+                    tournamentMatches={tournamentMatches}
+                    allMatches={matches}
+                    allDivisions={divisions}
+                    divisionGroups={divisionGroups}
+                    allGroups={groups}
+                    divisionRegistrations={divisionRegistrations}
+                    allRegistrations={registrations}
+                    players={tournamentPlayers}
+                    userEmail={user.email || 'staff'}
+                    isSuperAdmin={isSuperAdmin}
+                    permissions={effectivePermissions}
+                    canOpenUsersTab={Boolean(isSuperAdmin || effectivePermissions.manageUsers)}
+                    onOpenUsersTab={() => setActiveTab('usuarios')}
+                    onOpenDiagnosticTab={() => setActiveTab('diagnostico')}
+                  />
+                </Suspense>
+              </ErrorBoundary>
             )}
 
           {currentTab === 'diagnostico' &&
             activeTournament &&
             activeDivision &&
             (effectivePermissions.manageScoring || effectivePermissions.manageDraws) && (
-              <AdminEliminationDiagnosticPanel
-                tournament={activeTournament}
-                division={activeDivision}
-                divisions={tournamentDivisions}
-                onSelectDivision={onSelectDivision}
-                divisionMatches={divisionMatches}
-                tournamentMatches={tournamentMatches}
-                allMatches={matches}
-                allDivisions={divisions}
-                allGroups={groups}
-                divisionRegistrations={divisionRegistrations}
-                allRegistrations={registrations}
-                players={tournamentPlayers}
-                userEmail={user.email || 'staff'}
-                isSuperAdmin={isSuperAdmin}
-                permissions={effectivePermissions}
-                onOpenScoringTab={() => setActiveTab('marcadores')}
-              />
+              <ErrorBoundary scopeLabel="el diagnóstico de llaves" inline>
+                <Suspense fallback={<AdminSectionSkeleton />}>
+                  <AdminEliminationDiagnosticPanel
+                    tournament={activeTournament}
+                    division={activeDivision}
+                    divisions={tournamentDivisions}
+                    onSelectDivision={onSelectDivision}
+                    divisionMatches={divisionMatches}
+                    tournamentMatches={tournamentMatches}
+                    allMatches={matches}
+                    allDivisions={divisions}
+                    allGroups={groups}
+                    divisionRegistrations={divisionRegistrations}
+                    allRegistrations={registrations}
+                    players={tournamentPlayers}
+                    userEmail={user.email || 'staff'}
+                    isSuperAdmin={isSuperAdmin}
+                    permissions={effectivePermissions}
+                    onOpenScoringTab={() => setActiveTab('marcadores')}
+                  />
+                </Suspense>
+              </ErrorBoundary>
             )}
 
           {currentTab === 'pagina_principal' && effectivePermissions.manageLandingPage && (
-            <AdminLandingPageSection
-              siteConfig={siteConfig}
-              tournaments={accessibleTournaments}
-              userEmail={user.email || 'staff'}
-              isSuperAdmin={isSuperAdmin}
-              permissions={effectivePermissions}
-            />
+            <ErrorBoundary scopeLabel="la portada del sitio" inline>
+              <Suspense fallback={<AdminSectionSkeleton />}>
+                <AdminLandingPageSection
+                  siteConfig={siteConfig}
+                  tournaments={accessibleTournaments}
+                  userEmail={user.email || 'staff'}
+                  isSuperAdmin={isSuperAdmin}
+                  permissions={effectivePermissions}
+                />
+              </Suspense>
+            </ErrorBoundary>
           )}
 
           {currentTab === 'usuarios' && (isSuperAdmin || effectivePermissions.manageUsers) && (
-            <AdminUsersPermissionsSection
-              tournaments={isSuperAdmin ? tournaments : accessibleTournaments}
-              staffRoles={allStaffRoles}
-              staffInvites={staffInvites}
-              currentUserUid={user.uid}
-              currentUserEmail={user.email || ''}
-              isBootstrappedSuperAdmin={isBootstrappedSuperAdmin}
-              canCreate={Boolean(isSuperAdmin || effectivePermissions.canCreate)}
-              canEdit={Boolean(isSuperAdmin || effectivePermissions.canEdit)}
-              canDelete={Boolean(isSuperAdmin || effectivePermissions.canDelete)}
-              onRefreshUsers={refreshUsersList}
-            />
+            <ErrorBoundary scopeLabel="los usuarios y permisos" inline>
+              <Suspense fallback={<AdminSectionSkeleton />}>
+                <AdminUsersPermissionsSection
+                  tournaments={isSuperAdmin ? tournaments : accessibleTournaments}
+                  staffRoles={allStaffRoles}
+                  staffInvites={staffInvites}
+                  currentUserUid={user.uid}
+                  currentUserEmail={user.email || ''}
+                  isBootstrappedSuperAdmin={isBootstrappedSuperAdmin}
+                  canCreate={Boolean(isSuperAdmin || effectivePermissions.canCreate)}
+                  canEdit={Boolean(isSuperAdmin || effectivePermissions.canEdit)}
+                  canDelete={Boolean(isSuperAdmin || effectivePermissions.canDelete)}
+                  onRefreshUsers={refreshUsersList}
+                />
+              </Suspense>
+            </ErrorBoundary>
           )}
         </div>
       </div>
 
       {activeTournament && (
         <>
-          <TournamentQrModal
-            open={qrModalOpen}
-            onClose={() => setQrModalOpen(false)}
-            tournament={activeTournament}
-            divisions={tournamentDivisions}
-            defaultDivisionId={activeDivision?.id}
-            logoUrl={siteConfig.logoUrl}
-          />
-          <MatchupsFlyerModal
-            open={flyerModalOpen}
-            onClose={() => setFlyerModalOpen(false)}
-            tournament={activeTournament}
-            divisions={tournamentDivisions}
-            matches={tournamentMatches}
-            matchdays={tournamentMatchdays}
-            defaultDivisionId={activeDivision?.id}
-            logoUrl={siteConfig.logoUrl}
-          />
+          {qrModalOpen && (
+            <Suspense fallback={<ModalSkeleton />}>
+              <TournamentQrModal
+                open={qrModalOpen}
+                onClose={() => setQrModalOpen(false)}
+                tournament={activeTournament}
+                divisions={tournamentDivisions}
+                defaultDivisionId={activeDivision?.id}
+                logoUrl={siteConfig.logoUrl}
+              />
+            </Suspense>
+          )}
+          {flyerModalOpen && (
+            <Suspense fallback={<ModalSkeleton />}>
+              <MatchupsFlyerModal
+                open={flyerModalOpen}
+                onClose={() => setFlyerModalOpen(false)}
+                tournament={activeTournament}
+                divisions={tournamentDivisions}
+                matches={tournamentMatches}
+                matchdays={tournamentMatchdays}
+                defaultDivisionId={activeDivision?.id}
+                logoUrl={siteConfig.logoUrl}
+              />
+            </Suspense>
+          )}
         </>
       )}
     </div>

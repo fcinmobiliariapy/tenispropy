@@ -590,6 +590,9 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
                 <img
                   src={currentDataUrl}
                   alt={`Vista previa flyer hoja ${pageIdx + 1}`}
+                  width={900}
+                  height={636}
+                  decoding="async"
                   className="max-h-[68vh] max-w-full rounded-2xl border border-[#CBD5E1] shadow-lg object-contain bg-[#0A1633]"
                 />
               ) : (

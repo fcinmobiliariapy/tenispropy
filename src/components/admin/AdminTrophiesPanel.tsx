@@ -8,7 +8,7 @@ import {
   TrophyFinish,
   TrophyPlace,
 } from '../../types/tennis';
-import { optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
+import { getOptimizedImageUrl, optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
 import { makeId } from '../../utils/tournamentEngine';
 import { removeEntity, saveEntity } from '../../services/firestoreService';
 import {
@@ -540,8 +540,12 @@ export const AdminTrophiesPanel: React.FC<AdminTrophiesPanelProps> = ({
             <div className="sm:col-span-4 flex justify-center">
               {imageUrl && !previewErr ? (
                 <img
-                  src={imageUrl}
+                  src={getOptimizedImageUrl(imageUrl, 360)}
                   alt="Vista previa del trofeo"
+                  width={176}
+                  height={194}
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   onError={() => setPreviewErr(true)}
                   className="w-44 aspect-[10/11] rounded-xl object-cover border border-[#E2E8F0] bg-[#0A1633]"
@@ -632,8 +636,12 @@ export const AdminTrophiesPanel: React.FC<AdminTrophiesPanelProps> = ({
               <div className="flex items-start gap-3">
                 {!brokenThumbIds[t.id] && t.imageUrl ? (
                   <img
-                    src={t.imageUrl}
+                    src={getOptimizedImageUrl(t.imageUrl, 240)}
                     alt={t.title}
+                    width={64}
+                    height={70}
+                    loading="lazy"
+                    decoding="async"
                     referrerPolicy="no-referrer"
                     onError={() =>
                       setBrokenThumbIds((prev) => ({ ...prev, [t.id]: true }))

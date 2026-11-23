@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Award, Crown, Maximize2, Medal, Sparkles, Trophy, X } from 'lucide-react';
+import { getOptimizedImageUrl } from '../utils/imageOptimizer';
 import {
   Division,
   Tournament,
@@ -240,8 +241,12 @@ export const TournamentTrophiesViewer: React.FC<TournamentTrophiesViewerProps> =
                 >
                   {!broken && trophy.imageUrl ? (
                     <img
-                      src={trophy.imageUrl}
+                      src={getOptimizedImageUrl(trophy.imageUrl, 520)}
                       alt={trophy.title}
+                      width={500}
+                      height={550}
+                      loading="lazy"
+                      decoding="async"
                       referrerPolicy="no-referrer"
                       onError={() =>
                         setBrokenImgIds((prev) => ({ ...prev, [trophy.id]: true }))
@@ -359,8 +364,11 @@ export const TournamentTrophiesViewer: React.FC<TournamentTrophiesViewerProps> =
 
             <div className="bg-[#0A1633] flex items-center justify-center max-h-[65vh] overflow-hidden">
               <img
-                src={lightboxTrophy.imageUrl}
+                src={getOptimizedImageUrl(lightboxTrophy.imageUrl, 960)}
                 alt={lightboxTrophy.title}
+                width={900}
+                height={990}
+                decoding="async"
                 referrerPolicy="no-referrer"
                 className="max-h-[65vh] w-auto object-contain"
               />

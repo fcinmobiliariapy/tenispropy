@@ -24,7 +24,7 @@ import {
 } from '../../data/siteConfigDefaults';
 import { auth } from '../../firebase';
 import { saveEntity } from '../../services/firestoreService';
-import { compressImageDataUrl, optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
+import { compressImageDataUrl, getOptimizedImageUrl, optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
 import { BannerStylePreset, generateAdaptiveTournamentAdBanners } from '../TournamentAd';
 
 interface AdminLandingPageSectionProps {
@@ -533,8 +533,12 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
           <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
             <div className="flex items-center gap-3">
               <img
-                src={form.logoUrl || OFFICIAL_PLAYPY_LOGO}
+                src={getOptimizedImageUrl(form.logoUrl || OFFICIAL_PLAYPY_LOGO, 200)}
                 alt="Vista previa logo"
+                width={56}
+                height={56}
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
                 className="w-14 h-14 rounded-xl bg-white border border-[#E2E8F0] object-contain p-1 shrink-0"
               />
@@ -577,8 +581,12 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
           <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
             <div className="flex items-center gap-3">
               <img
-                src={form.defaultTournamentCoverUrl || DEFAULT_TOURNAMENT_COVER}
+                src={getOptimizedImageUrl(form.defaultTournamentCoverUrl || DEFAULT_TOURNAMENT_COVER, 320)}
                 alt="Vista previa portada por defecto"
+                width={80}
+                height={56}
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
                 className="w-20 h-14 rounded-xl bg-[#0A1633] border border-[#E2E8F0] object-cover shrink-0"
               />
@@ -744,8 +752,12 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
               </div>
               {form.heroBackgroundImageUrl && (
                 <img
-                  src={form.heroBackgroundImageUrl}
+                  src={getOptimizedImageUrl(form.heroBackgroundImageUrl, 640)}
                   alt="Fondo Hero"
+                  width={480}
+                  height={96}
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   className="w-full h-24 rounded-lg object-cover border border-[#E2E8F0]"
                 />
@@ -906,8 +918,12 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
 
             {form.bannerImageHorizontalUrl ? (
               <img
-                src={form.bannerImageHorizontalUrl}
+                src={getOptimizedImageUrl(form.bannerImageHorizontalUrl, 640)}
                 alt="Vista previa Horizontal 16:9"
+                width={480}
+                height={270}
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
                 className="w-full aspect-[16/9] rounded-lg object-cover bg-[#0A1633] border border-[#E2E8F0]"
               />
@@ -964,8 +980,12 @@ export const AdminLandingPageSection: React.FC<AdminLandingPageSectionProps> = (
             {form.bannerImageVerticalUrl ? (
               <div className="flex justify-center bg-[#0A1633] rounded-lg p-2 border border-[#E2E8F0]">
                 <img
-                  src={form.bannerImageVerticalUrl}
+                  src={getOptimizedImageUrl(form.bannerImageVerticalUrl, 480)}
                   alt="Vista previa Vertical 3:4"
+                  width={132}
+                  height={176}
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   className="h-44 aspect-[3/4] rounded object-cover"
                 />

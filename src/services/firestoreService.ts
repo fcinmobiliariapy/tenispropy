@@ -2,11 +2,17 @@ import {
   collection,
   deleteDoc,
   doc,
+  DocumentData,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   query,
+  Query,
+  QueryConstraint,
+  QueryDocumentSnapshot,
   setDoc,
+  startAfter,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -31,14 +37,13 @@ import {
 } from '../types/tennis';
 import { buildStaffInviteId, normalizePermissions } from '../utils/rbac';
 
-export function subscribeCollection<T>(
-  collectionName: string,
-  onData: (items: T[]) => void,
-  onlyPublishedFilter = false
-): () => void {
-  const colRef = collection(db, collectionName);
-  const q = onlyPublishedFilter ? query(colRef, where('published', '==', true)) : colRef;
+const DEFAULT_QUERY_LIMIT = 500;
 
+function subscribeWithResilience<T>(
+  q: Query<DocumentData>,
+  collectionName: string,
+  onData: (items: T[]) => void
+): () => void {
   let disposed = false;
   let retryCount = 0;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -117,6 +122,117 @@ export function subscribeCollection<T>(
     }
     currentUnsub?.();
     currentUnsub = null;
+  };
+}
+
+export function subscribeCollection<T>(
+  collectionName: string,
+  onData: (items: T[]) => void,
+  onlyPublishedFilter = false,
+  maxLimit = DEFAULT_QUERY_LIMIT
+): () => void {
+  const colRef = collection(db, collectionName);
+  const constraints: QueryConstraint[] = [];
+  if (onlyPublishedFilter) {
+    constraints.push(where('published', '==', true));
+  }
+  constraints.push(limit(Math.min(maxLimit, DEFAULT_QUERY_LIMIT)));
+  const q = query(colRef, ...constraints);
+  return subscribeWithResilience<T>(q, collectionName, onData);
+}
+
+export function subscribeTournamentCollection<T>(
+  collectionName: string,
+  tournamentId: string,
+  onData: (items: T[]) => void,
+  maxLimit = DEFAULT_QUERY_LIMIT
+): () => void {
+  if (!tournamentId) {
+    onData([]);
+    return () => {};
+  }
+  const q = query(
+    collection(db, collectionName),
+    where('tournamentId', '==', tournamentId),
+    limit(Math.min(maxLimit, DEFAULT_QUERY_LIMIT))
+  );
+  return subscribeWithResilience<T>(q, collectionName, onData);
+}
+
+export async function fetchCollectionLimited<T>(
+  collectionName: string,
+  maxLimit = 200,
+  extraConstraints: QueryConstraint[] = []
+): Promise<T[]> {
+  try {
+    const q = query(
+      collection(db, collectionName),
+      ...extraConstraints,
+      limit(Math.min(maxLimit, DEFAULT_QUERY_LIMIT))
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.data() as T);
+  } catch (err) {
+    console.warn(`Error al consultar ${collectionName}:`, err);
+    return [];
+  }
+}
+
+export async function fetchSiteSettingsOnce(): Promise<SiteLandingConfig[]> {
+  return fetchCollectionLimited<SiteLandingConfig>('site_settings', 5);
+}
+
+export async function fetchTournamentsOnce(): Promise<Tournament[]> {
+  return fetchCollectionLimited<Tournament>('tournaments', 50);
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  nextCursor: QueryDocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+}
+
+export async function fetchPaginatedPlayersByTournament(params: {
+  tournamentId: string;
+  pageSize?: number;
+  cursor?: QueryDocumentSnapshot<DocumentData> | null;
+}): Promise<PaginatedResult<PlayerPublic>> {
+  const { tournamentId, pageSize = 18, cursor = null } = params;
+  if (!tournamentId) {
+    return { items: [], nextCursor: null, hasMore: false };
+  }
+  const safeSize = Math.min(Math.max(1, pageSize), 100);
+  const constraints: QueryConstraint[] = [where('tournamentId', '==', tournamentId)];
+  if (cursor) constraints.push(startAfter(cursor));
+  constraints.push(limit(safeSize + 1));
+
+  const snap = await getDocs(query(collection(db, 'players_public'), ...constraints));
+  const hasMore = snap.docs.length > safeSize;
+  const pageDocs = hasMore ? snap.docs.slice(0, safeSize) : snap.docs;
+  return {
+    items: pageDocs.map((d) => d.data() as PlayerPublic),
+    nextCursor: hasMore && pageDocs.length > 0 ? pageDocs[pageDocs.length - 1] : null,
+    hasMore,
+  };
+}
+
+export async function fetchPaginatedPublishedPhotos(params: {
+  pageSize?: number;
+  cursor?: QueryDocumentSnapshot<DocumentData> | null;
+}): Promise<PaginatedResult<MatchdayPhoto>> {
+  const { pageSize = 24, cursor = null } = params;
+  const safeSize = Math.min(Math.max(1, pageSize), 100);
+  const constraints: QueryConstraint[] = [where('published', '==', true)];
+  if (cursor) constraints.push(startAfter(cursor));
+  constraints.push(limit(safeSize + 1));
+
+  const snap = await getDocs(query(collection(db, 'photos'), ...constraints));
+  const hasMore = snap.docs.length > safeSize;
+  const pageDocs = hasMore ? snap.docs.slice(0, safeSize) : snap.docs;
+  return {
+    items: pageDocs.map((d) => d.data() as MatchdayPhoto),
+    nextCursor: hasMore && pageDocs.length > 0 ? pageDocs[pageDocs.length - 1] : null,
+    hasMore,
   };
 }
 
@@ -304,6 +420,31 @@ export async function fetchStaffRole(uid: string): Promise<StaffRole | null> {
   }
 }
 
+export async function fetchPlayersPrivateByTournament(
+  tournamentId: string
+): Promise<Record<string, PlayerPrivate>> {
+  if (!tournamentId) return {};
+  try {
+    const q = query(
+      collection(db, 'players_private'),
+      where('tournamentId', '==', tournamentId),
+      limit(DEFAULT_QUERY_LIMIT)
+    );
+    const snap = await getDocs(q);
+    const result: Record<string, PlayerPrivate> = {};
+    snap.docs.forEach((d) => {
+      const priv = d.data() as PlayerPrivate;
+      if (priv?.playerId) {
+        result[priv.playerId] = priv;
+      }
+    });
+    return result;
+  } catch (err) {
+    console.warn(`No se pudo obtener PII del torneo ${tournamentId}:`, err);
+    return {};
+  }
+}
+
 export async function fetchAllPlayersPrivate(playerIds: string[]): Promise<Record<string, PlayerPrivate>> {
   const result: Record<string, PlayerPrivate> = {};
   await Promise.all(
@@ -332,7 +473,7 @@ export async function saveStaffRole(staff: StaffRole): Promise<void> {
 
 export async function fetchAllStaffRoles(): Promise<StaffRole[]> {
   try {
-    const snap = await getDocs(collection(db, 'staff_roles'));
+    const snap = await getDocs(query(collection(db, 'staff_roles'), limit(250)));
     return snap.docs.map((d) => d.data() as StaffRole);
   } catch (error) {
     console.warn('Error al listar staff_roles:', error);
@@ -351,7 +492,7 @@ export async function deleteStaffRole(uid: string): Promise<void> {
 
 export async function fetchStaffInvites(): Promise<StaffInvite[]> {
   try {
-    const snap = await getDocs(collection(db, 'staff_invites'));
+    const snap = await getDocs(query(collection(db, 'staff_invites'), limit(250)));
     return snap.docs.map((d) => d.data() as StaffInvite);
   } catch (error) {
     console.warn('Error al listar staff_invites:', error);
@@ -427,7 +568,7 @@ export async function claimStaffInvite(
 
 export async function fetchDraftPhotosForAdmin(): Promise<MatchdayPhoto[]> {
   try {
-    const q = query(collection(db, 'photos_drafts'), where('published', '==', false));
+    const q = query(collection(db, 'photos_drafts'), where('published', '==', false), limit(250));
     const snap = await getDocs(q);
     return snap.docs.map((d) => d.data() as MatchdayPhoto);
   } catch {
@@ -435,9 +576,13 @@ export async function fetchDraftPhotosForAdmin(): Promise<MatchdayPhoto[]> {
   }
 }
 
-export async function fetchPublishedMatchesFromFirestore(): Promise<Match[]> {
+export async function fetchPublishedMatchesFromFirestore(maxLimit = 250): Promise<Match[]> {
   try {
-    const q = query(collection(db, 'matches'), where('published', '==', true));
+    const q = query(
+      collection(db, 'matches'),
+      where('published', '==', true),
+      limit(Math.min(maxLimit, DEFAULT_QUERY_LIMIT))
+    );
     const snap = await getDocs(q);
     return snap.docs.map((d) => d.data() as Match);
   } catch (err) {
@@ -448,7 +593,7 @@ export async function fetchPublishedMatchesFromFirestore(): Promise<Match[]> {
 
 export async function seedDemoTournamentsToFirestore(adminUid: string, force = false): Promise<boolean> {
   try {
-    const existing = await getDocs(collection(db, 'tournaments'));
+    const existing = await getDocs(query(collection(db, 'tournaments'), limit(5)));
     if (!force && !existing.empty) {
       return false;
     }

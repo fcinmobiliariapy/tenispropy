@@ -2,6 +2,7 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
@@ -1044,6 +1045,129 @@ app.post('/api/uploads', (req, res) => {
     console.error('Error al guardar imagen:', err);
     res.status(500).json({ error: 'Error interno al procesar la imagen.' });
   }
+});
+
+// Soporte opcional para Cloudflare R2 (10 GB gratis y $0 egress) vía URL firmada S3v4
+function getR2Config() {
+  const accountId = (process.env.R2_ACCOUNT_ID || '').trim();
+  const accessKeyId = (process.env.R2_ACCESS_KEY_ID || '').trim();
+  const secretAccessKey = (process.env.R2_SECRET_ACCESS_KEY || '').trim();
+  const bucketName = (process.env.R2_BUCKET_NAME || '').trim();
+  const publicUrl = (process.env.R2_PUBLIC_URL || '').trim().replace(/\/+$/, '');
+  const configured = Boolean(accountId && accessKeyId && secretAccessKey && bucketName && publicUrl);
+  return { configured, accountId, accessKeyId, secretAccessKey, bucketName, publicUrl };
+}
+
+function hmacSha256(key: string | Buffer, data: string): Buffer {
+  return crypto.createHmac('sha256', key).update(data, 'utf8').digest();
+}
+
+function createR2PresignedPutUrl(params: {
+  accountId: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucketName: string;
+  key: string;
+  expiresSeconds?: number;
+}): string {
+  const { accountId, accessKeyId, secretAccessKey, bucketName, key, expiresSeconds = 300 } = params;
+  const host = `${accountId}.r2.cloudflarestorage.com`;
+  const region = 'auto';
+  const service = 's3';
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const canonicalUri = `/${encodeURIComponent(bucketName)}/${key
+    .split('/')
+    .map((seg) => encodeURIComponent(seg))
+    .join('/')}`;
+
+  const queryParams = new URLSearchParams({
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': `${accessKeyId}/${credentialScope}`,
+    'X-Amz-Date': amzDate,
+    'X-Amz-Expires': String(expiresSeconds),
+    'X-Amz-SignedHeaders': 'host',
+  });
+  queryParams.sort();
+  const canonicalQueryString = queryParams.toString().replace(/\+/g, '%20');
+  const canonicalHeaders = `host:${host}\n`;
+  const canonicalRequest = [
+    'PUT',
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    'host',
+    'UNSIGNED-PAYLOAD',
+  ].join('\n');
+
+  const hashedRequest = crypto.createHash('sha256').update(canonicalRequest, 'utf8').digest('hex');
+  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, credentialScope, hashedRequest].join('\n');
+
+  const kDate = hmacSha256(`AWS4${secretAccessKey}`, dateStamp);
+  const kRegion = hmacSha256(kDate, region);
+  const kService = hmacSha256(kRegion, service);
+  const kSigning = hmacSha256(kService, 'aws4_request');
+  const signature = crypto.createHmac('sha256', kSigning).update(stringToSign, 'utf8').digest('hex');
+
+  return `https://${host}${canonicalUri}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
+}
+
+app.get('/api/uploads/storage-info', (_req, res) => {
+  const r2 = getR2Config();
+  res.json({
+    r2Configured: r2.configured,
+    maxUploadBytes: 8 * 1024 * 1024,
+  });
+});
+
+app.post('/api/uploads/presign-r2', (req, res) => {
+  const r2 = getR2Config();
+  if (!r2.configured) {
+    res.status(503).json({
+      error: 'Cloudflare R2 no está configurado en las variables de entorno del servidor.',
+    });
+    return;
+  }
+
+  const body = req.body as { folder?: string; filename?: string; contentType?: string };
+  const allowedFolders = new Set(['photos', 'avatars', 'banners']);
+  const folder = body.folder && allowedFolders.has(body.folder) ? body.folder : 'photos';
+
+  const mime = String(body.contentType || 'image/webp').toLowerCase();
+  const extMap: Record<string, string> = {
+    'image/webp': 'webp',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+  };
+  const ext = extMap[mime];
+  if (!ext) {
+    res.status(400).json({ error: 'Tipo de contenido no permitido. Usá WebP, JPG o PNG.' });
+    return;
+  }
+
+  const baseSlug = String(body.filename || 'imagen')
+    .replace(/\.[^.]+$/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '_')
+    .slice(0, 32) || 'imagen';
+  const uid = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const key = `playpy/${folder}/${baseSlug}_${uid}.${ext}`;
+
+  const uploadUrl = createR2PresignedPutUrl({
+    accountId: r2.accountId,
+    accessKeyId: r2.accessKeyId,
+    secretAccessKey: r2.secretAccessKey,
+    bucketName: r2.bucketName,
+    key,
+  });
+
+  res.json({
+    uploadUrl,
+    publicUrl: `${r2.publicUrl}/${key}`,
+    key,
+  });
 });
 
 const server = http.createServer(app);

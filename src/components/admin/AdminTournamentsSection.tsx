@@ -38,7 +38,7 @@ import {
   TournamentTrophy,
 } from '../../types/tennis';
 import { ITF_EDITION_LABEL } from '../../utils/itfRules';
-import { compressImageDataUrl, optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
+import { compressImageDataUrl, getOptimizedImageUrl, optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
 import { makeId } from '../../utils/tournamentEngine';
 import {
   deleteDivisionCascade,
@@ -1261,8 +1261,12 @@ export const AdminTournamentsSection: React.FC<Props> = ({
 
             <div className="flex items-center gap-3">
               <img
-                src={tCoverImageUrl || DEFAULT_COVER_IMAGE}
+                src={getOptimizedImageUrl(tCoverImageUrl || DEFAULT_COVER_IMAGE, 480)}
                 alt="Vista previa de portada del torneo"
+                width={144}
+                height={81}
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
                 onError={() => setFormCoverPreviewError(true)}
                 className="w-36 aspect-[16/9] rounded-lg object-cover border border-[#E2E8F0] bg-slate-100 shrink-0"
@@ -1503,14 +1507,19 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                 <div className="w-full sm:w-44 aspect-[16/9] rounded-xl overflow-hidden border border-[#E2E8F0] bg-slate-100 shrink-0 relative">
                   <img
-                    src={
+                    src={getOptimizedImageUrl(
                       quickCoverPreviewError
                         ? DEFAULT_COVER_IMAGE
                         : quickCoverUrl ||
                           activeTournament.coverImageUrl ||
-                          DEFAULT_COVER_IMAGE
-                    }
+                          DEFAULT_COVER_IMAGE,
+                      480
+                    )}
                     alt="Portada del torneo"
+                    width={320}
+                    height={180}
+                    loading="lazy"
+                    decoding="async"
                     referrerPolicy="no-referrer"
                     onError={() => setQuickCoverPreviewError(true)}
                     className="w-full h-full object-cover"
@@ -2231,8 +2240,12 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       />
                       {adHorizontalUrl && !horizPreviewErr ? (
                         <img
-                          src={adHorizontalUrl}
+                          src={getOptimizedImageUrl(adHorizontalUrl, 640)}
                           alt="Vista previa banner horizontal"
+                          width={480}
+                          height={270}
+                          loading="lazy"
+                          decoding="async"
                           referrerPolicy="no-referrer"
                           onError={() => setHorizPreviewErr(true)}
                           className="w-full aspect-[16/9] rounded-lg object-cover border border-[#E2E8F0] bg-[#0A1633]"
@@ -2276,8 +2289,12 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       <div className="flex justify-center bg-[#F8FAFC] rounded-lg border border-dashed border-[#E2E8F0] p-2">
                         {adVerticalUrl && !vertPreviewErr ? (
                           <img
-                            src={adVerticalUrl}
+                            src={getOptimizedImageUrl(adVerticalUrl, 480)}
                             alt="Vista previa banner vertical"
+                            width={132}
+                            height={176}
+                            loading="lazy"
+                            decoding="async"
                             referrerPolicy="no-referrer"
                             onError={() => setVertPreviewErr(true)}
                             className="h-44 aspect-[3/4] rounded-lg object-cover border border-[#E2E8F0] bg-[#0A1633]"
@@ -2330,8 +2347,12 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white border border-[#E2E8F0]">
                     {!adPreviewError ? (
                       <img
-                        src={adImageUrl}
+                        src={getOptimizedImageUrl(adImageUrl, 480)}
                         alt="Vista previa banner publicitario"
+                        width={112}
+                        height={63}
+                        loading="lazy"
+                        decoding="async"
                         referrerPolicy="no-referrer"
                         onError={() => setAdPreviewError(true)}
                         className="w-28 aspect-[16/9] rounded-lg object-cover border border-[#E2E8F0] shrink-0"
@@ -2406,8 +2427,12 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     <div className="flex items-start gap-3">
                       {!brokenAdThumbIds[ad.id] && (ad.horizontalImageUrl || ad.imageUrl) ? (
                         <img
-                          src={ad.horizontalImageUrl || ad.imageUrl}
+                          src={getOptimizedImageUrl(ad.horizontalImageUrl || ad.imageUrl, 320)}
                           alt={ad.sponsorName}
+                          width={96}
+                          height={54}
+                          loading="lazy"
+                          decoding="async"
                           referrerPolicy="no-referrer"
                           onError={() =>
                             setBrokenAdThumbIds((prev) => ({ ...prev, [ad.id]: true }))

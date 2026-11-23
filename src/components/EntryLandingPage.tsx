@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   Award,
@@ -34,7 +34,13 @@ import { formatAsuncionDate } from '../utils/tournamentEngine';
 import { buildMatchWhatsAppMessage } from '../utils/whatsappShare';
 import { buildTournamentDirectUrl } from '../utils/tournamentLinks';
 import { WhatsAppShareButton } from './WhatsAppShareButton';
-import { TournamentQrModal } from './TournamentQrModal';
+import { getOptimizedImageUrl } from '../utils/imageOptimizer';
+import { OptimizedImage } from './OptimizedImage';
+import { ModalSkeleton } from './Skeletons';
+
+const TournamentQrModal = lazy(() =>
+  import('./TournamentQrModal').then((m) => ({ default: m.TournamentQrModal }))
+);
 
 interface EntryLandingPageProps {
   tournaments: Tournament[];
@@ -264,8 +270,11 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
         {siteConfig.heroBackgroundImageUrl && (
           <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
             <img
-              src={siteConfig.heroBackgroundImageUrl}
+              src={getOptimizedImageUrl(siteConfig.heroBackgroundImageUrl, 1600)}
               alt=""
+              width={1600}
+              height={900}
+              decoding="async"
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover opacity-15"
             />
@@ -279,8 +288,12 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
             <div className={siteConfig.bannerEnabled ? 'lg:col-span-6 space-y-5' : 'lg:col-span-12 space-y-5 max-w-3xl'}>
               <div className="flex items-center gap-3.5">
                 <img
-                  src={resolvedLogo}
+                  src={getOptimizedImageUrl(resolvedLogo, 160)}
                   alt={`Logo oficial de ${siteConfig.brandFirst}${siteConfig.brandSecond}`}
+                  width={80}
+                  height={80}
+                  decoding="async"
+                  fetchPriority="high"
                   referrerPolicy="no-referrer"
                   onError={() => setLogoBroken(true)}
                   className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-contain bg-white border border-[#E2E8F0] p-1.5 shrink-0"
@@ -351,14 +364,17 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
                       >
                         <picture className="block w-full h-full">
                           {siteConfig.bannerImageVerticalUrl && (
-                            <source media="(max-width: 639px)" srcSet={bannerVert} />
+                            <source media="(max-width: 639px)" srcSet={getOptimizedImageUrl(bannerVert, 720)} />
                           )}
                           {siteConfig.bannerImageHorizontalUrl && (
-                            <source media="(min-width: 640px)" srcSet={bannerHoriz} />
+                            <source media="(min-width: 640px)" srcSet={getOptimizedImageUrl(bannerHoriz, 1280)} />
                           )}
                           <img
-                            src={isMobileViewport ? bannerVert : bannerHoriz}
+                            src={getOptimizedImageUrl(isMobileViewport ? bannerVert : bannerHoriz, 1080)}
                             alt={siteConfig.bannerTitle || 'Banner publicitario'}
+                            width={1280}
+                            height={720}
+                            decoding="async"
                             referrerPolicy="no-referrer"
                             onError={() => setBannerImgBroken(true)}
                             className="w-full h-full object-cover"
@@ -417,8 +433,12 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
                           </div>
                           {siteConfig.bannerBadgeUrl && (
                             <img
-                              src={siteConfig.bannerBadgeUrl}
+                              src={getOptimizedImageUrl(siteConfig.bannerBadgeUrl, 128)}
                               alt={`${siteConfig.brandFirst}${siteConfig.brandSecond}`}
+                              width={56}
+                              height={56}
+                              loading="lazy"
+                              decoding="async"
                               referrerPolicy="no-referrer"
                               className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-white p-1 object-contain shrink-0"
                             />
@@ -735,10 +755,12 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
                 >
                   <div>
                     <div className="relative aspect-[16/9] bg-[#0A1633] overflow-hidden">
-                      <img
+                      <OptimizedImage
                         src={coverSrc}
                         alt={`Portada de ${t.name}`}
-                        referrerPolicy="no-referrer"
+                        width={640}
+                        height={360}
+                        transformWidth={640}
                         onError={() =>
                           setBrokenCoverIds((prev) => ({ ...prev, [t.id]: true }))
                         }
@@ -830,13 +852,17 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
         )}
       </section>
 
-      <TournamentQrModal
-        open={Boolean(qrTournament)}
-        onClose={() => setQrTournament(null)}
-        tournament={qrTournament}
-        divisions={divisions}
-        logoUrl={resolvedLogo}
-      />
+      {qrTournament && (
+        <Suspense fallback={<ModalSkeleton />}>
+          <TournamentQrModal
+            open={Boolean(qrTournament)}
+            onClose={() => setQrTournament(null)}
+            tournament={qrTournament}
+            divisions={divisions}
+            logoUrl={resolvedLogo}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

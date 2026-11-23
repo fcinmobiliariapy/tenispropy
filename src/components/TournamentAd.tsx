@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, RefreshCw, Sparkles } from 'lucide-react';
 import { AdPlacement, TournamentAd as TournamentAdModel } from '../types/tennis';
+import { getOptimizedImageUrl } from '../utils/imageOptimizer';
 
 export type BannerStylePreset =
   | 'PlayPy Oficial'
@@ -201,14 +202,18 @@ export const TournamentAd: React.FC<TournamentAdProps> = ({
           {primarySrc && !hasErr ? (
             <picture className="block w-full h-full">
               {hasDedicatedVertical && verticalSrc && (
-                <source media="(max-width: 639px)" srcSet={verticalSrc} />
+                <source media="(max-width: 639px)" srcSet={getOptimizedImageUrl(verticalSrc, 640)} />
               )}
               {hasDedicatedHorizontal && horizontalSrc && (
-                <source media="(min-width: 640px)" srcSet={horizontalSrc} />
+                <source media="(min-width: 640px)" srcSet={getOptimizedImageUrl(horizontalSrc, 960)} />
               )}
               <img
-                src={primarySrc}
+                src={getOptimizedImageUrl(primarySrc, 840)}
                 alt={`${ad.sponsorName} - ${ad.title}`}
+                width={mobileShowsVertical ? 600 : 960}
+                height={mobileShowsVertical ? 800 : 540}
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
                 onError={() =>
                   mobileShowsVertical ? setVerticalErr(true) : setHorizontalErr(true)
@@ -241,8 +246,12 @@ export const TournamentAd: React.FC<TournamentAdProps> = ({
         <div className="relative overflow-hidden bg-[#0A1633] shrink-0 w-24 aspect-[16/9] rounded-xl">
           {horizontalSrc && !horizontalErr ? (
             <img
-              src={horizontalSrc}
+              src={getOptimizedImageUrl(horizontalSrc, 320)}
               alt={`${ad.sponsorName} - ${ad.title}`}
+              width={192}
+              height={108}
+              loading="lazy"
+              decoding="async"
               referrerPolicy="no-referrer"
               onError={() => setHorizontalErr(true)}
               className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
@@ -259,16 +268,24 @@ export const TournamentAd: React.FC<TournamentAdProps> = ({
         >
           {verticalSrc && !verticalErr ? (
             <img
-              src={verticalSrc}
+              src={getOptimizedImageUrl(verticalSrc, 640)}
               alt={`${ad.sponsorName} - ${ad.title}`}
+              width={480}
+              height={640}
+              loading="lazy"
+              decoding="async"
               referrerPolicy="no-referrer"
               onError={() => setVerticalErr(true)}
               className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
             />
           ) : horizontalSrc && !horizontalErr ? (
             <img
-              src={horizontalSrc}
+              src={getOptimizedImageUrl(horizontalSrc, 640)}
               alt={`${ad.sponsorName} - ${ad.title}`}
+              width={640}
+              height={360}
+              loading="lazy"
+              decoding="async"
               referrerPolicy="no-referrer"
               onError={() => setHorizontalErr(true)}
               className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"

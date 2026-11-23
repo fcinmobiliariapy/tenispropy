@@ -24,7 +24,7 @@ import {
   StaffPermissions,
   Tournament,
 } from '../../types/tennis';
-import { optimizeAndUploadPhoto } from '../../utils/imageOptimizer';
+import { getOptimizedImageUrl, optimizeAndUploadPhoto } from '../../utils/imageOptimizer';
 import {
   autoProposeSchedule,
   compareMatchesByRound,
@@ -1004,8 +1004,12 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
                   >
                     <div className="relative aspect-[4/3] bg-slate-200">
                       <img
-                        src={ph.thumbUrl}
+                        src={getOptimizedImageUrl(ph.thumbUrl, 600)}
                         alt={ph.caption || `Foto ${idx + 1}`}
+                        width={480}
+                        height={360}
+                        loading="lazy"
+                        decoding="async"
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover"
                       />

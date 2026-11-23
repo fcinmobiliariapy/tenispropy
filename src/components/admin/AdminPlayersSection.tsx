@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Camera, Download, FileSpreadsheet, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { Division, Gender, PlayerPrivate, PlayerPublic, Registration, StaffPermissions, Tournament } from '../../types/tennis';
 import { downloadCsvTemplate, ParsedImportPlayerRow, parsePlayersImportFile } from '../../utils/importPlayers';
-import { optimizeAndUploadAvatar } from '../../utils/imageOptimizer';
+import { getOptimizedImageUrl, optimizeAndUploadAvatar } from '../../utils/imageOptimizer';
 import { makeId } from '../../utils/tournamentEngine';
 import { deletePlayerCascade, saveEntity } from '../../services/firestoreService';
 
@@ -669,8 +669,12 @@ export const AdminPlayersSection: React.FC<Props> = ({
             <div className="flex items-center gap-3">
               {photoUrl ? (
                 <img
-                  src={photoUrl}
+                  src={getOptimizedImageUrl(photoUrl, 160)}
                   alt="Vista previa foto de jugador"
+                  width={48}
+                  height={48}
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   className="w-12 h-12 rounded-xl object-cover border border-[#E2E8F0]"
                 />
@@ -816,8 +820,12 @@ export const AdminPlayersSection: React.FC<Props> = ({
                       <div className="flex items-center gap-3 min-w-0">
                         {p.photoUrl ? (
                           <img
-                            src={p.photoUrl}
+                            src={getOptimizedImageUrl(p.photoUrl, 160)}
                             alt={p.fullName}
+                            width={44}
+                            height={44}
+                            loading="lazy"
+                            decoding="async"
                             referrerPolicy="no-referrer"
                             className="w-11 h-11 rounded-xl object-cover border border-[#E2E8F0] shrink-0"
                           />
@@ -937,8 +945,12 @@ export const AdminPlayersSection: React.FC<Props> = ({
                           <div className="flex items-center gap-3">
                             {p.photoUrl ? (
                               <img
-                                src={p.photoUrl}
+                                src={getOptimizedImageUrl(p.photoUrl, 160)}
                                 alt={p.fullName}
+                                width={36}
+                                height={36}
+                                loading="lazy"
+                                decoding="async"
                                 referrerPolicy="no-referrer"
                                 className="w-9 h-9 rounded-lg object-cover border border-[#E2E8F0] shrink-0"
                               />
