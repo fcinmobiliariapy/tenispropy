@@ -12,9 +12,10 @@ import {
   buildFlyerSections,
   FlyerFormat,
   FlyerGroupBy,
+  FlyerLayoutStyle,
   FlyerStatusFilter,
   FlyerTheme,
-  renderTournamentFlyerPages,
+  renderTournamentFlyerDetailed,
 } from '../utils/flyerGenerator';
 import { buildTournamentDirectUrl } from '../utils/tournamentLinks';
 import { buildFixtureAgendaWhatsAppMessage } from '../utils/whatsappShare';
@@ -41,15 +42,26 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
   defaultDivisionId = 'ALL',
   logoUrl,
 }) => {
+  const [layoutStyle, setLayoutStyle] = useState<FlyerLayoutStyle>('organigrama');
   const [groupBy, setGroupBy] = useState<FlyerGroupBy>('categoria');
   const [divisionFilterId, setDivisionFilterId] = useState<string>(defaultDivisionId || 'ALL');
   const [statusFilter, setStatusFilter] = useState<FlyerStatusFilter>('all');
-  const [format, setFormat] = useState<FlyerFormat>('story');
+  const [format, setFormat] = useState<FlyerFormat>('a4_landscape');
   const [theme, setTheme] = useState<FlyerTheme>('playpy');
   const [includeQr, setIncludeQr] = useState(true);
+  const [fitSinglePage, setFitSinglePage] = useState(true);
   const [customSubtitle, setCustomSubtitle] = useState('');
 
   const [pages, setPages] = useState<string[]>([]);
+  const [layoutMeta, setLayoutMeta] = useState<{
+    columnsUsed: number;
+    densityLabel: string;
+    orientation: 'portrait' | 'landscape';
+  }>({
+    columnsUsed: 4,
+    densityLabel: 'Organigrama adaptativo',
+    orientation: 'landscape',
+  });
   const [pageIdx, setPageIdx] = useState(0);
   const [rendering, setRendering] = useState(false);
 
@@ -91,26 +103,38 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
     let cancelled = false;
     setRendering(true);
     const timer = window.setTimeout(() => {
-      renderTournamentFlyerPages({
+      renderTournamentFlyerDetailed({
         tournament,
         sections,
         groupBy,
         format,
         theme,
         includeQr,
+        fitSinglePage,
+        layoutStyle,
+        divisions,
+        matchdays,
+        rawMatches: matches,
+        divisionFilterId,
+        statusFilter,
         customSubtitle: customSubtitle.trim() || undefined,
         logoUrl,
       })
-        .then((rendered) => {
+        .then((res) => {
           if (!cancelled) {
-            setPages(rendered);
-            setPageIdx((prev) => Math.min(prev, Math.max(0, rendered.length - 1)));
+            setPages(res.pages);
+            setLayoutMeta({
+              columnsUsed: res.columnsUsed,
+              densityLabel: res.densityLabel,
+              orientation: res.orientation,
+            });
+            setPageIdx((prev) => Math.min(prev, Math.max(0, res.pages.length - 1)));
           }
         })
         .finally(() => {
           if (!cancelled) setRendering(false);
         });
-    }, 120);
+    }, 100);
 
     return () => {
       cancelled = true;
@@ -124,6 +148,13 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
     format,
     theme,
     includeQr,
+    fitSinglePage,
+    layoutStyle,
+    divisions,
+    matchdays,
+    matches,
+    divisionFilterId,
+    statusFilter,
     customSubtitle,
     logoUrl,
   ]);
@@ -141,18 +172,27 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
     document.body.removeChild(a);
   };
 
+  const handleLayoutStyleChange = (nextStyle: FlyerLayoutStyle) => {
+    setLayoutStyle(nextStyle);
+    if (nextStyle === 'organigrama' && format === 'a4_portrait') {
+      setFormat('a4_landscape');
+    } else if (nextStyle === 'lista' && format === 'a4_landscape') {
+      setFormat('a4_portrait');
+    }
+  };
+
   const handleDownloadCurrent = () => {
     if (!currentDataUrl) return;
     downloadDataUrl(
       currentDataUrl,
-      `playpy-flyer-${tournament.id}-${groupBy}-p${pageIdx + 1}.png`
+      `playpy-${layoutStyle}-${tournament.id}-${groupBy}-${fitSinglePage ? 'hoja-unica' : `p${pageIdx + 1}`}.png`
     );
   };
 
   const handleDownloadAll = () => {
     pages.forEach((url, idx) => {
       window.setTimeout(() => {
-        downloadDataUrl(url, `playpy-flyer-${tournament.id}-${groupBy}-p${idx + 1}.png`);
+        downloadDataUrl(url, `playpy-${layoutStyle}-${tournament.id}-${groupBy}-p${idx + 1}.png`);
       }, idx * 200);
     });
   };
@@ -175,6 +215,9 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
       )
       .join('');
 
+    const pageSizeRule =
+      layoutMeta.orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait';
+
     const doc = iframe.contentDocument || iframe.contentWindow?.document;
     if (!doc) {
       document.body.removeChild(iframe);
@@ -186,11 +229,27 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
         <head>
           <title>Flyer ${tournament.name}</title>
           <style>
-            @page { margin: 8mm; }
-            body { margin: 0; background: #fff; }
-            .page { page-break-after: always; display: flex; justify-content: center; align-items: center; min-height: 95vh; }
+            @page { size: ${pageSizeRule}; margin: 4mm; }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; background: #fff; width: 100%; height: 100%; }
+            .page {
+              width: 100%;
+              height: calc(100vh - 1px);
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              overflow: hidden;
+              page-break-after: always;
+            }
             .page:last-child { page-break-after: auto; }
-            img { max-width: 100%; max-height: 95vh; object-fit: contain; }
+            img {
+              max-width: 100%;
+              max-height: 100%;
+              width: auto;
+              height: auto;
+              object-fit: contain;
+              display: block;
+            }
           </style>
         </head>
         <body>${imgsHtml}</body>
@@ -233,7 +292,7 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
               <FileImage className="w-5 h-5 text-[#38BDF8]" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#7C1FA2]">
+              <p className="text-xs font-semibold text-[#7C1FA2]">
                 Generador de Flyer de Cruces · Orden ascendente por fecha
               </p>
               <h2 className="text-base font-bold text-[#0A1633] truncate">{tournament.name}</h2>
@@ -253,8 +312,37 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
           {/* Panel de configuración */}
           <div className="lg:col-span-5 p-5 border-b lg:border-b-0 lg:border-r border-[#E2E8F0] space-y-4 bg-white">
             <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-[0.06em] text-[#475569] mb-1.5">
-                Dividir cruces por
+              <label className="block text-xs font-semibold text-[#475569] mb-1.5">
+                Diseño del flyer
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { id: 'organigrama', label: 'Organigrama (Llaves)' },
+                    { id: 'lista', label: 'Lista en grilla' },
+                  ] as Array<{ id: FlyerLayoutStyle; label: string }>
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => handleLayoutStyleChange(opt.id)}
+                    className={`min-h-[40px] px-3 rounded-xl border text-xs font-semibold transition-colors whitespace-nowrap ${
+                      layoutStyle === opt.id
+                        ? 'bg-[#0A1633] text-white border-[#0A1633]'
+                        : 'bg-[#F8FAFC] text-[#0A1633] border-[#E2E8F0] hover:bg-slate-100'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#475569] mb-1.5">
+                {layoutStyle === 'organigrama'
+                  ? 'Organizar ramas de grupos / detalles por'
+                  : 'Dividir cruces por'}
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {(
@@ -269,7 +357,7 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
                     key={opt.id}
                     type="button"
                     onClick={() => setGroupBy(opt.id)}
-                    className={`min-h-[40px] px-3 rounded-xl border text-xs font-semibold transition-colors ${
+                    className={`min-h-[40px] px-3 rounded-xl border text-xs font-semibold transition-colors whitespace-nowrap ${
                       groupBy === opt.id
                         ? 'bg-[#7C1FA2] text-white border-[#7C1FA2]'
                         : 'bg-[#F8FAFC] text-[#0A1633] border-[#E2E8F0] hover:bg-slate-100'
@@ -319,16 +407,18 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-medium text-[#475569] mb-1">
-                  Formato gráfico
+                  Formato de hoja
                 </label>
                 <select
                   value={format}
                   onChange={(e) => setFormat(e.target.value as FlyerFormat)}
                   className="w-full h-10 px-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633]"
                 >
+                  <option value="a4_landscape">Hoja A4 Horizontal (Panorámica)</option>
+                  <option value="a4_portrait">Hoja A4 Vertical (Impresión / PDF)</option>
+                  <option value="landscape">Cartelera Horizontal (16:9)</option>
                   <option value="story">Vertical Story (9:16)</option>
                   <option value="post">Afiche / Feed (4:5)</option>
-                  <option value="landscape">Cartelera Horizontal (16:9)</option>
                 </select>
               </div>
 
@@ -343,7 +433,7 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
                 >
                   <option value="playpy">PlayPy Oficial</option>
                   <option value="night">Noche &amp; LED</option>
-                  <option value="clean">Editorial Claro</option>
+                  <option value="clean">Editorial Claro (ahorro tinta)</option>
                 </select>
               </div>
             </div>
@@ -361,14 +451,25 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
               />
             </div>
 
-            <label className="flex items-center gap-2.5 p-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeQr}
-                onChange={(e) => setIncludeQr(e.target.checked)}
-              />
-              Incluir código QR de acceso directo al torneo
-            </label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2.5 p-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-semibold text-[#0A1633] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={fitSinglePage}
+                  onChange={(e) => setFitSinglePage(e.target.checked)}
+                />
+                Optimizar y ajustar todo en una sola hoja (1 página)
+              </label>
+
+              <label className="flex items-center gap-2.5 p-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-medium text-[#0A1633] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeQr}
+                  onChange={(e) => setIncludeQr(e.target.checked)}
+                />
+                Incluir código QR de acceso directo al torneo
+              </label>
+            </div>
 
             {/* Resumen del ordenamiento */}
             <div className="grid grid-cols-3 border border-[#E2E8F0] rounded-xl divide-x divide-[#E2E8F0] bg-[#F8FAFC] text-center">
@@ -399,7 +500,7 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
                   type="button"
                   disabled={!currentDataUrl || rendering}
                   onClick={handleDownloadCurrent}
-                  className="inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[42px] rounded-xl bg-[#7C1FA2] text-white text-xs font-semibold hover:bg-[#6B1A8B] disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[42px] rounded-xl bg-[#7C1FA2] text-white text-xs font-semibold hover:bg-[#6B1A8B] disabled:opacity-50 whitespace-nowrap"
                 >
                   <Download className="w-4 h-4" />
                   Descargar PNG
@@ -409,7 +510,7 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
                   type="button"
                   disabled={pages.length === 0 || rendering}
                   onClick={handlePrintFlyer}
-                  className="inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[42px] rounded-xl border border-[#E2E8F0] bg-white text-[#0A1633] text-xs font-semibold hover:bg-slate-50 disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 min-h-[42px] rounded-xl border border-[#E2E8F0] bg-white text-[#0A1633] text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 whitespace-nowrap"
                 >
                   <Printer className="w-4 h-4 text-[#0284C7]" />
                   Imprimir / PDF
@@ -445,11 +546,17 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
 
           {/* Vista previa del flyer renderizado */}
           <div className="lg:col-span-7 p-5 bg-[#F1F5F9] flex flex-col items-center justify-between gap-4">
-            <div className="w-full flex items-center justify-between gap-3 text-xs text-[#475569]">
-              <span>
+            <div className="w-full flex flex-wrap items-center justify-between gap-3 text-xs text-[#475569]">
+              <span className="font-medium">
                 {rendering
                   ? 'Renderizando flyer en alta definición...'
-                  : 'Ordenado en forma ascendente por fecha cuando existe programación'}
+                  : `${
+                      layoutStyle === 'organigrama'
+                        ? 'Organigrama en hoja única'
+                        : fitSinglePage
+                        ? 'Hoja única'
+                        : `Hoja ${pageIdx + 1} de ${pages.length}`
+                    } · ${layoutMeta.densityLabel}`}
               </span>
               {pages.length > 1 && (
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -483,7 +590,7 @@ export const MatchupsFlyerModal: React.FC<MatchupsFlyerModalProps> = ({
                 <img
                   src={currentDataUrl}
                   alt={`Vista previa flyer hoja ${pageIdx + 1}`}
-                  className="max-h-[66vh] max-w-full rounded-2xl border border-[#CBD5E1] shadow-lg object-contain bg-[#0A1633]"
+                  className="max-h-[68vh] max-w-full rounded-2xl border border-[#CBD5E1] shadow-lg object-contain bg-[#0A1633]"
                 />
               ) : (
                 <div className="p-8 rounded-2xl border border-dashed border-[#CBD5E1] bg-white text-xs text-[#475569]">
