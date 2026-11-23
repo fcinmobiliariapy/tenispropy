@@ -1860,3 +1860,989 @@ export function dedupeMatches(matches: Match[]): Match[] {
   return analyzeDuplicateMatches(matches).dedupedMatches;
 }
 
+export function getExpectedNextRoundName(
+  currentRoundName: string,
+  currentRoundMatchCount: number
+): string {
+  const lower = (currentRoundName || '').trim().toLowerCase();
+  if (lower.includes('64')) return 'Ronda de 32';
+  if (lower.includes('32') || lower.includes('16avos') || lower.includes('dieciseisavo')) {
+    return 'Octavos de Final';
+  }
+  if (lower.includes('octavo')) return 'Cuartos de Final';
+  if (lower.includes('cuarto')) return 'Semifinales';
+  if (lower.includes('semifinal')) return 'Final';
+  const nextCount = Math.max(1, Math.ceil(currentRoundMatchCount / 2));
+  if (nextCount === 1) return 'Final';
+  if (nextCount === 2) return 'Semifinales';
+  if (nextCount === 4) return 'Cuartos de Final';
+  if (nextCount === 8) return 'Octavos de Final';
+  return `Ronda de ${nextCount * 2}`;
+}
+
+export type EliminationIssueCode =
+  | 'orphan_no_next_match'
+  | 'dangling_next_match_id'
+  | 'missing_next_round_match'
+  | 'slot_collision'
+  | 'bye_not_advanced'
+  | 'unpropagated_winner'
+  | 'missing_winner_id'
+  | 'inconsistent_entrant'
+  | 'round_order_mismatch'
+  | 'unpublished_match'
+  | 'empty_round1_match';
+
+export interface EliminationIssueDetail {
+  code: EliminationIssueCode;
+  severity: 'critical' | 'warning';
+  title: string;
+  description: string;
+}
+
+export interface EliminationFeederCheck {
+  side: 'A' | 'B';
+  currentEntryId: string | null;
+  currentEntryName: string;
+  expectedFeederMatch: Match | null;
+  isConsistent: boolean;
+  reason: string | null;
+}
+
+export interface EliminationMatchDiagnostic {
+  match: Match;
+  isFinal: boolean;
+  isThirdPlace: boolean;
+  issues: EliminationIssueDetail[];
+  statusSeverity: 'critical' | 'warning' | 'ok';
+  isOrphan: boolean;
+  isInconsistent: boolean;
+  canForceAdvance: boolean;
+  winnerCandidate: {
+    entryId: string | null;
+    name: string | null;
+    playerIds: string[];
+    side: 'A' | 'B' | null;
+  };
+  currentNextMatch: Match | null;
+  currentNextSlot: 'A' | 'B' | null;
+  suggestedNextMatch: Match | null;
+  suggestedNextSlot: 'A' | 'B';
+  expectedNextRoundName: string | null;
+  expectedNextRoundOrder: number;
+  expectedNextBracketPos: number;
+  nextRoundMatches: Match[];
+  higherRoundMatches: Match[];
+  feeders: Match[];
+  slotChecks: EliminationFeederCheck[];
+  collidingMatches: Match[];
+}
+
+export interface EliminationRoundSummary {
+  roundOrder: number;
+  roundName: string;
+  matchCount: number;
+  expectedMatchCount: number;
+  finishedCount: number;
+  pendingCount: number;
+  issueCount: number;
+  isMissingMatches: boolean;
+  missingPositions: number[];
+}
+
+export interface EliminationDiagnosticsReport {
+  divisionId: string;
+  divisionName: string;
+  totalKoMatches: number;
+  rounds: EliminationRoundSummary[];
+  matchDiagnostics: EliminationMatchDiagnostic[];
+  problemDiagnostics: EliminationMatchDiagnostic[];
+  summary: {
+    totalIssues: number;
+    orphansCount: number;
+    inconsistentCount: number;
+    unpropagatedCount: number;
+    missingMatchesCount: number;
+    collisionsCount: number;
+    criticalCount: number;
+    warningCount: number;
+  };
+}
+
+function resolveCandidateWinner(
+  m: Match,
+  division: Division
+): {
+  entryId: string | null;
+  name: string | null;
+  playerIds: string[];
+  side: 'A' | 'B' | null;
+} {
+  if (m.winnerEntryId) {
+    if (m.winnerEntryId === m.entryAId) {
+      return {
+        entryId: m.entryAId,
+        name: m.entryAName,
+        playerIds: m.playerIdsA || [],
+        side: 'A',
+      };
+    }
+    if (m.winnerEntryId === m.entryBId) {
+      return {
+        entryId: m.entryBId,
+        name: m.entryBName,
+        playerIds: m.playerIdsB || [],
+        side: 'B',
+      };
+    }
+    return {
+      entryId: m.winnerEntryId,
+      name: m.winnerName || 'Ganador',
+      playerIds: [],
+      side: null,
+    };
+  }
+
+  if (m.isBye) {
+    if (m.entryAId && !m.entryBId) {
+      return {
+        entryId: m.entryAId,
+        name: m.entryAName,
+        playerIds: m.playerIdsA || [],
+        side: 'A',
+      };
+    }
+    if (m.entryBId && !m.entryAId) {
+      return {
+        entryId: m.entryBId,
+        name: m.entryBName,
+        playerIds: m.playerIdsB || [],
+        side: 'B',
+      };
+    }
+  }
+
+  const clone: Match = {
+    ...m,
+    sets: [...(m.sets || [])],
+    playerIdsA: [...(m.playerIdsA || [])],
+    playerIdsB: [...(m.playerIdsB || [])],
+  };
+  const recovered = recoverCompletedMatchWinner(clone, division);
+  if (recovered) {
+    const side: 'A' | 'B' | null =
+      recovered.winnerId === m.entryAId ? 'A' : recovered.winnerId === m.entryBId ? 'B' : null;
+    return {
+      entryId: recovered.winnerId,
+      name: recovered.winnerName,
+      playerIds: side === 'A' ? m.playerIdsA || [] : side === 'B' ? m.playerIdsB || [] : [],
+      side,
+    };
+  }
+
+  return { entryId: null, name: null, playerIds: [], side: null };
+}
+
+function getEffectiveTargetSlot(m: Match, fallbackPos: number): 'A' | 'B' {
+  if (m.nextMatchSlot === 'A' || m.nextMatchSlot === 'B') return m.nextMatchSlot;
+  const pos = m.bracketPosition && m.bracketPosition >= 1 ? m.bracketPosition : fallbackPos;
+  return pos % 2 === 1 ? 'A' : 'B';
+}
+
+export function analyzeEliminationDiagnostics(
+  division: Division,
+  divisionMatches: Match[]
+): EliminationDiagnosticsReport {
+  const dedupedKo = dedupeMatches(
+    divisionMatches.filter((m) => m.divisionId === division.id && m.phase === 'eliminacion')
+  );
+
+  const nonThirdKo = dedupedKo
+    .filter((m) => !m.isThirdPlace && m.roundName !== 'Tercer Puesto')
+    .sort(compareMatchesByRound);
+
+  const thirdPlaceMatch =
+    dedupedKo.find((m) => m.isThirdPlace || m.roundName === 'Tercer Puesto') || null;
+
+  if (dedupedKo.length === 0) {
+    return {
+      divisionId: division.id,
+      divisionName: division.name,
+      totalKoMatches: 0,
+      rounds: [],
+      matchDiagnostics: [],
+      problemDiagnostics: [],
+      summary: {
+        totalIssues: 0,
+        orphansCount: 0,
+        inconsistentCount: 0,
+        unpropagatedCount: 0,
+        missingMatchesCount: 0,
+        collisionsCount: 0,
+        criticalCount: 0,
+        warningCount: 0,
+      },
+    };
+  }
+
+  const roundsMap = new Map<string, Match[]>();
+  for (const m of nonThirdKo) {
+    const key = m.roundName.trim().toLowerCase() || `r${m.roundOrder}`;
+    const list = roundsMap.get(key);
+    if (list) list.push(m);
+    else roundsMap.set(key, [m]);
+  }
+
+  const sortedRoundGroups = Array.from(roundsMap.values()).sort((a, b) => {
+    const nameA = a[0].roundName;
+    const nameB = b[0].roundName;
+    if (isKnownKnockoutStage(nameA) && isKnownKnockoutStage(nameB)) {
+      const rankDiff = getKnockoutStageRank(nameA) - getKnockoutStageRank(nameB);
+      if (rankDiff !== 0) return rankDiff;
+    }
+    return a[0].roundOrder - b[0].roundOrder;
+  });
+
+  sortedRoundGroups.forEach((group) => {
+    group.sort(
+      (a, b) =>
+        (a.bracketPosition ?? 9999) - (b.bracketPosition ?? 9999) ||
+        (a.createdAt || '').localeCompare(b.createdAt || '') ||
+        a.id.localeCompare(b.id)
+    );
+  });
+
+  const koById = new Map<string, Match>(nonThirdKo.map((m) => [m.id, m]));
+  const roundIndexByMatchId = new Map<string, number>();
+  const posIndexByMatchId = new Map<string, number>();
+  sortedRoundGroups.forEach((group, rIdx) => {
+    group.forEach((m, idx) => {
+      roundIndexByMatchId.set(m.id, rIdx);
+      posIndexByMatchId.set(
+        m.id,
+        m.bracketPosition && m.bracketPosition >= 1 ? m.bracketPosition : idx + 1
+      );
+    });
+  });
+
+  // Calcular tamaños esperados por ronda
+  const expectedCountByRound: number[] = sortedRoundGroups.map((g) => g.length);
+  if (sortedRoundGroups.length > 0) {
+    let firstSize = 1;
+    while (firstSize < sortedRoundGroups[0].length) firstSize *= 2;
+    if (sortedRoundGroups.length > 1) {
+      const impliedFromSecond = expectedCountByRound[1] * 2;
+      firstSize = Math.max(firstSize, impliedFromSecond);
+    }
+    const maxPosFirst = Math.max(
+      0,
+      ...sortedRoundGroups[0].map((m) => m.bracketPosition || 0)
+    );
+    expectedCountByRound[0] = Math.max(sortedRoundGroups[0].length, maxPosFirst, firstSize > 1 ? sortedRoundGroups[0].length : 1);
+    for (let i = 1; i < sortedRoundGroups.length; i++) {
+      const expectedFromPrev = Math.max(1, Math.ceil(expectedCountByRound[i - 1] / 2));
+      const maxPosCurr = Math.max(
+        0,
+        ...sortedRoundGroups[i].map((m) => m.bracketPosition || 0)
+      );
+      expectedCountByRound[i] = Math.max(expectedFromPrev, maxPosCurr, sortedRoundGroups[i].length);
+    }
+  }
+
+  // Feeders por targetId::slot e incoming por targetId
+  const feedersBySlotKey = new Map<string, Match[]>();
+  const feedersByTargetId = new Map<string, Match[]>();
+
+  for (const m of nonThirdKo) {
+    if (!m.nextMatchId || !koById.has(m.nextMatchId)) continue;
+    const target = koById.get(m.nextMatchId)!;
+    const mRoundIdx = roundIndexByMatchId.get(m.id) ?? 0;
+    const tRoundIdx = roundIndexByMatchId.get(target.id) ?? 0;
+    if (tRoundIdx <= mRoundIdx) continue;
+
+    const slot = getEffectiveTargetSlot(m, posIndexByMatchId.get(m.id) || 1);
+    const key = `${target.id}::${slot}`;
+    const slotList = feedersBySlotKey.get(key) || [];
+    slotList.push(m);
+    feedersBySlotKey.set(key, slotList);
+
+    const incList = feedersByTargetId.get(target.id) || [];
+    incList.push(m);
+    feedersByTargetId.set(target.id, incList);
+  }
+
+  // Mapa de partidos aún pendientes por entryId para detectar inconsistencias entre rondas
+  const pendingMatchesByEntryId = new Map<string, Match[]>();
+  for (const m of nonThirdKo) {
+    if (m.winnerEntryId || m.isBye) continue;
+    if (m.entryAId) {
+      const list = pendingMatchesByEntryId.get(m.entryAId) || [];
+      list.push(m);
+      pendingMatchesByEntryId.set(m.entryAId, list);
+    }
+    if (m.entryBId) {
+      const list = pendingMatchesByEntryId.get(m.entryBId) || [];
+      list.push(m);
+      pendingMatchesByEntryId.set(m.entryBId, list);
+    }
+  }
+
+  const shouldBePublished =
+    division.drawStatus === 'publicado' || dedupedKo.some((m) => m.published);
+
+  const roundIssueCounts = new Array<number>(sortedRoundGroups.length).fill(0);
+  const matchDiagnostics: EliminationMatchDiagnostic[] = [];
+
+  for (let rIdx = 0; rIdx < sortedRoundGroups.length; rIdx++) {
+    const group = sortedRoundGroups[rIdx];
+    const nextGroup = sortedRoundGroups[rIdx + 1] || [];
+    const prevGroup = rIdx > 0 ? sortedRoundGroups[rIdx - 1] : [];
+    const higherRoundMatches = sortedRoundGroups.slice(rIdx + 1).flat();
+    const expectedNextName =
+      rIdx < sortedRoundGroups.length - 1
+        ? nextGroup[0].roundName
+        : group.length > 1
+        ? getExpectedNextRoundName(group[0].roundName, group.length)
+        : null;
+    const expectedNextOrder =
+      rIdx < sortedRoundGroups.length - 1
+        ? nextGroup[0].roundOrder
+        : group[0].roundOrder + 1;
+
+    // Detectar roundOrder inconsistente o bracketPosition duplicados dentro del grupo
+    const distinctOrders = new Set(group.map((m) => m.roundOrder));
+    const posCounts = new Map<number, number>();
+    group.forEach((m) => {
+      if (m.bracketPosition != null) {
+        posCounts.set(m.bracketPosition, (posCounts.get(m.bracketPosition) || 0) + 1);
+      }
+    });
+
+    for (let idx = 0; idx < group.length; idx++) {
+      const m = group[idx];
+      const issues: EliminationIssueDetail[] = [];
+      const isFinal = isRealFinalMatch(m, nonThirdKo);
+      const pos = m.bracketPosition && m.bracketPosition >= 1 ? m.bracketPosition : idx + 1;
+      const expectedNextPos = Math.ceil(pos / 2);
+      const defaultSlot: 'A' | 'B' = pos % 2 === 1 ? 'A' : 'B';
+
+      const winnerCandidate = resolveCandidateWinner(m, division);
+
+      const structuralNext =
+        !isFinal && nextGroup.length > 0
+          ? nextGroup.find((nm) => nm.bracketPosition === expectedNextPos) ||
+            nextGroup[expectedNextPos - 1] ||
+            null
+          : null;
+
+      let currentNextMatch: Match | null = null;
+      let currentNextSlot: 'A' | 'B' | null = null;
+      let collidingMatches: Match[] = [];
+
+      if (!isFinal) {
+        if (m.nextMatchId) {
+          const direct = koById.get(m.nextMatchId) || null;
+          if (!direct) {
+            issues.push({
+              code: 'dangling_next_match_id',
+              severity: 'critical',
+              title: 'Enlace siguiente roto',
+              description: `El campo nextMatchId ("${m.nextMatchId}") apunta a un partido inexistente o eliminado.`,
+            });
+          } else {
+            const directRoundIdx = roundIndexByMatchId.get(direct.id) ?? -1;
+            if (direct.id === m.id || directRoundIdx <= rIdx) {
+              issues.push({
+                code: 'dangling_next_match_id',
+                severity: 'critical',
+                title: 'Enlace hacia ronda inválida',
+                description: `Apunta a "${direct.roundName}" en lugar de una ronda posterior.`,
+              });
+            } else {
+              currentNextMatch = direct;
+              currentNextSlot = getEffectiveTargetSlot(m, pos);
+              const key = `${direct.id}::${currentNextSlot}`;
+              const allInSlot = feedersBySlotKey.get(key) || [];
+              collidingMatches = allInSlot.filter((x) => x.id !== m.id);
+              if (collidingMatches.length > 0) {
+                issues.push({
+                  code: 'slot_collision',
+                  severity: 'critical',
+                  title: 'Colisión de cruce en siguiente ronda',
+                  description: `Comparte la ranura Lado ${currentNextSlot} de "${direct.roundName} #${direct.bracketPosition || '?'}" con otro partido (${collidingMatches
+                    .map((c) => `${c.entryAName} vs ${c.entryBName}`)
+                    .join(', ')}).`,
+                });
+              }
+            }
+          }
+        } else {
+          issues.push({
+            code: 'orphan_no_next_match',
+            severity: 'critical',
+            title: 'Partido huérfano sin cruce destino',
+            description: structuralNext
+              ? `No tiene nextMatchId configurado (debería avanzar a ${structuralNext.roundName} Pos #${structuralNext.bracketPosition || expectedNextPos} · Lado ${defaultSlot}).`
+              : `No tiene nextMatchId y falta su llave destino en ${expectedNextName || 'la siguiente ronda'}.`,
+          });
+        }
+
+        if (!currentNextMatch && !structuralNext && group.length > 1) {
+          issues.push({
+            code: 'missing_next_round_match',
+            severity: 'critical',
+            title: `Falta llave en ${expectedNextName || 'siguiente ronda'}`,
+            description: `No existe la llave #${expectedNextPos} en ${expectedNextName || 'la siguiente ronda'} para recibir al ganador de este partido.`,
+          });
+        }
+      }
+
+      // Verificar si el partido terminó/es BYE pero no tiene ganador o su ganador no avanzó
+      const hasFinishedStatus = ['finalizado', 'wo', 'retiro', 'descalificado'].includes(m.status);
+      const hasResultIntent = m.isBye || hasFinishedStatus || (m.sets && m.sets.length > 0);
+
+      if (!isFinal && hasResultIntent && !winnerCandidate.entryId && (m.entryAId || m.entryBId)) {
+        issues.push({
+          code: 'missing_winner_id',
+          severity: 'critical',
+          title: 'Finalizado sin ganador asignado',
+          description:
+            'El partido figura finalizado o con sets cargados, pero no tiene winnerEntryId definido para avanzar de ronda.',
+        });
+      }
+
+      if (!isFinal && winnerCandidate.entryId) {
+        const checkTarget = currentNextMatch || structuralNext;
+        const checkSlot = currentNextSlot || defaultSlot;
+
+        if (!checkTarget) {
+          issues.push({
+            code: m.isBye ? 'bye_not_advanced' : 'unpropagated_winner',
+            severity: 'critical',
+            title: m.isBye ? 'BYE huérfano sin avanzar' : 'Ganador sin avanzar de ronda',
+            description: `${winnerCandidate.name || 'Ganador'} debe pasar a ${expectedNextName || 'la siguiente ronda'}, pero no hay llave destino asignada.`,
+          });
+        } else {
+          const targetId = checkSlot === 'A' ? checkTarget.entryAId : checkTarget.entryBId;
+          const targetName = checkSlot === 'A' ? checkTarget.entryAName : checkTarget.entryBName;
+          const matchesTarget =
+            targetId === winnerCandidate.entryId &&
+            (!winnerCandidate.name || targetName === winnerCandidate.name);
+
+          // También detectar si el ganador no está en ninguna ranura de la ronda siguiente cuando checkTarget es null o incorrecto
+          const alsoFoundInOtherSlot =
+            (checkSlot === 'A' ? checkTarget.entryBId : checkTarget.entryAId) ===
+            winnerCandidate.entryId;
+
+          if (!currentNextMatch) {
+            issues.push({
+              code: m.isBye ? 'bye_not_advanced' : 'unpropagated_winner',
+              severity: 'critical',
+              title: m.isBye ? 'BYE sin enlace a siguiente ronda' : 'Ganador sin enlace destino',
+              description: `${winnerCandidate.name || 'Ganador'} ganó este cruce pero el partido no apunta a "${checkTarget.roundName} #${checkTarget.bracketPosition || expectedNextPos}".`,
+            });
+          } else if (!matchesTarget) {
+            issues.push({
+              code: m.isBye ? 'bye_not_advanced' : 'unpropagated_winner',
+              severity: 'critical',
+              title: m.isBye ? 'Ganador por BYE no figura en siguiente ronda' : 'Ganador no reflejado en siguiente ronda',
+              description: alsoFoundInOtherSlot
+                ? `${winnerCandidate.name || 'Ganador'} figura en el lado opuesto al configurado (nextMatchSlot=${checkSlot}) en ${checkTarget.roundName} #${checkTarget.bracketPosition || '?'}.`
+                : `${winnerCandidate.name || 'Ganador'} no figura en Lado ${checkSlot} de ${checkTarget.roundName} #${checkTarget.bracketPosition || '?'} (actualmente dice "${targetName}").`,
+            });
+          }
+        }
+      }
+
+      // Verificar consistencia de jugadores en rondas >= 2 contra sus cruces previos
+      const explicitFeeders = feedersByTargetId.get(m.id) || [];
+      const expectedFeederPosA = pos * 2 - 1;
+      const expectedFeederPosB = pos * 2;
+      const feederForA =
+        (feedersBySlotKey.get(`${m.id}::A`) || [])[0] ||
+        prevGroup.find((pm) => pm.bracketPosition === expectedFeederPosA) ||
+        prevGroup[expectedFeederPosA - 1] ||
+        null;
+      const feederForB =
+        (feedersBySlotKey.get(`${m.id}::B`) || [])[0] ||
+        prevGroup.find((pm) => pm.bracketPosition === expectedFeederPosB) ||
+        prevGroup[expectedFeederPosB - 1] ||
+        null;
+
+      const slotChecks: EliminationFeederCheck[] = [];
+      if (rIdx > 0) {
+        const pairs: Array<{
+          side: 'A' | 'B';
+          entryId: string | null;
+          entryName: string;
+          feeder: Match | null;
+        }> = [
+          {
+            side: 'A',
+            entryId: m.entryAId || null,
+            entryName: m.entryAName,
+            feeder: feederForA,
+          },
+          {
+            side: 'B',
+            entryId: m.entryBId || null,
+            entryName: m.entryBName,
+            feeder: feederForB,
+          },
+        ];
+
+        for (const p of pairs) {
+          if (!p.entryId) {
+            slotChecks.push({
+              side: p.side,
+              currentEntryId: null,
+              currentEntryName: p.entryName,
+              expectedFeederMatch: p.feeder,
+              isConsistent: true,
+              reason: null,
+            });
+            continue;
+          }
+
+          let checkConsistent = true;
+          let checkReason: string | null = null;
+
+          // Verificar primero si el jugador tiene un partido pendiente en una ronda anterior
+          const earlierPending = (pendingMatchesByEntryId.get(p.entryId) || []).find(
+            (pm) => (roundIndexByMatchId.get(pm.id) ?? 999) < rIdx
+          );
+
+          if (p.feeder) {
+            const feederWinner = resolveCandidateWinner(p.feeder, division);
+            const belongsToFeeder =
+              p.feeder.entryAId === p.entryId || p.feeder.entryBId === p.entryId;
+
+            if (!feederWinner.entryId) {
+              checkConsistent = false;
+              checkReason = `Lado ${p.side} (${p.entryName}) ya figura en ${m.roundName}, pero su cruce previo (${p.feeder.entryAName} vs ${p.feeder.entryBName}) sigue pendiente.`;
+            } else if (feederWinner.entryId !== p.entryId) {
+              checkConsistent = false;
+              checkReason = `Lado ${p.side} tiene a ${p.entryName}, pero el ganador del cruce previo fue ${feederWinner.name || feederWinner.entryId}.`;
+            } else if (!belongsToFeeder) {
+              checkConsistent = false;
+              checkReason = `Lado ${p.side} (${p.entryName}) no coincide con los participantes del cruce previo esperado.`;
+            }
+          } else if (earlierPending) {
+            checkConsistent = false;
+            checkReason = `Lado ${p.side} (${p.entryName}) figura aquí mientras su partido en ${earlierPending.roundName} (${earlierPending.entryAName} vs ${earlierPending.entryBName}) sigue sin resolverse.`;
+          }
+
+          if (!checkConsistent && checkReason) {
+            issues.push({
+              code: 'inconsistent_entrant',
+              severity: 'critical',
+              title: `Cruce inconsistente en Lado ${p.side}`,
+              description: checkReason,
+            });
+          }
+
+          slotChecks.push({
+            side: p.side,
+            currentEntryId: p.entryId,
+            currentEntryName: p.entryName,
+            expectedFeederMatch: p.feeder,
+            isConsistent: checkConsistent,
+            reason: checkReason,
+          });
+        }
+      }
+
+      if (rIdx === 0 && !m.entryAId && !m.entryBId) {
+        issues.push({
+          code: 'empty_round1_match',
+          severity: 'warning',
+          title: 'Llave de primera ronda vacía',
+          description: 'No tiene jugador en Lado A ni en Lado B.',
+        });
+      }
+
+      if (distinctOrders.size > 1 || (m.bracketPosition != null && (posCounts.get(m.bracketPosition) || 0) > 1)) {
+        issues.push({
+          code: 'round_order_mismatch',
+          severity: 'warning',
+          title: 'Posición o roundOrder desalineado',
+          description:
+            distinctOrders.size > 1
+              ? `Hay partidos de "${m.roundName}" con distintos roundOrder.`
+              : `Posición #${m.bracketPosition} duplicada dentro de "${m.roundName}".`,
+        });
+      }
+
+      if (shouldBePublished && !m.published) {
+        issues.push({
+          code: 'unpublished_match',
+          severity: 'warning',
+          title: 'Partido no publicado en el portal',
+          description: 'El cuadro figura publicado pero este partido sigue con published=false.',
+        });
+      }
+
+      const hasCritical = issues.some((i) => i.severity === 'critical');
+      const hasWarning = issues.some((i) => i.severity === 'warning');
+      const statusSeverity: 'critical' | 'warning' | 'ok' = hasCritical
+        ? 'critical'
+        : hasWarning
+        ? 'warning'
+        : 'ok';
+
+      if (issues.length > 0) {
+        roundIssueCounts[rIdx]++;
+      }
+
+      const isOrphan = issues.some((i) =>
+        ['orphan_no_next_match', 'dangling_next_match_id', 'missing_next_round_match'].includes(
+          i.code
+        )
+      );
+      const isInconsistent = issues.some((i) =>
+        [
+          'inconsistent_entrant',
+          'slot_collision',
+          'bye_not_advanced',
+          'unpropagated_winner',
+          'missing_winner_id',
+        ].includes(i.code)
+      );
+
+      matchDiagnostics.push({
+        match: m,
+        isFinal,
+        isThirdPlace: false,
+        issues,
+        statusSeverity,
+        isOrphan,
+        isInconsistent,
+        canForceAdvance: !isFinal && Boolean(m.entryAId || m.entryBId),
+        winnerCandidate,
+        currentNextMatch,
+        currentNextSlot,
+        suggestedNextMatch: structuralNext,
+        suggestedNextSlot: defaultSlot,
+        expectedNextRoundName: expectedNextName,
+        expectedNextRoundOrder: expectedNextOrder,
+        expectedNextBracketPos: expectedNextPos,
+        nextRoundMatches: nextGroup,
+        higherRoundMatches,
+        feeders: explicitFeeders,
+        slotChecks,
+        collidingMatches,
+      });
+    }
+  }
+
+  if (thirdPlaceMatch) {
+    const tpIssues: EliminationIssueDetail[] = [];
+    const tpHasIntent =
+      ['finalizado', 'wo', 'retiro', 'descalificado'].includes(thirdPlaceMatch.status) ||
+      thirdPlaceMatch.sets.length > 0;
+    const tpWinner = resolveCandidateWinner(thirdPlaceMatch, division);
+    if (tpHasIntent && !tpWinner.entryId && (thirdPlaceMatch.entryAId || thirdPlaceMatch.entryBId)) {
+      tpIssues.push({
+        code: 'missing_winner_id',
+        severity: 'critical',
+        title: '3er Puesto sin ganador asignado',
+        description: 'El partido por el 3er Puesto tiene estado finalizado/sets pero falta winnerEntryId.',
+      });
+    }
+    if (shouldBePublished && !thirdPlaceMatch.published) {
+      tpIssues.push({
+        code: 'unpublished_match',
+        severity: 'warning',
+        title: '3er Puesto no publicado',
+        description: 'El partido por el 3er Puesto aún tiene published=false.',
+      });
+    }
+    const statusSeverity: 'critical' | 'warning' | 'ok' = tpIssues.some(
+      (i) => i.severity === 'critical'
+    )
+      ? 'critical'
+      : tpIssues.length > 0
+      ? 'warning'
+      : 'ok';
+
+    matchDiagnostics.push({
+      match: thirdPlaceMatch,
+      isFinal: false,
+      isThirdPlace: true,
+      issues: tpIssues,
+      statusSeverity,
+      isOrphan: false,
+      isInconsistent: tpIssues.some((i) => i.code === 'missing_winner_id'),
+      canForceAdvance: false,
+      winnerCandidate: tpWinner,
+      currentNextMatch: null,
+      currentNextSlot: null,
+      suggestedNextMatch: null,
+      suggestedNextSlot: 'A',
+      expectedNextRoundName: null,
+      expectedNextRoundOrder: thirdPlaceMatch.roundOrder,
+      expectedNextBracketPos: 2,
+      nextRoundMatches: [],
+      higherRoundMatches: [],
+      feeders: [],
+      slotChecks: [],
+      collidingMatches: [],
+    });
+  }
+
+  const rounds: EliminationRoundSummary[] = sortedRoundGroups.map((group, rIdx) => {
+    const expectedCount = expectedCountByRound[rIdx] || group.length;
+    const existingPos = new Set(
+      group.map((m, idx) =>
+        m.bracketPosition && m.bracketPosition >= 1 ? m.bracketPosition : idx + 1
+      )
+    );
+    const missingPositions: number[] = [];
+    for (let p = 1; p <= expectedCount; p++) {
+      if (!existingPos.has(p)) missingPositions.push(p);
+    }
+    const finishedCount = group.filter(
+      (m) => Boolean(m.winnerEntryId) || m.isBye
+    ).length;
+    return {
+      roundOrder: group[0].roundOrder,
+      roundName: group[0].roundName,
+      matchCount: group.length,
+      expectedMatchCount: expectedCount,
+      finishedCount,
+      pendingCount: group.length - finishedCount,
+      issueCount: roundIssueCounts[rIdx] || 0,
+      isMissingMatches: group.length < expectedCount || missingPositions.length > 0,
+      missingPositions,
+    };
+  });
+
+  const problemDiagnostics = matchDiagnostics.filter((d) => d.issues.length > 0);
+  const allIssues = problemDiagnostics.flatMap((d) => d.issues);
+
+  return {
+    divisionId: division.id,
+    divisionName: division.name,
+    totalKoMatches: dedupedKo.length,
+    rounds,
+    matchDiagnostics,
+    problemDiagnostics,
+    summary: {
+      totalIssues: allIssues.length,
+      orphansCount: problemDiagnostics.filter((d) => d.isOrphan).length,
+      inconsistentCount: problemDiagnostics.filter((d) => d.isInconsistent).length,
+      unpropagatedCount: allIssues.filter((i) =>
+        ['bye_not_advanced', 'unpropagated_winner', 'missing_winner_id'].includes(i.code)
+      ).length,
+      missingMatchesCount: rounds.reduce(
+        (acc, r) => acc + Math.max(r.expectedMatchCount - r.matchCount, r.missingPositions.length),
+        0
+      ),
+      collisionsCount: allIssues.filter((i) => i.code === 'slot_collision').length,
+      criticalCount: allIssues.filter((i) => i.severity === 'critical').length,
+      warningCount: allIssues.filter((i) => i.severity === 'warning').length,
+    },
+  };
+}
+
+export function buildMissingNextRoundMatchScaffold(params: {
+  division: Division;
+  roundName: string;
+  roundOrder: number;
+  bracketPosition: number;
+  nextMatchId?: string | null;
+  nextMatchSlot?: 'A' | 'B' | null;
+  published: boolean;
+  now?: string;
+}): Match {
+  const ts = params.now || new Date().toISOString();
+  return {
+    id: makeId('ko'),
+    tournamentId: params.division.tournamentId,
+    divisionId: params.division.id,
+    matchdayId: null,
+    phase: 'eliminacion',
+    roundName: params.roundName,
+    roundOrder: params.roundOrder,
+    bracketPosition: params.bracketPosition,
+    nextMatchId: params.nextMatchId || null,
+    nextMatchSlot: params.nextMatchSlot || null,
+    groupId: null,
+    entryAId: null,
+    entryAName: 'Por definir',
+    playerIdsA: [],
+    entryBId: null,
+    entryBName: 'Por definir',
+    playerIdsB: [],
+    isBye: false,
+    scheduledDate: null,
+    scheduledTime: null,
+    courtId: null,
+    courtName: null,
+    status: 'programado',
+    sets: [],
+    winnerEntryId: null,
+    winnerName: null,
+    outcomeNote: null,
+    correctionHistory: [],
+    rescheduleHistory: [],
+    published: params.published,
+    createdAt: ts,
+    updatedAt: ts,
+  };
+}
+
+export interface BracketAutoRepairResult {
+  createdMatches: Match[];
+  updatedMatches: Match[];
+  allAffectedMatches: Match[];
+  reconcileResult: KnockoutReconcileResult;
+}
+
+export function repairEliminationBracketWithMissingScaffolds(
+  divisionMatches: Match[],
+  division: Division,
+  fallbackEntries: Registration[]
+): BracketAutoRepairResult {
+  const now = new Date().toISOString();
+  const nonKo = divisionMatches.filter(
+    (m) => m.divisionId === division.id && m.phase !== 'eliminacion'
+  );
+  const koMatches = dedupeMatches(
+    divisionMatches.filter((m) => m.divisionId === division.id && m.phase === 'eliminacion')
+  );
+  const shouldBePublished =
+    division.drawStatus === 'publicado' || koMatches.some((m) => m.published);
+
+  const nonThirdKo = koMatches
+    .filter((m) => !m.isThirdPlace && m.roundName !== 'Tercer Puesto')
+    .sort(compareMatchesByRound);
+  const thirdPlaceMatches = koMatches.filter(
+    (m) => m.isThirdPlace || m.roundName === 'Tercer Puesto'
+  );
+
+  if (nonThirdKo.length === 0) {
+    const emptyReconcile = reconcileKnockoutBracket(divisionMatches, division, fallbackEntries);
+    return {
+      createdMatches: [],
+      updatedMatches: emptyReconcile.updatedMatches,
+      allAffectedMatches: emptyReconcile.updatedMatches,
+      reconcileResult: emptyReconcile,
+    };
+  }
+
+  const roundsMap = new Map<string, Match[]>();
+  for (const m of nonThirdKo) {
+    const key = m.roundName.trim().toLowerCase() || `r${m.roundOrder}`;
+    const list = roundsMap.get(key);
+    if (list) list.push(m);
+    else roundsMap.set(key, [m]);
+  }
+
+  const sortedRoundGroups = Array.from(roundsMap.values()).sort((a, b) => {
+    const nameA = a[0].roundName;
+    const nameB = b[0].roundName;
+    if (isKnownKnockoutStage(nameA) && isKnownKnockoutStage(nameB)) {
+      const rankDiff = getKnockoutStageRank(nameA) - getKnockoutStageRank(nameB);
+      if (rankDiff !== 0) return rankDiff;
+    }
+    return a[0].roundOrder - b[0].roundOrder;
+  });
+
+  const createdMatches: Match[] = [];
+  const workingGroups: Match[][] = sortedRoundGroups.map((g) => [...g]);
+
+  // Recorrer de ronda temprana hacia la Final asegurando llaves suficientes en la ronda siguiente
+  let rIdx = 0;
+  while (rIdx < workingGroups.length) {
+    const currGroup = workingGroups[rIdx];
+    const currStage = currGroup[0];
+    const isSingleFinal = currGroup.length === 1 && isRealFinalMatch(currStage, workingGroups.flat());
+    if (isSingleFinal) break;
+
+    const maxCurrPos = Math.max(
+      currGroup.length,
+      ...currGroup.map((m) => m.bracketPosition || 0)
+    );
+    const expectedNextCount = Math.max(1, Math.ceil(maxCurrPos / 2));
+
+    let nextGroup = workingGroups[rIdx + 1];
+    const nextRoundName =
+      nextGroup?.[0]?.roundName || getExpectedNextRoundName(currStage.roundName, maxCurrPos);
+    const nextRoundOrder =
+      nextGroup?.[0]?.roundOrder || currStage.roundOrder + 1;
+
+    if (!nextGroup) {
+      nextGroup = [];
+      workingGroups.push(nextGroup);
+    }
+
+    // Detectar qué posiciones 1..expectedNextCount ya están cubiertas (por bracketPosition o por enlace entrante)
+    const occupiedNextPositions = new Set<number>();
+    const nextGroupById = new Map(nextGroup.map((nm) => [nm.id, nm]));
+    const inferredPosByNextId = new Map<string, number>();
+
+    currGroup.forEach((cm, idx) => {
+      if (cm.nextMatchId && nextGroupById.has(cm.nextMatchId)) {
+        const cmPos = cm.bracketPosition && cm.bracketPosition >= 1 ? cm.bracketPosition : idx + 1;
+        inferredPosByNextId.set(cm.nextMatchId, Math.ceil(cmPos / 2));
+      }
+    });
+
+    nextGroup.forEach((nm, idx) => {
+      const p =
+        nm.bracketPosition && nm.bracketPosition >= 1
+          ? nm.bracketPosition
+          : inferredPosByNextId.get(nm.id) || idx + 1;
+      occupiedNextPositions.add(p);
+    });
+
+    for (let pos = 1; pos <= expectedNextCount; pos++) {
+      if (occupiedNextPositions.has(pos)) continue;
+      const scaffold = buildMissingNextRoundMatchScaffold({
+        division,
+        roundName: nextRoundName,
+        roundOrder: nextRoundOrder,
+        bracketPosition: pos,
+        published: shouldBePublished,
+        now,
+      });
+      createdMatches.push(scaffold);
+      nextGroup.push(scaffold);
+      occupiedNextPositions.add(pos);
+    }
+
+    nextGroup.sort(
+      (a, b) =>
+        (a.bracketPosition ?? 9999) - (b.bracketPosition ?? 9999) ||
+        (a.createdAt || '').localeCompare(b.createdAt || '') ||
+        a.id.localeCompare(b.id)
+    );
+
+    rIdx++;
+  }
+
+  const combinedInput = [
+    ...nonKo,
+    ...workingGroups.flat(),
+    ...thirdPlaceMatches,
+  ];
+  const reconcileResult = reconcileKnockoutBracket(combinedInput, division, fallbackEntries);
+
+  const createdIdSet = new Set(createdMatches.map((m) => m.id));
+  const reconciledById = new Map(reconcileResult.updatedMatches.map((m) => [m.id, m]));
+
+  // Si reconcileKnockoutBracket modificó alguno de los partidos recién creados, usar la versión reconciliada
+  const finalCreated = createdMatches.map((cm) => reconciledById.get(cm.id) || cm);
+  const finalUpdated = reconcileResult.updatedMatches.filter((m) => !createdIdSet.has(m.id));
+  const allAffectedMatches = [...finalCreated, ...finalUpdated];
+
+  return {
+    createdMatches: finalCreated,
+    updatedMatches: finalUpdated,
+    allAffectedMatches,
+    reconcileResult,
+  };
+}
+
+

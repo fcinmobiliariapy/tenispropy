@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   Award,
   CheckCircle2,
@@ -29,6 +30,7 @@ import {
 import { formatScoreString, validateAndDetermineWinner } from '../../utils/itfRules';
 import {
   analyzeDuplicateMatches,
+  analyzeEliminationDiagnostics,
   compareMatchesByRound,
   computeGroupStandings,
   computeKnockoutPodiumUpdate,
@@ -42,6 +44,7 @@ import {
   isRealFinalMatch,
   makeId,
   reconcileKnockoutBracket,
+  repairEliminationBracketWithMissingScaffolds,
   resolveNextKnockoutMatch,
 } from '../../utils/tournamentEngine';
 import {
@@ -73,6 +76,7 @@ interface Props {
   permissions?: StaffPermissions;
   canOpenUsersTab?: boolean;
   onOpenUsersTab?: () => void;
+  onOpenDiagnosticTab?: () => void;
 }
 
 export const AdminScoringAndRolesSection: React.FC<Props> = ({
@@ -94,6 +98,7 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
   permissions,
   canOpenUsersTab,
   onOpenUsersTab,
+  onOpenDiagnosticTab,
 }) => {
   const canEdit = permissions ? permissions.canEdit : true;
   const canDelete = permissions ? (permissions.canDelete || isSuperAdmin) : isSuperAdmin;
@@ -549,6 +554,11 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     [dedupedDivisionMatches, division]
   );
 
+  const divisionDiagnosticReport = useMemo(
+    () => analyzeEliminationDiagnostics(division, dedupedDivisionMatches),
+    [division, dedupedDivisionMatches]
+  );
+
   const tournamentUnpropagatedSummary = useMemo(() => {
     const affectedDivisions: Array<{ division: Division; count: number }> = [];
     let total = 0;
@@ -603,8 +613,13 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     const confirmedInTarget = targetRegistrations.filter((r) => r.status === 'confirmada');
     const fallbackPool = qualifiers.length > 0 ? qualifiers : confirmedInTarget;
 
-    const res = reconcileKnockoutBracket(targetDeduped, targetDiv, fallbackPool);
-    for (const m of res.updatedMatches) {
+    const repairRes = repairEliminationBracketWithMissingScaffolds(
+      targetDeduped,
+      targetDiv,
+      fallbackPool
+    );
+    const res = repairRes.reconcileResult;
+    for (const m of repairRes.allAffectedMatches) {
       await saveEntity('matches', { ...m, updatedAt: now });
     }
 
@@ -629,8 +644,11 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     }
 
     // 4. Sincronizar podio (Campeón / Vicecampeón / 3er Puesto) si la Final o 3er Puesto ya tienen ganador
-    const updatedMap = new Map(res.updatedMatches.map((m) => [m.id, m]));
-    const afterMatches = targetDeduped.map((m) => updatedMap.get(m.id) || m);
+    const updatedMap = new Map(repairRes.allAffectedMatches.map((m) => [m.id, m]));
+    const afterMatches = dedupeMatches([
+      ...targetDeduped.map((m) => updatedMap.get(m.id) || m),
+      ...repairRes.createdMatches,
+    ]);
     const podiumPatch = computeKnockoutPodiumUpdate(targetDiv, afterMatches);
     if (podiumPatch) {
       await saveEntity('divisions', {
@@ -641,7 +659,11 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
     }
 
     return {
-      res,
+      res: {
+        ...res,
+        updatedMatches: repairRes.allAffectedMatches,
+      },
+      createdCount: repairRes.createdMatches.length,
       removedEmptyCount,
       podiumUpdated: Boolean(podiumPatch),
     };
@@ -1233,6 +1255,24 @@ export const AdminScoringAndRolesSection: React.FC<Props> = ({
                 {tournamentUnpropagatedSummary.total > 0
                   ? `Actualizar todas las categorías (${tournamentUnpropagatedSummary.total})`
                   : 'Actualizar todas las categorías'}
+              </button>
+            )}
+
+            {onOpenDiagnosticTab && (
+              <button
+                type="button"
+                onClick={onOpenDiagnosticTab}
+                title="Abrir diagnóstico de partidos huérfanos y cruces inconsistentes"
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-colors ${
+                  divisionDiagnosticReport.summary.totalIssues > 0
+                    ? 'border-red-300 bg-red-50 text-red-900 hover:bg-red-100'
+                    : 'border-[#E2E8F0] bg-white text-[#0A1633] hover:bg-slate-50'
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5 text-[#7C1FA2]" />
+                {divisionDiagnosticReport.summary.totalIssues > 0
+                  ? `Diagnóstico (${divisionDiagnosticReport.summary.totalIssues} alertas)`
+                  : 'Diagnóstico de cuadro'}
               </button>
             )}
           </div>

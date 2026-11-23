@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   Calendar,
   CheckCircle2,
@@ -37,7 +38,10 @@ import {
   TournamentTrophy,
   UserRole,
 } from '../types/tennis';
-import { analyzeDuplicateMatches } from '../utils/tournamentEngine';
+import {
+  analyzeDuplicateMatches,
+  analyzeEliminationDiagnostics,
+} from '../utils/tournamentEngine';
 import {
   canUserAccessTournament,
   resolveEffectivePermissions,
@@ -59,6 +63,7 @@ import { AdminPlayersSection } from './admin/AdminPlayersSection';
 import { AdminRegistrationsDrawSection } from './admin/AdminRegistrationsDrawSection';
 import { AdminMatchdaysAndPhotosSection } from './admin/AdminMatchdaysAndPhotosSection';
 import { AdminScoringAndRolesSection } from './admin/AdminScoringAndRolesSection';
+import { AdminEliminationDiagnosticPanel } from './admin/AdminEliminationDiagnosticPanel';
 import { AdminLandingPageSection } from './admin/AdminLandingPageSection';
 import { AdminUsersPermissionsSection } from './admin/AdminUsersPermissionsSection';
 import { TournamentQrModal } from './TournamentQrModal';
@@ -70,6 +75,7 @@ type AdminTab =
   | 'inscripciones'
   | 'jornadas'
   | 'marcadores'
+  | 'diagnostico'
   | 'pagina_principal'
   | 'usuarios';
 
@@ -373,7 +379,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const navItems: Array<{ id: AdminTab; label: string; icon: React.ReactNode; show: boolean }> = [
+  const tournamentDiagnosticIssuesCount = tournamentDivisions.reduce((acc, d) => {
+    const divM = tournamentMatches.filter((m) => m.divisionId === d.id);
+    return acc + analyzeEliminationDiagnostics(d, divM).summary.totalIssues;
+  }, 0);
+
+  const navItems: Array<{
+    id: AdminTab;
+    label: string;
+    icon: React.ReactNode;
+    show: boolean;
+    badgeCount?: number;
+  }> = [
     {
       id: 'torneos',
       label: 'Torneos y divisiones',
@@ -405,6 +422,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       label: 'Marcadores oficiales',
       icon: <ClipboardCheck className="w-4 h-4" />,
       show: effectivePermissions.manageScoring && Boolean(activeTournament && activeDivision),
+    },
+    {
+      id: 'diagnostico',
+      label: 'Diagnóstico de cuadro',
+      icon: <Activity className="w-4 h-4" />,
+      show:
+        (effectivePermissions.manageScoring || effectivePermissions.manageDraws) &&
+        Boolean(activeTournament && activeDivision),
+      badgeCount: tournamentDiagnosticIssuesCount,
     },
     {
       id: 'pagina_principal',
@@ -547,6 +573,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               {item.icon}
               <span>{item.label}</span>
+              {Boolean(item.badgeCount && item.badgeCount > 0) && (
+                <span
+                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                    currentTab === item.id
+                      ? 'bg-white/25 text-white'
+                      : 'bg-red-600 text-white'
+                  }`}
+                >
+                  {item.badgeCount}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -617,7 +654,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   }`}
                 >
                   {item.icon}
-                  <span className="truncate">{item.label}</span>
+                  <span className="truncate flex-1 text-left">{item.label}</span>
+                  {Boolean(item.badgeCount && item.badgeCount > 0) && (
+                    <span
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${
+                        currentTab === item.id
+                          ? 'bg-white/25 text-white'
+                          : 'bg-red-600 text-white'
+                      }`}
+                    >
+                      {item.badgeCount}
+                    </span>
+                  )}
                 </button>
               ))}
             </nav>
@@ -840,6 +888,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 permissions={effectivePermissions}
                 canOpenUsersTab={Boolean(isSuperAdmin || effectivePermissions.manageUsers)}
                 onOpenUsersTab={() => setActiveTab('usuarios')}
+                onOpenDiagnosticTab={() => setActiveTab('diagnostico')}
+              />
+            )}
+
+          {currentTab === 'diagnostico' &&
+            activeTournament &&
+            activeDivision &&
+            (effectivePermissions.manageScoring || effectivePermissions.manageDraws) && (
+              <AdminEliminationDiagnosticPanel
+                tournament={activeTournament}
+                division={activeDivision}
+                divisions={tournamentDivisions}
+                onSelectDivision={onSelectDivision}
+                divisionMatches={divisionMatches}
+                tournamentMatches={tournamentMatches}
+                allMatches={matches}
+                allDivisions={divisions}
+                allGroups={groups}
+                divisionRegistrations={divisionRegistrations}
+                allRegistrations={registrations}
+                players={tournamentPlayers}
+                userEmail={user.email || 'staff'}
+                isSuperAdmin={isSuperAdmin}
+                permissions={effectivePermissions}
+                onOpenScoringTab={() => setActiveTab('marcadores')}
               />
             )}
 
