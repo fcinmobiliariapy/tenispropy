@@ -21,6 +21,7 @@ import {
   Court,
   Division,
   DivisionFormat,
+  FootballFormat,
   Gender,
   Group,
   Match,
@@ -30,6 +31,7 @@ import {
   NotificationAlert,
   PlayerPublic,
   Registration,
+  SportType,
   StaffPermissions,
   TiebreakerCriterion,
   Tournament,
@@ -38,6 +40,11 @@ import {
   TournamentTrophy,
 } from '../../types/tennis';
 import { ITF_EDITION_LABEL } from '../../utils/itfRules';
+import {
+  createDefaultFifaConfig,
+  FIFA_EDITION_LABEL,
+  isFootballTournament,
+} from '../../utils/footballEngine';
 import { compressImageDataUrl, getOptimizedImageUrl, optimizeAndUploadAdBanner } from '../../utils/imageOptimizer';
 import { makeId } from '../../utils/tournamentEngine';
 import {
@@ -46,6 +53,7 @@ import {
   formatFirestoreError,
   removeEntity,
   saveEntity,
+  seedFootballCompetitionToFirestore,
 } from '../../services/firestoreService';
 import { generateAdaptiveTournamentAdBanners } from '../TournamentAd';
 import { AdminTrophiesPanel } from './AdminTrophiesPanel';
@@ -76,6 +84,16 @@ interface Props {
 }
 
 const CATEGORIES = ['6ta', '5ta', '4ta', '3ra', '2da', '1ra', 'Libre', 'Senior', 'Personalizada'];
+const FOOTBALL_CATEGORIES = [
+  'Primera',
+  'Intermedia',
+  'Sub-20',
+  'Sub-17',
+  'Sub-15',
+  'Femenino',
+  'Senior / +35',
+  'Personalizada',
+];
 
 const ALL_TIEBREAKERS: Array<{ id: TiebreakerCriterion; label: string }> = [
   { id: 'points', label: 'Puntos de clasificación' },
@@ -161,9 +179,12 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     [tournamentAds, activeTournament?.id]
   );
 
+  const isFootballActiveTournament = isFootballTournament(activeTournament);
+
   // Form Torneo (Crear o Editar)
   const [showTournamentForm, setShowTournamentForm] = useState(false);
   const [editingTournamentId, setEditingTournamentId] = useState<string | null>(null);
+  const [tSport, setTSport] = useState<SportType>('tennis');
   const [tName, setTName] = useState('');
   const [tOrg, setTOrg] = useState('');
   const [tVenue, setTVenue] = useState('');
@@ -186,6 +207,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
   const [quickCoverError, setQuickCoverError] = useState<string | null>(null);
   const [tournamentError, setTournamentError] = useState<string | null>(null);
   const [confirmDeleteTournamentId, setConfirmDeleteTournamentId] = useState<string | null>(null);
+  const [seedingFootball, setSeedingFootball] = useState(false);
 
   // Form División (Crear o Editar)
   const [showDivForm, setShowDivForm] = useState(false);
@@ -209,6 +231,12 @@ export const AdminTournamentsSection: React.FC<Props> = ({
   const [dHasThirdPlace, setDHasThirdPlace] = useState(true);
   const [dGroupCount, setDGroupCount] = useState(2);
   const [dQualifiers, setDQualifiers] = useState(2);
+  const [dFootballFormat, setDFootballFormat] = useState<FootballFormat>('futbol_11');
+  const [dHalfMinutes, setDHalfMinutes] = useState(45);
+  const [dAllowExtraTime, setDAllowExtraTime] = useState(true);
+  const [dMaxSubs, setDMaxSubs] = useState(5);
+  const [dQualifyingEnabled, setDQualifyingEnabled] = useState(true);
+  const [dMinMatchesGk, setDMinMatchesGk] = useState(1);
   const [dTiebreakers, setDTiebreakers] = useState<TiebreakerCriterion[]>([
     'points',
     'head_to_head',
@@ -258,8 +286,9 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setConfirmDeleteAdId(null);
   }, [activeTournament?.id]);
 
-  const openNewTournamentForm = () => {
+  const openNewTournamentForm = (defaultSport: SportType = 'tennis') => {
     setEditingTournamentId(null);
+    setTSport(defaultSport);
     setTName('');
     setTOrg('');
     setTVenue('');
@@ -270,7 +299,11 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setTRegEnd('2026-11-30');
     setTRest(60);
     setTStatus('inscripciones');
-    setTCourtsText('Cancha Central, Cancha 2, Cancha 3');
+    setTCourtsText(
+      defaultSport === 'football'
+        ? 'Estadio Principal, Cancha Auxiliar 2'
+        : 'Cancha Central, Cancha 2, Cancha 3'
+    );
     setTEditableCourts([]);
     setTCoverImageUrl('');
     setFormCoverPreviewError(false);
@@ -280,6 +313,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
 
   const openEditTournamentForm = (t: Tournament) => {
     setEditingTournamentId(t.id);
+    setTSport(t.sport === 'football' ? 'football' : 'tennis');
     setTName(t.name);
     setTOrg(t.organizerName);
     setTVenue(t.venue);
@@ -302,6 +336,25 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setFormCoverPreviewError(false);
     setTournamentError(null);
     setShowTournamentForm(true);
+  };
+
+  const handleSeedFootballTemplate = async () => {
+    setSeedingFootball(true);
+    setErrorMsg(null);
+    setFeedback(null);
+    try {
+      const created = await seedFootballCompetitionToFirestore(currentUid);
+      onSelectTournament(created.id);
+      setFeedback(
+        `Competencia de Fútbol FIFA "${created.name}" creada con categorías, equipos, planteles, grupos, fase clasificatoria y planillas oficiales.`
+      );
+    } catch (err) {
+      setErrorMsg(
+        formatFirestoreError(err, 'No se pudo generar la competencia de Fútbol FIFA.')
+      );
+    } finally {
+      setSeedingFootball(false);
+    }
   };
 
   const handleUploadCoverImage = async (
@@ -414,6 +467,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
           }));
         const updated: Tournament = {
           ...existing,
+          sport: tSport,
+          itfEdition: tSport === 'football' ? FIFA_EDITION_LABEL : ITF_EDITION_LABEL,
           name: tName.trim().slice(0, 140),
           organizerName: (tOrg.trim() || existing.organizerName).slice(0, 120),
           venue: tVenue.trim().slice(0, 140),
@@ -422,13 +477,20 @@ export const AdminTournamentsSection: React.FC<Props> = ({
           endDate: validEnd,
           regStartDate: validRegStart,
           regEndDate: validRegEnd,
-          minRestMinutes: Math.max(0, Math.min(480, Number(tRest) || 60)),
+          minRestMinutes: Math.max(0, Math.min(10080, Number(tRest) || 60)),
           status: tStatus,
           coverImageUrl: normalizedCover || null,
           courts:
             cleanedCourts.length > 0
               ? cleanedCourts
-              : [{ id: makeId('crt'), name: 'Cancha 1', surface: 'Polvo de ladrillo', lights: true }],
+              : [
+                  {
+                    id: makeId('crt'),
+                    name: tSport === 'football' ? 'Estadio Principal' : 'Cancha 1',
+                    surface: tSport === 'football' ? 'Césped natural' : 'Polvo de ladrillo',
+                    lights: true,
+                  },
+                ],
           updatedAt: now,
         };
         await saveEntity('tournaments', updated);
@@ -436,6 +498,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         setEditingTournamentId(null);
         setFeedback(`Torneo "${updated.name}" actualizado.`);
       } else {
+        const defaultSurface: Court['surface'] =
+          tSport === 'football' ? 'Césped natural' : 'Polvo de ladrillo';
         const courts: Court[] = tCourtsText
           .split(',')
           .map((c) => c.trim())
@@ -443,12 +507,13 @@ export const AdminTournamentsSection: React.FC<Props> = ({
           .map((name, idx) => ({
             id: makeId(`crt_${idx}`),
             name,
-            surface: 'Polvo de ladrillo',
+            surface: defaultSurface,
             lights: true,
           }));
 
         const newT: Tournament = {
           id: makeId('tor'),
+          sport: tSport,
           name: tName.trim().slice(0, 140),
           organizerName: (tOrg.trim() || 'Organización PlayPy').slice(0, 120),
           organizerUid: currentUid,
@@ -459,13 +524,20 @@ export const AdminTournamentsSection: React.FC<Props> = ({
           courts:
             courts.length > 0
               ? courts
-              : [{ id: makeId('crt'), name: 'Cancha 1', surface: 'Polvo de ladrillo', lights: true }],
+              : [
+                  {
+                    id: makeId('crt'),
+                    name: tSport === 'football' ? 'Estadio Principal' : 'Cancha 1',
+                    surface: defaultSurface,
+                    lights: true,
+                  },
+                ],
           startDate: validStart,
           endDate: validEnd,
           regStartDate: validRegStart,
           regEndDate: validRegEnd,
-          minRestMinutes: Number(tRest) || 60,
-          itfEdition: ITF_EDITION_LABEL,
+          minRestMinutes: Math.max(0, Math.min(10080, Number(tRest) || 60)),
+          itfEdition: tSport === 'football' ? FIFA_EDITION_LABEL : ITF_EDITION_LABEL,
           status: tStatus,
           isDemo: false,
           createdAt: now,
@@ -518,32 +590,54 @@ export const AdminTournamentsSection: React.FC<Props> = ({
 
   const openNewDivisionForm = () => {
     setEditingDivisionId(null);
-    setDCategory('5ta');
-    setDCustomCat('');
-    setDModality('Singles');
-    setDGender('Masculino');
-    setDFormat('grupos_y_final');
-    setDMultiDiv(true);
-    setDMaxEntries(16);
-    setDSetsToWin(2);
-    setDGamesPerSet(6);
-    setDUseTiebreak(true);
-    setDSetTiebreakPoints(7);
-    setDTiebreakExactTarget(false);
-    setDDirectTiebreakMatch(false);
-    setDNoAd(false);
-    setDMatchTb(true);
-    setDOptionalSets(false);
-    setDHasThirdPlace(true);
-    setDGroupCount(2);
-    setDQualifiers(2);
-    setDTiebreakers(['points', 'head_to_head', 'sets_diff', 'games_diff', 'draw']);
+    if (isFootballActiveTournament) {
+      const defFifa = createDefaultFifaConfig('futbol_11');
+      setDCategory('Primera');
+      setDCustomCat('');
+      setDModality('Equipo');
+      setDGender('Masculino');
+      setDFormat('grupos_clasificatoria_final');
+      setDMultiDiv(true);
+      setDMaxEntries(16);
+      setDFootballFormat('futbol_11');
+      setDHalfMinutes(defFifa.halfMinutes);
+      setDAllowExtraTime(defFifa.allowExtraTime);
+      setDMaxSubs(defFifa.maxSubstitutions);
+      setDQualifyingEnabled(defFifa.qualifyingPhaseEnabled);
+      setDMinMatchesGk(defFifa.minMatchesForBestGoalkeeper);
+      setDHasThirdPlace(true);
+      setDGroupCount(2);
+      setDQualifiers(2);
+      setDTiebreakers(['points', 'head_to_head', 'games_diff', 'games_pct', 'draw']);
+    } else {
+      setDCategory('5ta');
+      setDCustomCat('');
+      setDModality('Singles');
+      setDGender('Masculino');
+      setDFormat('grupos_y_final');
+      setDMultiDiv(true);
+      setDMaxEntries(16);
+      setDSetsToWin(2);
+      setDGamesPerSet(6);
+      setDUseTiebreak(true);
+      setDSetTiebreakPoints(7);
+      setDTiebreakExactTarget(false);
+      setDDirectTiebreakMatch(false);
+      setDNoAd(false);
+      setDMatchTb(true);
+      setDOptionalSets(false);
+      setDHasThirdPlace(true);
+      setDGroupCount(2);
+      setDQualifiers(2);
+      setDTiebreakers(['points', 'head_to_head', 'sets_diff', 'games_diff', 'draw']);
+    }
     setShowDivForm(true);
   };
 
   const openEditDivisionForm = (div: Division) => {
     setEditingDivisionId(div.id);
-    const knownCat = CATEGORIES.includes(div.category) && div.category !== 'Personalizada';
+    const catList = isFootballActiveTournament || div.sport === 'football' ? FOOTBALL_CATEGORIES : CATEGORIES;
+    const knownCat = catList.includes(div.category) && div.category !== 'Personalizada';
     setDCategory(knownCat ? div.category : 'Personalizada');
     setDCustomCat(knownCat ? '' : div.category);
     setDModality(div.modality);
@@ -564,6 +658,16 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     setDGroupCount(div.drawConfig.groupCount);
     setDQualifiers(div.drawConfig.qualifiersPerGroup);
     setDTiebreakers(div.drawConfig.tiebreakers);
+    if (div.sport === 'football' || isFootballActiveTournament) {
+      const fmt = div.footballFormat || 'futbol_11';
+      const cfg = div.fifaConfig || createDefaultFifaConfig(fmt);
+      setDFootballFormat(fmt);
+      setDHalfMinutes(cfg.halfMinutes);
+      setDAllowExtraTime(cfg.allowExtraTime);
+      setDMaxSubs(cfg.maxSubstitutions);
+      setDQualifyingEnabled(cfg.qualifyingPhaseEnabled);
+      setDMinMatchesGk(cfg.minMatchesForBestGoalkeeper);
+    }
     setShowDivForm(true);
   };
 
@@ -576,16 +680,41 @@ export const AdminTournamentsSection: React.FC<Props> = ({
     try {
       const now = new Date().toISOString();
       const cat = dCategory === 'Personalizada' ? dCustomCat.trim() || 'Especial' : dCategory;
-      const divName = `${cat} ${dModality} ${dGender}`;
+      const isFootballDiv = isFootballActiveTournament;
+      const formatBadge =
+        dFootballFormat === 'futbol_11'
+          ? 'Fútbol 11'
+          : dFootballFormat === 'futbol_7'
+          ? 'Fútbol 7'
+          : 'Futsal';
+      const divName = isFootballDiv ? `${cat} · ${formatBadge} ${dGender}` : `${cat} ${dModality} ${dGender}`;
+      const hasGroups = dFormat === 'grupos_y_final' || dFormat === 'grupos_clasificatoria_final';
 
       if (editingDivisionId) {
         const existing = divisions.find((d) => d.id === editingDivisionId);
         if (!existing) return;
+        const baseFifa = existing.fifaConfig || createDefaultFifaConfig(dFootballFormat);
         const updated: Division = {
           ...existing,
+          ...(isFootballDiv
+            ? {
+                sport: 'football' as SportType,
+                footballFormat: dFootballFormat,
+                fifaConfig: {
+                  ...baseFifa,
+                  edition: FIFA_EDITION_LABEL,
+                  halfMinutes: Math.max(10, Math.min(60, Number(dHalfMinutes) || 45)),
+                  allowExtraTime: dAllowExtraTime,
+                  maxSubstitutions: Math.max(1, Math.min(20, Number(dMaxSubs) || 5)),
+                  qualifyingPhaseEnabled:
+                    dFormat === 'grupos_clasificatoria_final' ? true : dQualifyingEnabled,
+                  minMatchesForBestGoalkeeper: Math.max(1, Math.min(20, Number(dMinMatchesGk) || 1)),
+                },
+              }
+            : {}),
           name: divName,
           category: cat,
-          modality: dModality,
+          modality: isFootballDiv ? 'Equipo' : dModality,
           gender: dGender,
           format: dFormat,
           allowMultiDivision: dMultiDiv,
@@ -605,8 +734,8 @@ export const AdminTournamentsSection: React.FC<Props> = ({
           },
           drawConfig: {
             ...existing.drawConfig,
-            groupCount: dFormat === 'grupos_y_final' ? Math.max(1, dGroupCount) : 1,
-            qualifiersPerGroup: dFormat === 'grupos_y_final' ? Math.max(1, dQualifiers) : 1,
+            groupCount: hasGroups ? Math.max(1, dGroupCount) : 1,
+            qualifiersPerGroup: hasGroups ? Math.max(1, dQualifiers) : 1,
             tiebreakers: dTiebreakers,
           },
           hasThirdPlaceMatch: dHasThirdPlace,
@@ -615,20 +744,36 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         await saveEntity('divisions', updated);
         setShowDivForm(false);
         setEditingDivisionId(null);
-        setFeedback(`División "${updated.name}" actualizada.`);
+        setFeedback(`Categoría / división "${updated.name}" actualizada.`);
       } else {
+        const defaultFifa = createDefaultFifaConfig(dFootballFormat);
         const newDiv: Division = {
           id: makeId('div'),
           tournamentId: activeTournament.id,
+          ...(isFootballDiv
+            ? {
+                sport: 'football' as SportType,
+                footballFormat: dFootballFormat,
+                fifaConfig: {
+                  ...defaultFifa,
+                  halfMinutes: Math.max(10, Math.min(60, Number(dHalfMinutes) || 45)),
+                  allowExtraTime: dAllowExtraTime,
+                  maxSubstitutions: Math.max(1, Math.min(20, Number(dMaxSubs) || 5)),
+                  qualifyingPhaseEnabled:
+                    dFormat === 'grupos_clasificatoria_final' ? true : dQualifyingEnabled,
+                  minMatchesForBestGoalkeeper: Math.max(1, Math.min(20, Number(dMinMatchesGk) || 1)),
+                },
+              }
+            : {}),
           name: divName,
           category: cat,
-          modality: dModality,
+          modality: isFootballDiv ? 'Equipo' : dModality,
           gender: dGender,
           format: dFormat,
           allowMultiDivision: dMultiDiv,
           maxEntries: Number(dMaxEntries) || 16,
           itfConfig: {
-            edition: ITF_EDITION_LABEL,
+            edition: isFootballDiv ? FIFA_EDITION_LABEL : ITF_EDITION_LABEL,
             setsToWin: dSetsToWin,
             gamesPerSet: dGamesPerSet,
             tiebreakAt: dGamesPerSet === 4 ? 3 : dGamesPerSet === 8 ? 7 : 6,
@@ -642,15 +787,19 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             optionalSetScores: dOptionalSets,
           },
           drawConfig: {
-            groupCount: dFormat === 'grupos_y_final' ? Math.max(1, dGroupCount) : 1,
-            qualifiersPerGroup: dFormat === 'grupos_y_final' ? Math.max(1, dQualifiers) : 1,
+            groupCount: hasGroups ? Math.max(1, dGroupCount) : 1,
+            qualifiersPerGroup: hasGroups ? Math.max(1, dQualifiers) : 1,
             seedingEnabled: true,
-            pointsWin: 2,
-            pointsLoss: 1,
-            pointsWoWin: 2,
+            pointsWin: isFootballDiv ? 3 : 2,
+            pointsLoss: isFootballDiv ? 0 : 1,
+            pointsWoWin: isFootballDiv ? 3 : 2,
             pointsWoLoss: 0,
-            tiebreakers: dTiebreakers,
-            woHandlingNote: dNoAd
+            tiebreakers: isFootballDiv
+              ? ['points', 'head_to_head', 'games_diff', 'games_pct', 'draw']
+              : dTiebreakers,
+            woHandlingNote: isFootballDiv
+              ? 'Reglas FIFA: Victoria 3 pts, Empate 1 pt, Derrota 0 pts. W.O. otorga 3-0 al vencedor.'
+              : dNoAd
               ? 'Punto decisivo sin ventaja en 40-40. WO otorga 2 puntos al vencedor.'
               : 'Formato tradicional con ventaja. WO otorga 2 puntos al vencedor.',
           },
@@ -667,7 +816,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
         await saveEntity('divisions', newDiv);
         onSelectDivision(newDiv.id);
         setShowDivForm(false);
-        setFeedback(`División "${newDiv.name}" creada con módulo independiente.`);
+        setFeedback(`Categoría / división "${newDiv.name}" creada con módulo independiente.`);
       }
     } catch (err) {
       setErrorMsg(formatFirestoreError(err, 'No se pudo guardar la división en Firestore.'));
@@ -1070,13 +1219,24 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             Consultar ITF
           </button>
           {(!permissions || permissions.canCreate) && (
-            <button
-              onClick={openNewTournamentForm}
-              className="inline-flex items-center gap-2 px-4 min-h-[44px] sm:min-h-[38px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
-            >
-              <Plus className="w-4 h-4" />
-              Nuevo torneo
-            </button>
+            <>
+              <button
+                type="button"
+                disabled={seedingFootball}
+                onClick={handleSeedFootballTemplate}
+                className="inline-flex items-center gap-2 px-3.5 min-h-[44px] sm:min-h-[38px] rounded-lg border border-[#0284C7] bg-[#0284C7]/10 text-[#0A1633] text-xs font-semibold hover:bg-[#0284C7]/20 disabled:opacity-60"
+              >
+                <Sparkles className="w-4 h-4 text-[#0284C7]" />
+                {seedingFootball ? 'Creando Fútbol FIFA...' : 'Nueva competencia Fútbol FIFA (Plantilla)'}
+              </button>
+              <button
+                onClick={() => openNewTournamentForm('tennis')}
+                className="inline-flex items-center gap-2 px-4 min-h-[44px] sm:min-h-[38px] rounded-lg bg-[#7C1FA2] text-white text-xs font-medium hover:bg-[#6B1A8B]"
+              >
+                <Plus className="w-4 h-4" />
+                Nuevo torneo
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1102,6 +1262,27 @@ export const AdminTournamentsSection: React.FC<Props> = ({
             {editingTournamentId ? 'Editar torneo' : 'Crear nuevo torneo'}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-[#475569] mb-1">Deporte y reglamento *</label>
+              <select
+                value={tSport}
+                onChange={(e) => {
+                  const nextSport = e.target.value as SportType;
+                  setTSport(nextSport);
+                  if (!editingTournamentId) {
+                    setTCourtsText(
+                      nextSport === 'football'
+                        ? 'Estadio Principal, Cancha Auxiliar 2'
+                        : 'Cancha Central, Cancha 2, Cancha 3'
+                    );
+                  }
+                }}
+                className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm font-medium"
+              >
+                <option value="tennis">Tenis (Reglas ITF 2026)</option>
+                <option value="football">Fútbol (Reglas FIFA 2026)</option>
+              </select>
+            </div>
             <div>
               <label className="block text-xs font-medium text-[#475569] mb-1">Nombre del torneo *</label>
               <input
@@ -1155,7 +1336,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               <input
                 type="number"
                 min={0}
-                max={480}
+                max={10080}
                 value={tRest}
                 onChange={(e) => setTRest(Number(e.target.value))}
                 className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] text-sm font-mono tabular-nums"
@@ -1331,8 +1512,10 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     >
                       <option value="Polvo de ladrillo">Polvo de ladrillo</option>
                       <option value="Cemento">Cemento</option>
-                      <option value="Césped">Césped</option>
-                      <option value="Indoor">Indoor</option>
+                      <option value="Césped natural">Césped natural</option>
+                      <option value="Césped sintético">Césped sintético</option>
+                      <option value="Fútbol sintético">Fútbol sintético</option>
+                      <option value="Futsal / Parquet">Futsal / Parquet</option>
                     </select>
                     <label className="sm:col-span-2 inline-flex items-center gap-1.5 text-xs text-[#0A1633]">
                       <input
@@ -1661,7 +1844,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       onChange={(e) => setDCategory(e.target.value)}
                       className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
-                      {CATEGORIES.map((c) => (
+                      {(isFootballActiveTournament ? FOOTBALL_CATEGORIES : CATEGORIES).map((c) => (
                         <option key={c} value={c}>
                           {c}
                         </option>
@@ -1680,17 +1863,37 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       />
                     </div>
                   )}
-                  <div>
-                    <label className="block text-xs font-medium text-[#475569] mb-1">Modalidad</label>
-                    <select
-                      value={dModality}
-                      onChange={(e) => setDModality(e.target.value as Modality)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
-                    >
-                      <option value="Singles">Singles</option>
-                      <option value="Dobles">Dobles</option>
-                    </select>
-                  </div>
+                  {isFootballActiveTournament ? (
+                    <div>
+                      <label className="block text-xs font-medium text-[#475569] mb-1">Modalidad Fútbol FIFA</label>
+                      <select
+                        value={dFootballFormat}
+                        onChange={(e) => {
+                          const fmt = e.target.value as FootballFormat;
+                          setDFootballFormat(fmt);
+                          setDHalfMinutes(fmt === 'futbol_11' ? 45 : fmt === 'futbol_7' ? 30 : 20);
+                          setDMaxSubs(fmt === 'futbol_11' ? 5 : 12);
+                        }}
+                        className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
+                      >
+                        <option value="futbol_11">Fútbol 11 (Reglamentario FIFA)</option>
+                        <option value="futbol_7">Fútbol 7</option>
+                        <option value="futbol_5_futsal">Fútbol 5 / Futsal FIFA</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-medium text-[#475569] mb-1">Modalidad</label>
+                      <select
+                        value={dModality}
+                        onChange={(e) => setDModality(e.target.value as Modality)}
+                        className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
+                      >
+                        <option value="Singles">Singles</option>
+                        <option value="Dobles">Dobles</option>
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-[#475569] mb-1">Rama</label>
                     <select
@@ -1700,6 +1903,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                     >
                       <option value="Masculino">Masculino</option>
                       <option value="Femenino">Femenino</option>
+                      {isFootballActiveTournament && <option value="Mixto">Mixto</option>}
                     </select>
                   </div>
                   <div>
@@ -1709,46 +1913,92 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       onChange={(e) => setDFormat(e.target.value as DivisionFormat)}
                       className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
                     >
+                      {isFootballActiveTournament && (
+                        <option value="grupos_clasificatoria_final">
+                          Grupos + Fase Clasificatoria + Fase Final
+                        </option>
+                      )}
                       <option value="grupos_y_final">Grupos con fase final</option>
                       <option value="todos_contra_todos">Todos contra todos</option>
                       <option value="eliminacion_directa">Eliminación directa</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#475569] mb-1">Sets para ganar</label>
-                    <select
-                      value={dSetsToWin}
-                      onChange={(e) => setDSetsToWin(Number(e.target.value) as 1 | 2 | 3)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
-                    >
-                      <option value={2}>Al mejor de 3 sets</option>
-                      <option value={1}>Set único</option>
-                      <option value={3}>Al mejor de 5 sets</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#475569] mb-1">Games por set</label>
-                    <select
-                      value={dGamesPerSet}
-                      onChange={(e) => setDGamesPerSet(Number(e.target.value) as 4 | 6 | 8)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
-                    >
-                      <option value={6}>6 games (Estándar ITF)</option>
-                      <option value={4}>4 games (Set corto)</option>
-                      <option value={8}>8 games (Pro-Set)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#475569] mb-1">Sistema de Tie-Break</label>
-                    <select
-                      value={dSetTiebreakPoints}
-                      onChange={(e) => setDSetTiebreakPoints(Number(e.target.value) as 7 | 10)}
-                      className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
-                    >
-                      <option value={7}>A 7 puntos (Estándar ITF)</option>
-                      <option value={10}>A 10 puntos (ej. 10-3, 10-1)</option>
-                    </select>
-                  </div>
+
+                  {isFootballActiveTournament ? (
+                    <>
+                      <div>
+                        <label className="block text-xs font-medium text-[#475569] mb-1">Minutos por tiempo</label>
+                        <input
+                          type="number"
+                          min={10}
+                          max={60}
+                          value={dHalfMinutes}
+                          onChange={(e) => setDHalfMinutes(Number(e.target.value))}
+                          className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-mono tabular-nums"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#475569] mb-1">Cambios permitidos</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={dMaxSubs}
+                          onChange={(e) => setDMaxSubs(Number(e.target.value))}
+                          className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-mono tabular-nums"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#475569] mb-1">Mín. PJ Valla Menos Vencida</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={dMinMatchesGk}
+                          onChange={(e) => setDMinMatchesGk(Number(e.target.value))}
+                          className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-mono tabular-nums"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-xs font-medium text-[#475569] mb-1">Sets para ganar</label>
+                        <select
+                          value={dSetsToWin}
+                          onChange={(e) => setDSetsToWin(Number(e.target.value) as 1 | 2 | 3)}
+                          className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
+                        >
+                          <option value={2}>Al mejor de 3 sets</option>
+                          <option value={1}>Set único</option>
+                          <option value={3}>Al mejor de 5 sets</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#475569] mb-1">Games por set</label>
+                        <select
+                          value={dGamesPerSet}
+                          onChange={(e) => setDGamesPerSet(Number(e.target.value) as 4 | 6 | 8)}
+                          className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
+                        >
+                          <option value={6}>6 games (Estándar ITF)</option>
+                          <option value={4}>4 games (Set corto)</option>
+                          <option value={8}>8 games (Pro-Set)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#475569] mb-1">Sistema de Tie-Break</label>
+                        <select
+                          value={dSetTiebreakPoints}
+                          onChange={(e) => setDSetTiebreakPoints(Number(e.target.value) as 7 | 10)}
+                          className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs"
+                        >
+                          <option value={7}>A 7 puntos (Estándar ITF)</option>
+                          <option value={10}>A 10 puntos (ej. 10-3, 10-1)</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-[#475569] mb-1">Cupo máximo</label>
                     <input
@@ -1760,7 +2010,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                       className="w-full h-9 px-2.5 rounded-lg border border-[#E2E8F0] bg-white text-xs font-mono tabular-nums"
                     />
                   </div>
-                  {dFormat === 'grupos_y_final' && (
+                  {(dFormat === 'grupos_y_final' || dFormat === 'grupos_clasificatoria_final') && (
                     <>
                       <div>
                         <label className="block text-xs font-medium text-[#475569] mb-1">Cant. grupos</label>
@@ -1788,71 +2038,102 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-4 text-xs text-[#0A1633]">
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={dUseTiebreak} onChange={(e) => setDUseTiebreak(e.target.checked)} />
-                    Tie-break en set
-                  </label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dTiebreakExactTarget}
-                      onChange={(e) => setDTiebreakExactTarget(e.target.checked)}
-                    />
-                    Tie-break al que llegue primero (sin dif. de 2, ej. 10-9)
-                  </label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={dDirectTiebreakMatch}
-                      onChange={(e) => setDDirectTiebreakMatch(e.target.checked)}
-                    />
-                    Partido directo a Tie-Break de 10 pts
-                  </label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={dNoAd} onChange={(e) => setDNoAd(e.target.checked)} />
-                    Punto decisivo sin ventaja (No-Ad)
-                  </label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={dMatchTb} onChange={(e) => setDMatchTb(e.target.checked)} />
-                    Match Tie-Break (10 pts) en 3er set
-                  </label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={dMultiDiv} onChange={(e) => setDMultiDiv(e.target.checked)} />
-                    Permitir competir en otras divisiones
-                  </label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={dOptionalSets} onChange={(e) => setDOptionalSets(e.target.checked)} />
-                    Puntaje por sets opcional
-                  </label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={dHasThirdPlace} onChange={(e) => setDHasThirdPlace(e.target.checked)} />
-                    Disputar partido por 3er puesto
-                  </label>
-                </div>
-
-                <div>
-                  <p className="text-xs font-medium text-[#475569] mb-1.5">
-                    Orden de desempates en clasificación:
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {dTiebreakers.map((tb, idx) => {
-                      const label = ALL_TIEBREAKERS.find((x) => x.id === tb)?.label || tb;
-                      return (
-                        <div key={tb} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#E2E8F0] text-xs">
-                          <span className="font-mono text-[#7C1FA2]">{idx + 1}.</span>
-                          <span>{label}</span>
-                          <button type="button" onClick={() => moveTiebreaker(idx, -1)} className="text-[#475569] hover:text-[#0A1633] px-1">
-                            ←
-                          </button>
-                          <button type="button" onClick={() => moveTiebreaker(idx, 1)} className="text-[#475569] hover:text-[#0A1633] px-1">
-                            →
-                          </button>
-                        </div>
-                      );
-                    })}
+                {isFootballActiveTournament ? (
+                  <div className="flex flex-wrap gap-4 text-xs text-[#0A1633]">
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dQualifyingEnabled || dFormat === 'grupos_clasificatoria_final'}
+                        onChange={(e) => setDQualifyingEnabled(e.target.checked)}
+                      />
+                      Habilitar Fase Clasificatoria (Play-In / Repechaje) antes de Fase Final
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dAllowExtraTime}
+                        onChange={(e) => setDAllowExtraTime(e.target.checked)}
+                      />
+                      Permitir alargue / tiempo extra antes de penales en llaves
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dHasThirdPlace}
+                        onChange={(e) => setDHasThirdPlace(e.target.checked)}
+                      />
+                      Disputar partido por 3er puesto
+                    </label>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex flex-wrap gap-4 text-xs text-[#0A1633]">
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={dUseTiebreak} onChange={(e) => setDUseTiebreak(e.target.checked)} />
+                      Tie-break en set
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dTiebreakExactTarget}
+                        onChange={(e) => setDTiebreakExactTarget(e.target.checked)}
+                      />
+                      Tie-break al que llegue primero (sin dif. de 2, ej. 10-9)
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dDirectTiebreakMatch}
+                        onChange={(e) => setDDirectTiebreakMatch(e.target.checked)}
+                      />
+                      Partido directo a Tie-Break de 10 pts
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={dNoAd} onChange={(e) => setDNoAd(e.target.checked)} />
+                      Punto decisivo sin ventaja (No-Ad)
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={dMatchTb} onChange={(e) => setDMatchTb(e.target.checked)} />
+                      Match Tie-Break (10 pts) en 3er set
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={dMultiDiv} onChange={(e) => setDMultiDiv(e.target.checked)} />
+                      Permitir competir en otras divisiones
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={dOptionalSets} onChange={(e) => setDOptionalSets(e.target.checked)} />
+                      Puntaje por sets opcional
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={dHasThirdPlace} onChange={(e) => setDHasThirdPlace(e.target.checked)} />
+                      Disputar partido por 3er puesto
+                    </label>
+                  </div>
+                )}
+
+                {!isFootballActiveTournament && (
+                  <div>
+                    <p className="text-xs font-medium text-[#475569] mb-1.5">
+                      Orden de desempates en clasificación:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {dTiebreakers.map((tb, idx) => {
+                        const label = ALL_TIEBREAKERS.find((x) => x.id === tb)?.label || tb;
+                        return (
+                          <div key={tb} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#E2E8F0] text-xs">
+                            <span className="font-mono text-[#7C1FA2]">{idx + 1}.</span>
+                            <span>{label}</span>
+                            <button type="button" onClick={() => moveTiebreaker(idx, -1)} className="text-[#475569] hover:text-[#0A1633] px-1">
+                              ←
+                            </button>
+                            <button type="button" onClick={() => moveTiebreaker(idx, 1)} className="text-[#475569] hover:text-[#0A1633] px-1">
+                              →
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2">
                   <button
@@ -1900,15 +2181,31 @@ export const AdminTournamentsSection: React.FC<Props> = ({
                         </span>
                       </div>
                       <p className="text-xs text-[#475569] mt-1">
-                        {d.format === 'grupos_y_final'
+                        {d.format === 'grupos_clasificatoria_final'
+                          ? 'Grupos + Clasificatoria + Final'
+                          : d.format === 'grupos_y_final'
                           ? 'Grupos y fase final'
                           : d.format === 'todos_contra_todos'
                           ? 'Todos contra todos'
                           : 'Eliminación directa'}{' '}
-                        · {d.itfConfig.setsToWin === 2 ? 'Mejor de 3' : d.itfConfig.setsToWin === 1 ? 'Set único' : 'Mejor de 5'}
-                        {d.itfConfig.setTiebreakPoints === 10 ? ' · TB a 10 pts' : ''}
-                        {d.itfConfig.directTiebreakMatch ? ' · Partido TB 10' : ''}
-                        {d.itfConfig.decisivePointNoAd ? ' · Sin ventaja' : ''}
+                        {d.sport === 'football' || isFootballActiveTournament ? (
+                          <>
+                            ·{' '}
+                            {d.footballFormat === 'futbol_7'
+                              ? 'Fútbol 7'
+                              : d.footballFormat === 'futbol_5_futsal'
+                              ? 'Futsal'
+                              : 'Fútbol 11'}{' '}
+                            · {d.fifaConfig?.halfMinutes || 45}’ x2 · FIFA (3/1/0 pts)
+                          </>
+                        ) : (
+                          <>
+                            · {d.itfConfig.setsToWin === 2 ? 'Mejor de 3' : d.itfConfig.setsToWin === 1 ? 'Set único' : 'Mejor de 5'}
+                            {d.itfConfig.setTiebreakPoints === 10 ? ' · TB a 10 pts' : ''}
+                            {d.itfConfig.directTiebreakMatch ? ' · Partido TB 10' : ''}
+                            {d.itfConfig.decisivePointNoAd ? ' · Sin ventaja' : ''}
+                          </>
+                        )}
                       </p>
                       {d.championName && (
                         <p className="text-xs font-medium text-amber-800 mt-1.5">
@@ -1972,7 +2269,7 @@ export const AdminTournamentsSection: React.FC<Props> = ({
               </div>
             )}
 
-            {selectedDivision && (
+            {selectedDivision && !isFootballActiveTournament && (
               <div className="mt-4 p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold text-[#0A1633]">

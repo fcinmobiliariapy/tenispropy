@@ -60,8 +60,12 @@ import {
 import { buildTournamentDirectUrl } from '../utils/tournamentLinks';
 import { WhatsAppShareButton } from './WhatsAppShareButton';
 import { OptimizedImage } from './OptimizedImage';
-import { GalleryGridSkeleton, ModalSkeleton, PlayersGridSkeleton } from './Skeletons';
+import { isFootballTournament } from '../utils/footballEngine';
+import { AdminSectionSkeleton, GalleryGridSkeleton, ModalSkeleton, PlayersGridSkeleton } from './Skeletons';
 
+const FootballPublicPortal = lazy(() =>
+  import('./football/FootballPublicPortal').then((m) => ({ default: m.FootballPublicPortal }))
+);
 const TournamentTrophiesViewer = lazy(() =>
   import('./TournamentTrophiesViewer').then((m) => ({ default: m.TournamentTrophiesViewer }))
 );
@@ -1151,6 +1155,35 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     setLightboxPhotos(list);
     setLightboxIndex(idx);
   };
+
+  if (isFootballTournament(activeTournament)) {
+    return (
+      <Suspense fallback={<div className="max-w-7xl mx-auto px-3 sm:px-6 py-8"><AdminSectionSkeleton /></div>}>
+        <FootballPublicPortal
+          tournaments={tournaments}
+          divisions={divisions}
+          players={players}
+          registrations={registrations}
+          groups={groups}
+          matchdays={matchdays}
+          matches={matches}
+          photos={photos}
+          notifications={notifications}
+          tournamentAds={tournamentAds}
+          tournamentTrophies={tournamentTrophies}
+          activeTab={activeTab}
+          onSelectTab={onSelectTab}
+          onGoLanding={onGoLanding}
+          selectedTournamentId={selectedTournamentId}
+          onSelectTournament={onSelectTournament}
+          selectedDivisionId={selectedDivisionId}
+          onSelectDivision={onSelectDivision}
+          defaultTournamentCoverUrl={defaultTournamentCoverUrl}
+          logoUrl={logoUrl}
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="pb-24 md:pb-12">

@@ -648,6 +648,57 @@ export async function seedDemoTournamentsToFirestore(adminUid: string, force = f
   }
 }
 
+export async function seedFootballCompetitionToFirestore(
+  adminUid: string,
+  meta?: { name?: string; venue?: string; city?: string; organizerName?: string }
+): Promise<Tournament> {
+  let currentPath = 'seed_football_bundle';
+  try {
+    const { buildFootballTemplateBundle } = await import('../data/footballSeed');
+    const bundle = buildFootballTemplateBundle(adminUid, meta);
+
+    const commitLayer = async (
+      layerPath: string,
+      ops: Array<{ col: string; id: string; data: unknown }>
+    ) => {
+      currentPath = layerPath;
+      for (let i = 0; i < ops.length; i += 400) {
+        const batch = writeBatch(db);
+        ops.slice(i, i + 400).forEach((item) => {
+          batch.set(doc(db, item.col, item.id), item.data);
+        });
+        await batch.commit();
+      }
+    };
+
+    // Capa 1: Torneo
+    await commitLayer('seed_football_bundle/capa_1_tournaments', [
+      { col: 'tournaments', id: bundle.tournament.id, data: bundle.tournament },
+    ]);
+    // Capa 2: Divisiones y jugadores públicos
+    await commitLayer('seed_football_bundle/capa_2_divisions_players', [
+      ...bundle.divisions.map((d) => ({ col: 'divisions', id: d.id, data: d })),
+      ...bundle.playersPublic.map((p) => ({ col: 'players_public', id: p.id, data: p })),
+    ]);
+    // Capa 3: PII privado, equipos, grupos y jornadas
+    await commitLayer('seed_football_bundle/capa_3_private_teams_groups', [
+      ...bundle.playersPrivate.map((p) => ({ col: 'players_private', id: p.id, data: p })),
+      ...bundle.registrations.map((r) => ({ col: 'registrations', id: r.id, data: r })),
+      ...bundle.groups.map((g) => ({ col: 'groups', id: g.id, data: g })),
+      ...bundle.matchdays.map((md) => ({ col: 'matchdays', id: md.id, data: md })),
+    ]);
+    // Capa 4: Partidos y planillas
+    await commitLayer(
+      'seed_football_bundle/capa_4_matches',
+      bundle.matches.map((m) => ({ col: 'matches', id: m.id, data: m }))
+    );
+
+    return bundle.tournament;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, currentPath);
+  }
+}
+
 export async function publishNotificationAndBroadcast(alert: NotificationAlert, type: 'match:upcoming' | 'match:score_updated' | 'match:rescheduled' | 'draw:published' | 'gallery:published'): Promise<void> {
   await saveEntity('notifications', alert);
   try {

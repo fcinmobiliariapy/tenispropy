@@ -29,11 +29,7 @@ import {
 } from '../data/siteConfigDefaults';
 import { PWAInstallButton } from './TopBarAndPWA';
 import { TournamentAd } from './TournamentAd';
-import { formatScoreString } from '../utils/itfRules';
-import { formatAsuncionDate } from '../utils/tournamentEngine';
-import { buildMatchWhatsAppMessage } from '../utils/whatsappShare';
-import { buildTournamentDirectUrl } from '../utils/tournamentLinks';
-import { WhatsAppShareButton } from './WhatsAppShareButton';
+import { isFootballTournament } from '../utils/footballEngine';
 import { getOptimizedImageUrl } from '../utils/imageOptimizer';
 import { OptimizedImage } from './OptimizedImage';
 import { ModalSkeleton } from './Skeletons';
@@ -123,6 +119,7 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
 }) => {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | Tournament['status']>('ALL');
+  const [sportFilter, setSportFilter] = useState<'ALL' | 'tennis' | 'football'>('ALL');
   const [brokenCoverIds, setBrokenCoverIds] = useState<Record<string, boolean>>({});
   const [logoBroken, setLogoBroken] = useState(false);
   const [bannerImgBroken, setBannerImgBroken] = useState(false);
@@ -152,6 +149,10 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
     const q = query.trim().toLowerCase();
     return tournaments
       .filter((t) => (statusFilter === 'ALL' ? true : t.status === statusFilter))
+      .filter((t) => {
+        if (sportFilter === 'ALL') return true;
+        return sportFilter === 'football' ? isFootballTournament(t) : !isFootballTournament(t);
+      })
       .filter(
         (t) =>
           !q ||
@@ -160,7 +161,7 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
           t.city.toLowerCase().includes(q) ||
           t.organizerName.toLowerCase().includes(q)
       );
-  }, [tournaments, statusFilter, query]);
+  }, [tournaments, statusFilter, sportFilter, query]);
 
   const featuredSpotlightAd = useMemo(() => {
     const active = tournamentAds.filter((a) => a.active);
@@ -183,26 +184,6 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
     () => matches.filter((m) => m.published && !m.isBye).length,
     [matches]
   );
-
-  const highlightMatches = useMemo(() => {
-    const valid = matches.filter(
-      (m) => !m.isBye && m.published && m.entryAId && m.entryBId
-    );
-    const live = valid.filter((m) => m.status === 'en_curso');
-    const upcoming = valid
-      .filter((m) => m.status === 'programado' || m.status === 'reprogramado')
-      .sort((a, b) =>
-        `${a.scheduledDate || '9999-99-99'} ${a.scheduledTime || '99:99'}`.localeCompare(
-          `${b.scheduledDate || '9999-99-99'} ${b.scheduledTime || '99:99'}`
-        )
-      );
-    const finished = valid
-      .filter((m) =>
-        ['finalizado', 'wo', 'retiro', 'descalificado'].includes(m.status)
-      )
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    return [...live, ...upcoming, ...finished].slice(0, 6);
-  }, [matches]);
 
   const scrollToSelector = () => {
     const el = document.getElementById('selector-torneos');
@@ -566,114 +547,6 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
         </div>
       </section>
 
-      {/* Marcadores en vivo, próximos cruces y resultados rápidos con compartir por WhatsApp */}
-      {highlightMatches.length > 0 && (
-        <section className="max-w-7xl mx-auto px-3 sm:px-6 mt-7 sm:mt-8">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#7C1FA2]">
-                Actividad del circuito
-              </p>
-              <h2 className="text-lg sm:text-xl font-bold text-[#0A1633]">
-                Partidos en cancha, próximos cruces y resultados
-              </h2>
-            </div>
-            <span className="text-xs text-[#475569]">
-              Compartí cualquier cruce al instante por WhatsApp
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {highlightMatches.map((m) => {
-              const t = tournaments.find((x) => x.id === m.tournamentId);
-              const d = divisions.find((x) => x.id === m.divisionId);
-              const isFinished = ['finalizado', 'wo', 'retiro', 'descalificado'].includes(m.status);
-              const isLive = m.status === 'en_curso';
-              return (
-                <div
-                  key={m.id}
-                  className="bg-white border border-[#E2E8F0] rounded-2xl p-4 flex flex-col justify-between gap-3 hover:border-[#7C1FA2]/45 transition-colors"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2 text-[11px]">
-                      <span className="font-semibold text-[#7C1FA2] truncate">
-                        {t?.name || 'Torneo'} · {d?.name || m.roundName}
-                      </span>
-                      <span
-                        className={`shrink-0 font-semibold ${
-                          isLive
-                            ? 'text-[#C2410C]'
-                            : m.status === 'wo'
-                            ? 'text-amber-800'
-                            : isFinished
-                            ? 'text-[#15803D]'
-                            : 'text-[#0284C7]'
-                        }`}
-                      >
-                        {isLive
-                          ? '● En cancha'
-                          : m.status === 'wo'
-                          ? 'W.O.'
-                          : isFinished
-                          ? 'Finalizado'
-                          : 'Programado'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0 text-sm space-y-0.5">
-                        <p className={`truncate ${m.winnerEntryId === m.entryAId ? 'font-bold text-[#0A1633]' : 'font-medium text-[#0A1633]'}`}>
-                          {m.entryAName}
-                        </p>
-                        <p className={`truncate ${m.winnerEntryId === m.entryBId ? 'font-bold text-[#0A1633]' : 'font-medium text-[#0A1633]'}`}>
-                          {m.entryBName}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        {isFinished ? (
-                          <span className="font-mono tabular-nums text-xs sm:text-sm font-bold text-[#7C1FA2]">
-                            {formatScoreString(m.sets, m.status)}
-                          </span>
-                        ) : (
-                          <span className="font-mono tabular-nums text-[11px] text-[#475569]">
-                            {m.scheduledDate
-                              ? `${formatAsuncionDate(m.scheduledDate)}${m.scheduledTime ? ` · ${m.scheduledTime}h` : ''}`
-                              : 'Por programar'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-2.5 border-t border-[#E2E8F0] flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onEnterTournament(m.tournamentId)}
-                      className="text-xs font-semibold text-[#0284C7] hover:underline truncate"
-                    >
-                      Ver en torneo →
-                    </button>
-                    <WhatsAppShareButton
-                      compact
-                      label="WhatsApp"
-                      message={buildMatchWhatsAppMessage({
-                        match: m,
-                        tournament: t,
-                        division: d,
-                        appUrl: buildTournamentDirectUrl(m.tournamentId, {
-                          divisionId: m.divisionId,
-                          tab: 'fixture',
-                        }),
-                      })}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
       {/* Selector de Torneos para Ingresar a la Competencia */}
       <section id="selector-torneos" className="max-w-7xl mx-auto px-3 sm:px-6 mt-8 sm:mt-10 space-y-6">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -689,7 +562,7 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
             )}
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5">
             <div className="relative">
               <Search className="w-4 h-4 text-[#475569] absolute left-3 top-3" />
               <input
@@ -697,8 +570,31 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar torneo, sede o ciudad..."
-                className="w-full sm:w-64 h-10 pl-9 pr-3 rounded-xl border border-[#E2E8F0] bg-white text-xs text-[#0A1633] focus:outline-none focus:ring-2 focus:ring-[#7C1FA2]"
+                className="w-full sm:w-60 h-10 pl-9 pr-3 rounded-xl border border-[#E2E8F0] bg-white text-xs text-[#0A1633] focus:outline-none focus:ring-2 focus:ring-[#7C1FA2]"
               />
+            </div>
+
+            <div className="flex items-center gap-1 p-1 bg-white border border-[#E2E8F0] rounded-xl overflow-x-auto">
+              {(
+                [
+                  { id: 'ALL', label: 'Todos los deportes' },
+                  { id: 'tennis', label: 'Tenis' },
+                  { id: 'football', label: 'Fútbol FIFA' },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSportFilter(item.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                    sportFilter === item.id
+                      ? 'bg-[#7C1FA2] text-white'
+                      : 'text-[#475569] hover:text-[#0A1633]'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
 
             <div className="flex items-center gap-1 p-1 bg-white border border-[#E2E8F0] rounded-xl overflow-x-auto">
@@ -789,9 +685,14 @@ export const EntryLandingPage: React.FC<EntryLandingPageProps> = ({
 
                     <div className="p-5 space-y-3">
                       <div>
-                        <p className="text-[11px] font-semibold text-[#7C1FA2] truncate">
-                          {t.organizerName}
-                        </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold text-[#7C1FA2] truncate">
+                            {t.organizerName}
+                          </p>
+                          <span className="text-[11px] font-semibold text-[#0284C7] shrink-0">
+                            {isFootballTournament(t) ? 'Fútbol FIFA' : 'Tenis ITF'}
+                          </span>
+                        </div>
                         <h3 className="text-lg font-bold text-[#0A1633] mt-0.5 leading-snug">
                           {t.name}
                         </h3>

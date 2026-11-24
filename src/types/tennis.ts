@@ -46,10 +46,120 @@ export interface StaffInvite {
   updatedAt: string;
 }
 
+export type SportType = 'tennis' | 'football';
+export type FootballFormat = 'futbol_11' | 'futbol_7' | 'futbol_5_futsal';
+export type FootballPosition = 'Arquero' | 'Defensor' | 'Mediocampista' | 'Delantero';
+export type PreferredFoot = 'Derecho' | 'Zurdo' | 'Ambidiestro';
+export type FootballMatchEventType =
+  | 'gol'
+  | 'penal'
+  | 'en_contra'
+  | 'amarilla'
+  | 'doble_amarilla'
+  | 'roja';
+
+export interface FifaCompetitionConfig {
+  edition: string;
+  halfMinutes: number;
+  allowExtraTime: boolean;
+  extraTimeHalfMinutes: number;
+  penaltyShootoutInKnockout: boolean;
+  maxSubstitutions: number;
+  pointsWin: number;
+  pointsDraw: number;
+  pointsLoss: number;
+  qualifyingPhaseEnabled: boolean;
+  qualifyingStageLabel: string;
+  allowBestThirds: boolean;
+  yellowCardSuspensionLimit: number;
+  minMatchesForBestGoalkeeper: number;
+}
+
+export interface FootballPlayerStats {
+  matchesPlayed: number;
+  minutesPlayed: number;
+  goals: number;
+  penaltyGoals: number;
+  ownGoals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+  goalsConceded: number;
+  cleanSheets: number;
+}
+
+export interface FootballMatchScore {
+  goalsA: number;
+  goalsB: number;
+  halfTimeA?: number | null;
+  halfTimeB?: number | null;
+  extraTimeA?: number | null;
+  extraTimeB?: number | null;
+  penaltiesA?: number | null;
+  penaltiesB?: number | null;
+  decidedBy: 'regular' | 'extra_time' | 'penalties' | 'wo';
+}
+
+export interface FootballLineupPlayer {
+  playerId: string;
+  fullName: string;
+  jerseyNumber?: number | null;
+  position: FootballPosition;
+  isStarter: boolean;
+  isCaptain?: boolean;
+}
+
+export interface FootballMatchEvent {
+  id: string;
+  teamSide: 'A' | 'B';
+  minute: number;
+  addedMinute?: number | null;
+  type: FootballMatchEventType;
+  playerId?: string | null;
+  playerName: string;
+  assistPlayerId?: string | null;
+  assistPlayerName?: string | null;
+}
+
+export interface FootballSubstitution {
+  id: string;
+  teamSide: 'A' | 'B';
+  minute: number;
+  playerOutId?: string | null;
+  playerOutName: string;
+  playerInId?: string | null;
+  playerInName: string;
+}
+
+export interface FootballMatchSheet {
+  referee?: string | null;
+  assistantRef1?: string | null;
+  assistantRef2?: string | null;
+  fourthOfficial?: string | null;
+  attendance?: number | null;
+  notes?: string | null;
+  lineupA: FootballLineupPlayer[];
+  lineupB: FootballLineupPlayer[];
+  goalkeeperAId?: string | null;
+  goalkeeperAName?: string | null;
+  goalkeeperBId?: string | null;
+  goalkeeperBName?: string | null;
+  events: FootballMatchEvent[];
+  substitutions: FootballSubstitution[];
+  signedByReferee?: boolean;
+  signedAt?: string | null;
+}
+
 export interface Court {
   id: string;
   name: string;
-  surface: 'Polvo de ladrillo' | 'Cemento' | 'Césped sintético';
+  surface:
+    | 'Polvo de ladrillo'
+    | 'Cemento'
+    | 'Césped sintético'
+    | 'Césped natural'
+    | 'Fútbol sintético'
+    | 'Futsal / Parquet';
   lights: boolean;
 }
 
@@ -58,6 +168,7 @@ export type TournamentStatus = 'borrador' | 'inscripciones' | 'en_curso' | 'fina
 export interface Tournament {
   id: string;
   name: string;
+  sport?: SportType;
   organizerName: string;
   organizerUid: string;
   venue: string;
@@ -69,7 +180,7 @@ export interface Tournament {
   regStartDate: string;
   regEndDate: string;
   minRestMinutes: number;
-  itfEdition: string; // 'ITF 2026'
+  itfEdition: string; // 'ITF 2026' | 'Reglas FIFA 2026'
   status: TournamentStatus;
   coverImageUrl?: string | null;
   isDemo?: boolean;
@@ -77,9 +188,13 @@ export interface Tournament {
   updatedAt: string;
 }
 
-export type Modality = 'Singles' | 'Dobles';
-export type Gender = 'Femenino' | 'Masculino';
-export type DivisionFormat = 'todos_contra_todos' | 'grupos_y_final' | 'eliminacion_directa';
+export type Modality = 'Singles' | 'Dobles' | 'Equipo';
+export type Gender = 'Femenino' | 'Masculino' | 'Mixto';
+export type DivisionFormat =
+  | 'todos_contra_todos'
+  | 'grupos_y_final'
+  | 'eliminacion_directa'
+  | 'grupos_clasificatoria_final';
 export type DrawStatus = 'sin_sorteo' | 'borrador' | 'publicado';
 
 export interface ItfScoringConfig {
@@ -121,8 +236,11 @@ export interface DrawConfig {
 export interface Division {
   id: string;
   tournamentId: string;
-  name: string; // e.g. '5ta Singles Masculino'
-  category: string; // '6ta' | '5ta' | '4ta' | '3ra' | '2da' | '1ra' | 'Libre' | 'Senior' | custom
+  sport?: SportType;
+  footballFormat?: FootballFormat;
+  fifaConfig?: FifaCompetitionConfig;
+  name: string; // e.g. '5ta Singles Masculino' o 'Primera División Fútbol 11'
+  category: string; // '6ta'..'1ra' | 'Primera' | 'Intermedia' | 'Sub-17' | 'Senior' | custom
   modality: Modality;
   gender: Gender;
   format: DivisionFormat;
@@ -156,6 +274,12 @@ export interface PlayerStats {
 export interface PlayerPublic {
   id: string;
   tournamentId: string;
+  sport?: SportType;
+  teamId?: string | null;
+  jerseyNumber?: number | null;
+  position?: FootballPosition;
+  preferredFoot?: PreferredFoot;
+  footballStats?: FootballPlayerStats;
   firstName: string;
   lastName: string;
   fullName: string;
@@ -191,6 +315,10 @@ export interface Registration {
   modality: Modality;
   playerIds: string[];
   displayName: string;
+  teamShortName?: string | null;
+  coachName?: string | null;
+  teamBadgeUrl?: string | null;
+  primaryColor?: string | null;
   club?: string;
   seed?: number | null;
   status: RegistrationStatus;
@@ -206,6 +334,7 @@ export interface StandingRow {
   seed?: number | null;
   played: number;
   won: number;
+  drawn?: number;
   lost: number;
   setsWon: number;
   setsLost: number;
@@ -213,6 +342,12 @@ export interface StandingRow {
   gamesWon: number;
   gamesLost: number;
   gamesDiff: number;
+  goalsFor?: number;
+  goalsAgainst?: number;
+  goalDiff?: number;
+  yellowCards?: number;
+  redCards?: number;
+  fairPlayPoints?: number;
   points: number;
   woLosses: number;
   qualified?: boolean;
@@ -289,7 +424,7 @@ export interface Match {
   tournamentId: string;
   divisionId: string;
   matchdayId?: string | null;
-  phase: 'grupos' | 'eliminacion';
+  phase: 'grupos' | 'clasificatoria' | 'eliminacion';
   roundName: string;
   roundOrder: number;
   bracketPosition?: number | null;
@@ -310,6 +445,8 @@ export interface Match {
   courtName?: string | null;
   status: MatchStatus;
   sets: SetScore[];
+  footballScore?: FootballMatchScore | null;
+  footballSheet?: FootballMatchSheet | null;
   winnerEntryId?: string | null;
   winnerName?: string | null;
   outcomeNote?: string | null;

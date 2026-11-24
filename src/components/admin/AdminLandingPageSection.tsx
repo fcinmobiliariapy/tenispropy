@@ -102,6 +102,8 @@ async function normalizeImageInput(raw: string, requiredFallback?: string): Prom
   }
   if (trimmed.startsWith('./assets/')) trimmed = trimmed.slice(1);
   if (trimmed.startsWith('./src/assets/')) trimmed = trimmed.slice(1);
+  if (trimmed.startsWith('assets/')) trimmed = `/${trimmed}`;
+  if (trimmed.startsWith('src/assets/')) trimmed = `/${trimmed}`;
   if (trimmed.startsWith('uploads/')) trimmed = `/${trimmed}`;
 
   if (/^data:image\//i.test(trimmed)) {

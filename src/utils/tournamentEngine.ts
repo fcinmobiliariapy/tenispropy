@@ -1737,8 +1737,8 @@ export function formatAsuncionDate(dateStr?: string | null): string {
 }
 
 export function compareMatchesByRound(a: Match, b: Match): number {
-  const phaseA = a.phase === 'grupos' ? 0 : 1;
-  const phaseB = b.phase === 'grupos' ? 0 : 1;
+  const phaseA = a.phase === 'grupos' ? 0 : a.phase === 'clasificatoria' ? 1 : 2;
+  const phaseB = b.phase === 'grupos' ? 0 : b.phase === 'clasificatoria' ? 1 : 2;
   if (phaseA !== phaseB) return phaseA - phaseB;
   if (a.roundOrder !== b.roundOrder) return a.roundOrder - b.roundOrder;
   if (Boolean(a.isThirdPlace) !== Boolean(b.isThirdPlace)) {

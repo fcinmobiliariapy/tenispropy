@@ -107,8 +107,13 @@ service cloud.firestore {
       return val is string
         && val.size() >= 1
         && val.size() <= maxLen
-        && ((val.size() <= 4096 && val.matches('(?is)^(https?://|/(uploads|assets|src/assets)/).*'))
-          || (val.size() >= 15 && val.split(',')[0].lower().matches('^data:image/(png|jpeg|jpg|webp|gif|avif|svg\\+xml)(;.*)?$')));
+        && ((val.size() <= 4096
+            && (val.lower().matches('^https?://.+$')
+              || val.lower().matches('^/?(uploads|assets|src/assets)/.+$')))
+          || (val.size() >= 15
+            && val.split(',').size() >= 2
+            && val.split(',')[0].size() <= 100
+            && val.split(',')[0].lower().matches('^data:image/(png|jpeg|jpg|webp|gif|avif|svg\\+xml)(;[a-z0-9=+._-]+)*$')));
     }
 
     function isOptionalSafeImageUrl(val, maxLen) {
@@ -119,11 +124,10 @@ service cloud.firestore {
       return val is number && val >= 0 && val <= maxVal;
     }
 
-    function isValidPlayerIdPair(arr) {
-      return isValidList(arr, 2)
-        && (arr.size() == 0
-          || (arr.size() == 1 && isValidId(arr[0]))
-          || (arr.size() == 2 && isValidId(arr[0]) && isValidId(arr[1])));
+    function isValidPlayerIdList(arr, maxLen) {
+      return isValidList(arr, maxLen)
+        && (arr.size() == 0 || isValidId(arr[0]))
+        && (arr.size() < 2 || isValidId(arr[1]));
     }
 
     // 3. Validadores de integridad por entidad
@@ -173,6 +177,98 @@ service cloud.firestore {
         && isNonNegNum(stats.gamesLost, 500000)
         && isNonNegNum(stats.titles, 1000)
         && stats.currentStreak is number && stats.currentStreak >= -1000 && stats.currentStreak <= 1000;
+    }
+
+    function isValidFifaConfig(cfg) {
+      return cfg is map
+        && cfg.keys().hasAll([
+          'edition', 'halfMinutes', 'allowExtraTime', 'extraTimeHalfMinutes',
+          'penaltyShootoutInKnockout', 'maxSubstitutions', 'pointsWin', 'pointsDraw',
+          'pointsLoss', 'qualifyingPhaseEnabled', 'qualifyingStageLabel',
+          'allowBestThirds', 'yellowCardSuspensionLimit', 'minMatchesForBestGoalkeeper'
+        ])
+        && cfg.keys().hasOnly([
+          'edition', 'halfMinutes', 'allowExtraTime', 'extraTimeHalfMinutes',
+          'penaltyShootoutInKnockout', 'maxSubstitutions', 'pointsWin', 'pointsDraw',
+          'pointsLoss', 'qualifyingPhaseEnabled', 'qualifyingStageLabel',
+          'allowBestThirds', 'yellowCardSuspensionLimit', 'minMatchesForBestGoalkeeper'
+        ])
+        && isNonEmptyStr(cfg.edition, 60)
+        && cfg.halfMinutes is number && cfg.halfMinutes >= 5 && cfg.halfMinutes <= 90
+        && cfg.allowExtraTime is bool
+        && cfg.extraTimeHalfMinutes is number && cfg.extraTimeHalfMinutes >= 5 && cfg.extraTimeHalfMinutes <= 30
+        && cfg.penaltyShootoutInKnockout is bool
+        && cfg.maxSubstitutions is number && cfg.maxSubstitutions >= 1 && cfg.maxSubstitutions <= 25
+        && isNonNegNum(cfg.pointsWin, 10)
+        && isNonNegNum(cfg.pointsDraw, 10)
+        && isNonNegNum(cfg.pointsLoss, 10)
+        && cfg.qualifyingPhaseEnabled is bool
+        && isOptionalStr(cfg.qualifyingStageLabel, 120)
+        && cfg.allowBestThirds is bool
+        && cfg.yellowCardSuspensionLimit is number && cfg.yellowCardSuspensionLimit >= 1 && cfg.yellowCardSuspensionLimit <= 10
+        && cfg.minMatchesForBestGoalkeeper is number && cfg.minMatchesForBestGoalkeeper >= 1 && cfg.minMatchesForBestGoalkeeper <= 50;
+    }
+
+    function isValidFootballPlayerStats(st) {
+      return st is map
+        && st.keys().hasAll(['matchesPlayed', 'minutesPlayed', 'goals', 'penaltyGoals', 'ownGoals', 'assists', 'yellowCards', 'redCards', 'goalsConceded', 'cleanSheets'])
+        && st.keys().hasOnly(['matchesPlayed', 'minutesPlayed', 'goals', 'penaltyGoals', 'ownGoals', 'assists', 'yellowCards', 'redCards', 'goalsConceded', 'cleanSheets'])
+        && isNonNegNum(st.matchesPlayed, 10000)
+        && isNonNegNum(st.minutesPlayed, 500000)
+        && isNonNegNum(st.goals, 10000)
+        && isNonNegNum(st.penaltyGoals, 10000)
+        && isNonNegNum(st.ownGoals, 1000)
+        && isNonNegNum(st.assists, 10000)
+        && isNonNegNum(st.yellowCards, 5000)
+        && isNonNegNum(st.redCards, 1000)
+        && isNonNegNum(st.goalsConceded, 10000)
+        && isNonNegNum(st.cleanSheets, 10000);
+    }
+
+    function isValidFootballScore(fs) {
+      return fs == null || (
+        fs is map
+        && fs.keys().hasAll(['goalsA', 'goalsB', 'decidedBy'])
+        && fs.keys().hasOnly(['goalsA', 'goalsB', 'halfTimeA', 'halfTimeB', 'extraTimeA', 'extraTimeB', 'penaltiesA', 'penaltiesB', 'decidedBy'])
+        && isNonNegNum(fs.goalsA, 99)
+        && isNonNegNum(fs.goalsB, 99)
+        && (!('halfTimeA' in fs) || fs.halfTimeA == null || isNonNegNum(fs.halfTimeA, 99))
+        && (!('halfTimeB' in fs) || fs.halfTimeB == null || isNonNegNum(fs.halfTimeB, 99))
+        && (!('extraTimeA' in fs) || fs.extraTimeA == null || isNonNegNum(fs.extraTimeA, 99))
+        && (!('extraTimeB' in fs) || fs.extraTimeB == null || isNonNegNum(fs.extraTimeB, 99))
+        && (!('penaltiesA' in fs) || fs.penaltiesA == null || isNonNegNum(fs.penaltiesA, 99))
+        && (!('penaltiesB' in fs) || fs.penaltiesB == null || isNonNegNum(fs.penaltiesB, 99))
+        && fs.decidedBy in ['regular', 'extra_time', 'penalties', 'wo']
+      );
+    }
+
+    function isValidFootballSheet(sh) {
+      return sh == null || (
+        sh is map
+        && sh.keys().hasAll(['lineupA', 'lineupB', 'events', 'substitutions'])
+        && sh.keys().hasOnly([
+          'referee', 'assistantRef1', 'assistantRef2', 'fourthOfficial',
+          'attendance', 'notes', 'lineupA', 'lineupB',
+          'goalkeeperAId', 'goalkeeperAName', 'goalkeeperBId', 'goalkeeperBName',
+          'events', 'substitutions', 'signedByReferee', 'signedAt'
+        ])
+        && (!('referee' in sh) || isOptionalStr(sh.referee, 120))
+        && (!('assistantRef1' in sh) || isOptionalStr(sh.assistantRef1, 120))
+        && (!('assistantRef2' in sh) || isOptionalStr(sh.assistantRef2, 120))
+        && (!('fourthOfficial' in sh) || isOptionalStr(sh.fourthOfficial, 120))
+        && (!('attendance' in sh) || sh.attendance == null || isNonNegNum(sh.attendance, 200000))
+        && (!('notes' in sh) || isOptionalStr(sh.notes, 500))
+        && isValidList(sh.lineupA, 35)
+        && isValidList(sh.lineupB, 35)
+        && (!('goalkeeperAId' in sh) || isOptionalStr(sh.goalkeeperAId, 128))
+        && (!('goalkeeperAName' in sh) || isOptionalStr(sh.goalkeeperAName, 160))
+        && (!('goalkeeperBId' in sh) || isOptionalStr(sh.goalkeeperBId, 128))
+        && (!('goalkeeperBName' in sh) || isOptionalStr(sh.goalkeeperBName, 160))
+        && isValidList(sh.events, 60)
+        && isValidList(sh.substitutions, 25)
+        && (!('signedByReferee' in sh) || sh.signedByReferee is bool)
+        && (!('signedAt' in sh) || isOptionalStr(sh.signedAt, 40))
+      );
     }
 
     function isValidStaffPermissions(perms) {
@@ -240,8 +336,9 @@ service cloud.firestore {
 
     function isValidTournament(data, tournamentId) {
       return data.keys().hasAll(['id', 'name', 'organizerName', 'organizerUid', 'venue', 'city', 'timezone', 'courts', 'startDate', 'endDate', 'regStartDate', 'regEndDate', 'minRestMinutes', 'itfEdition', 'status', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'name', 'organizerName', 'organizerUid', 'venue', 'city', 'timezone', 'courts', 'startDate', 'endDate', 'regStartDate', 'regEndDate', 'minRestMinutes', 'itfEdition', 'status', 'coverImageUrl', 'isDemo', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'sport', 'name', 'organizerName', 'organizerUid', 'venue', 'city', 'timezone', 'courts', 'startDate', 'endDate', 'regStartDate', 'regEndDate', 'minRestMinutes', 'itfEdition', 'status', 'coverImageUrl', 'isDemo', 'createdAt', 'updatedAt'])
         && isValidId(data.id) && data.id == tournamentId
+        && (!('sport' in data) || data.sport in ['tennis', 'football'])
         && isNonEmptyStr(data.name, 140)
         && isNonEmptyStr(data.organizerName, 120)
         && isNonEmptyStr(data.organizerUid, 128)
@@ -257,7 +354,7 @@ service cloud.firestore {
         && isValidDateStr(data.endDate)
         && isValidDateStr(data.regStartDate)
         && isValidDateStr(data.regEndDate)
-        && data.minRestMinutes is number && data.minRestMinutes >= 0 && data.minRestMinutes <= 480
+        && data.minRestMinutes is number && data.minRestMinutes >= 0 && data.minRestMinutes <= 10080
         && isNonEmptyStr(data.itfEdition, 60)
         && data.status in ['borrador', 'inscripciones', 'en_curso', 'finalizado']
         && (!('coverImageUrl' in data) || isOptionalSafeImageUrl(data.coverImageUrl, 300000))
@@ -268,14 +365,17 @@ service cloud.firestore {
 
     function isValidDivision(data, divisionId) {
       return data.keys().hasAll(['id', 'tournamentId', 'name', 'category', 'modality', 'gender', 'format', 'allowMultiDivision', 'maxEntries', 'itfConfig', 'drawConfig', 'drawStatus', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'tournamentId', 'name', 'category', 'modality', 'gender', 'format', 'allowMultiDivision', 'maxEntries', 'itfConfig', 'drawConfig', 'drawStatus', 'hasThirdPlaceMatch', 'championEntryId', 'championName', 'runnerUpName', 'thirdPlaceEntryId', 'thirdPlaceName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'tournamentId', 'sport', 'footballFormat', 'fifaConfig', 'name', 'category', 'modality', 'gender', 'format', 'allowMultiDivision', 'maxEntries', 'itfConfig', 'drawConfig', 'drawStatus', 'hasThirdPlaceMatch', 'championEntryId', 'championName', 'runnerUpName', 'thirdPlaceEntryId', 'thirdPlaceName', 'createdAt', 'updatedAt'])
         && isValidId(data.id) && data.id == divisionId
         && isValidId(data.tournamentId)
+        && (!('sport' in data) || data.sport in ['tennis', 'football'])
+        && (!('footballFormat' in data) || data.footballFormat in ['futbol_11', 'futbol_7', 'futbol_5_futsal'])
+        && (!('fifaConfig' in data) || isValidFifaConfig(data.fifaConfig))
         && isNonEmptyStr(data.name, 120)
         && isNonEmptyStr(data.category, 40)
-        && data.modality in ['Singles', 'Dobles']
-        && data.gender in ['Femenino', 'Masculino']
-        && data.format in ['todos_contra_todos', 'grupos_y_final', 'eliminacion_directa']
+        && data.modality in ['Singles', 'Dobles', 'Equipo']
+        && data.gender in ['Femenino', 'Masculino', 'Mixto']
+        && data.format in ['todos_contra_todos', 'grupos_y_final', 'eliminacion_directa', 'grupos_clasificatoria_final']
         && data.allowMultiDivision is bool
         && data.maxEntries is number && data.maxEntries >= 2 && data.maxEntries <= 256
         && isValidItfConfig(data.itfConfig)
@@ -293,15 +393,21 @@ service cloud.firestore {
 
     function isValidPlayerPublic(data, playerId) {
       return data.keys().hasAll(['id', 'tournamentId', 'firstName', 'lastName', 'fullName', 'club', 'habitualCategory', 'gender', 'dominantHand', 'backhand', 'stats', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'tournamentId', 'firstName', 'lastName', 'fullName', 'club', 'habitualCategory', 'gender', 'dominantHand', 'backhand', 'bio', 'photoUrl', 'stats', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'tournamentId', 'sport', 'teamId', 'jerseyNumber', 'position', 'preferredFoot', 'footballStats', 'firstName', 'lastName', 'fullName', 'club', 'habitualCategory', 'gender', 'dominantHand', 'backhand', 'bio', 'photoUrl', 'stats', 'createdAt', 'updatedAt'])
         && isValidId(data.id) && data.id == playerId
         && isValidId(data.tournamentId)
+        && (!('sport' in data) || data.sport in ['tennis', 'football'])
+        && (!('teamId' in data) || isOptionalStr(data.teamId, 128))
+        && (!('jerseyNumber' in data) || data.jerseyNumber == null || (data.jerseyNumber is number && data.jerseyNumber >= 0 && data.jerseyNumber <= 99))
+        && (!('position' in data) || data.position == null || data.position in ['Arquero', 'Defensor', 'Mediocampista', 'Delantero'])
+        && (!('preferredFoot' in data) || data.preferredFoot == null || data.preferredFoot in ['Derecho', 'Zurdo', 'Ambidiestro'])
+        && (!('footballStats' in data) || data.footballStats == null || isValidFootballPlayerStats(data.footballStats))
         && isNonEmptyStr(data.firstName, 80)
         && isNonEmptyStr(data.lastName, 80)
         && isNonEmptyStr(data.fullName, 160)
         && isNonEmptyStr(data.club, 100)
         && isNonEmptyStr(data.habitualCategory, 40)
-        && data.gender in ['Femenino', 'Masculino']
+        && data.gender in ['Femenino', 'Masculino', 'Mixto']
         && data.dominantHand in ['Diestro', 'Zurdo']
         && data.backhand in ['Una mano', 'Dos manos']
         && (!('bio' in data) || isOptionalStr(data.bio, 400))
@@ -326,15 +432,20 @@ service cloud.firestore {
 
     function isValidRegistration(data, registrationId) {
       return data.keys().hasAll(['id', 'tournamentId', 'divisionId', 'modality', 'playerIds', 'displayName', 'status', 'registeredAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'tournamentId', 'divisionId', 'modality', 'playerIds', 'displayName', 'club', 'seed', 'status', 'groupId', 'registeredAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'tournamentId', 'divisionId', 'modality', 'playerIds', 'displayName', 'teamShortName', 'coachName', 'teamBadgeUrl', 'primaryColor', 'club', 'seed', 'status', 'groupId', 'registeredAt', 'updatedAt'])
         && isValidId(data.id) && data.id == registrationId
         && isValidId(data.tournamentId)
         && isValidId(data.divisionId)
-        && data.modality in ['Singles', 'Dobles']
-        && isValidList(data.playerIds, 2)
+        && data.modality in ['Singles', 'Dobles', 'Equipo']
+        && isValidList(data.playerIds, 35)
         && ((data.modality == 'Singles' && data.playerIds.size() == 1 && isValidId(data.playerIds[0]))
-            || (data.modality == 'Dobles' && data.playerIds.size() == 2 && isValidId(data.playerIds[0]) && isValidId(data.playerIds[1])))
+            || (data.modality == 'Dobles' && data.playerIds.size() == 2 && isValidId(data.playerIds[0]) && isValidId(data.playerIds[1]))
+            || (data.modality == 'Equipo' && (data.playerIds.size() == 0 || isValidId(data.playerIds[0]))))
         && isNonEmptyStr(data.displayName, 180)
+        && (!('teamShortName' in data) || isOptionalStr(data.teamShortName, 16))
+        && (!('coachName' in data) || isOptionalStr(data.coachName, 120))
+        && (!('teamBadgeUrl' in data) || isOptionalSafeImageUrl(data.teamBadgeUrl, 300000))
+        && (!('primaryColor' in data) || isOptionalStr(data.primaryColor, 24))
         && (!('club' in data) || isOptionalStr(data.club, 120))
         && (!('seed' in data) || data.seed == null || (data.seed is number && data.seed >= 1 && data.seed <= 64))
         && data.status in ['pendiente', 'confirmada', 'en_lista_de_espera', 'retirada']
@@ -374,13 +485,13 @@ service cloud.firestore {
 
     function isValidMatch(data, matchId) {
       return data.keys().hasAll(['id', 'tournamentId', 'divisionId', 'phase', 'roundName', 'roundOrder', 'entryAName', 'entryBName', 'playerIdsA', 'playerIdsB', 'isBye', 'status', 'sets', 'correctionHistory', 'rescheduleHistory', 'published', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'tournamentId', 'divisionId', 'matchdayId', 'phase', 'roundName', 'roundOrder', 'bracketPosition', 'nextMatchId', 'nextMatchSlot', 'isThirdPlace', 'groupId', 'entryAId', 'entryAName', 'playerIdsA', 'entryBId', 'entryBName', 'playerIdsB', 'isBye', 'scheduledDate', 'scheduledTime', 'courtId', 'courtName', 'status', 'sets', 'winnerEntryId', 'winnerName', 'outcomeNote', 'correctionHistory', 'rescheduleHistory', 'published', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'tournamentId', 'divisionId', 'matchdayId', 'phase', 'roundName', 'roundOrder', 'bracketPosition', 'nextMatchId', 'nextMatchSlot', 'isThirdPlace', 'groupId', 'entryAId', 'entryAName', 'playerIdsA', 'entryBId', 'entryBName', 'playerIdsB', 'isBye', 'scheduledDate', 'scheduledTime', 'courtId', 'courtName', 'status', 'sets', 'footballScore', 'footballSheet', 'winnerEntryId', 'winnerName', 'outcomeNote', 'correctionHistory', 'rescheduleHistory', 'published', 'createdAt', 'updatedAt'])
         && isValidId(data.id) && data.id == matchId
         && isValidId(data.tournamentId)
         && isValidId(data.divisionId)
         && (!('matchdayId' in data) || isOptionalStr(data.matchdayId, 128))
-        && data.phase in ['grupos', 'eliminacion']
-        && isNonEmptyStr(data.roundName, 80)
+        && data.phase in ['grupos', 'clasificatoria', 'eliminacion']
+        && isNonEmptyStr(data.roundName, 140)
         && data.roundOrder is number && data.roundOrder >= 1 && data.roundOrder <= 50
         && (!('bracketPosition' in data) || data.bracketPosition == null || (data.bracketPosition is number && data.bracketPosition >= 1 && data.bracketPosition <= 256))
         && (!('nextMatchId' in data) || isOptionalStr(data.nextMatchId, 128))
@@ -389,10 +500,10 @@ service cloud.firestore {
         && (!('groupId' in data) || isOptionalStr(data.groupId, 128))
         && (!('entryAId' in data) || isOptionalStr(data.entryAId, 128))
         && isNonEmptyStr(data.entryAName, 180)
-        && isValidPlayerIdPair(data.playerIdsA)
+        && isValidPlayerIdList(data.playerIdsA, 35)
         && (!('entryBId' in data) || isOptionalStr(data.entryBId, 128))
         && isNonEmptyStr(data.entryBName, 180)
-        && isValidPlayerIdPair(data.playerIdsB)
+        && isValidPlayerIdList(data.playerIdsB, 35)
         && data.isBye is bool
         && (!('scheduledDate' in data) || data.scheduledDate == null || data.scheduledDate == '' || isValidDateStr(data.scheduledDate))
         && (!('scheduledTime' in data) || isValidTimeStr(data.scheduledTime))
@@ -400,6 +511,8 @@ service cloud.firestore {
         && (!('courtName' in data) || isOptionalStr(data.courtName, 80))
         && data.status in ['programado', 'en_curso', 'finalizado', 'wo', 'retiro', 'descalificado', 'reprogramado']
         && isValidList(data.sets, 5) && (data.sets.size() == 0 || data.sets[0] is map)
+        && (!('footballScore' in data) || isValidFootballScore(data.footballScore))
+        && (!('footballSheet' in data) || isValidFootballSheet(data.footballSheet))
         && (!('winnerEntryId' in data) || isOptionalStr(data.winnerEntryId, 128))
         && (!('winnerName' in data) || isOptionalStr(data.winnerName, 180))
         && (!('outcomeNote' in data) || isOptionalStr(data.outcomeNote, 240))
@@ -753,7 +866,7 @@ service cloud.firestore {
       allow get: if isValidId(matchId);
       allow list: if isActiveStaff() || (request.query.limit != null && request.query.limit <= 500);
       allow create: if isValidId(matchId) && isValidMatch(incoming(), matchId)
-        && (hasStaffPerm('manageDraws') || hasStaffPerm('manageTournaments') || (hasStaffPerm('manageScoring') && incoming().phase == 'eliminacion'))
+        && (hasStaffPerm('manageDraws') || hasStaffPerm('manageTournaments') || (hasStaffPerm('manageScoring') && incoming().phase in ['eliminacion', 'clasificatoria']))
         && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
         && canAccessTournament(incoming().tournamentId)
         && exists(/databases/$(database)/documents/divisions/$(incoming().divisionId));
