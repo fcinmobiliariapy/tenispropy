@@ -36,7 +36,7 @@ export function parseTournamentUrlParams(): {
   const tournamentId = params.get('torneo')?.trim() || null;
   const divisionId = params.get('division')?.trim() || null;
   const rawTab = params.get('tab')?.trim() || null;
-  const validTabs: PublicTab[] = ['resumen', 'fixture', 'jornadas', 'jugadores'];
+  const validTabs: PublicTab[] = ['resumen', 'fixture', 'jornadas', 'galeria', 'jugadores'];
   const tab = rawTab && validTabs.includes(rawTab as PublicTab) ? (rawTab as PublicTab) : null;
   return { tournamentId, divisionId, tab };
 }

@@ -524,17 +524,20 @@ service cloud.firestore {
     }
 
     function isValidPhoto(data, photoId) {
-      return data.keys().hasAll(['id', 'tournamentId', 'divisionId', 'matchdayId', 'thumbUrl', 'fullUrl', 'order', 'isCover', 'published', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['id', 'tournamentId', 'divisionId', 'matchdayId', 'matchId', 'thumbUrl', 'fullUrl', 'caption', 'order', 'isCover', 'published', 'createdAt', 'updatedAt'])
+      return data.keys().hasAll(['id', 'tournamentId', 'thumbUrl', 'fullUrl', 'order', 'isCover', 'published', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'tournamentId', 'divisionId', 'matchdayId', 'matchId', 'album', 'storageProvider', 'assetId', 'thumbUrl', 'fullUrl', 'caption', 'order', 'isCover', 'published', 'createdAt', 'updatedAt'])
         && isValidId(data.id) && data.id == photoId
         && isValidId(data.tournamentId)
-        && isValidId(data.divisionId)
-        && isValidId(data.matchdayId)
+        && (!('divisionId' in data) || data.divisionId == null || isValidId(data.divisionId))
+        && (!('matchdayId' in data) || data.matchdayId == null || isValidId(data.matchdayId))
         && (!('matchId' in data) || isOptionalStr(data.matchId, 128))
+        && (!('album' in data) || isOptionalStr(data.album, 80))
+        && (!('storageProvider' in data) || data.storageProvider == null || data.storageProvider in ['cloudinary', 'cloudflare_images', 'cloudflare_r2', 'local'])
+        && (!('assetId' in data) || isOptionalStr(data.assetId, 240))
         && isSafeImageUrl(data.thumbUrl, 2000)
         && isSafeImageUrl(data.fullUrl, 2000)
         && (!('caption' in data) || isOptionalStr(data.caption, 240))
-        && data.order is number && data.order >= 0 && data.order <= 500
+        && data.order is number && data.order >= 0 && data.order <= 2000
         && data.isCover is bool
         && data.published is bool
         && isNonEmptyStr(data.createdAt, 40)
@@ -890,16 +893,18 @@ service cloud.firestore {
         && hasStaffPerm('manageScheduleAndMedia') && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
         && canAccessTournament(incoming().tournamentId)
         && incoming().published == true
-        && exists(/databases/$(database)/documents/matchdays/$(incoming().matchdayId));
+        && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId))
+        && (!('divisionId' in incoming()) || incoming().divisionId == null || exists(/databases/$(database)/documents/divisions/$(incoming().divisionId)))
+        && (!('matchdayId' in incoming()) || incoming().matchdayId == null || exists(/databases/$(database)/documents/matchdays/$(incoming().matchdayId)));
       allow update: if isValidId(photoId) && isValidPhoto(incoming(), photoId)
         && hasStaffPerm('manageScheduleAndMedia') && hasStaffPerm('canEdit')
         && canAccessTournament(incoming().tournamentId)
         && incoming().published == true
         && incoming().id == existing().id
         && incoming().tournamentId == existing().tournamentId
-        && incoming().divisionId == existing().divisionId
-        && incoming().matchdayId == existing().matchdayId
-        && incoming().createdAt == existing().createdAt;
+        && incoming().createdAt == existing().createdAt
+        && (!('divisionId' in incoming()) || incoming().divisionId == null || exists(/databases/$(database)/documents/divisions/$(incoming().divisionId)))
+        && (!('matchdayId' in incoming()) || incoming().matchdayId == null || exists(/databases/$(database)/documents/matchdays/$(incoming().matchdayId)));
       allow delete: if isValidId(photoId)
         && (isSuperAdmin() || (hasStaffPerm('manageScheduleAndMedia') && hasStaffPerm('canDelete')))
         && canAccessTournament(existing().tournamentId);
@@ -912,16 +917,18 @@ service cloud.firestore {
         && hasStaffPerm('manageScheduleAndMedia') && (hasStaffPerm('canCreate') || hasStaffPerm('canEdit'))
         && canAccessTournament(incoming().tournamentId)
         && incoming().published == false
-        && exists(/databases/$(database)/documents/matchdays/$(incoming().matchdayId));
+        && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId))
+        && (!('divisionId' in incoming()) || incoming().divisionId == null || exists(/databases/$(database)/documents/divisions/$(incoming().divisionId)))
+        && (!('matchdayId' in incoming()) || incoming().matchdayId == null || exists(/databases/$(database)/documents/matchdays/$(incoming().matchdayId)));
       allow update: if isValidId(photoId) && isValidPhoto(incoming(), photoId)
         && hasStaffPerm('manageScheduleAndMedia') && hasStaffPerm('canEdit')
         && canAccessTournament(incoming().tournamentId)
         && incoming().published == false
         && incoming().id == existing().id
         && incoming().tournamentId == existing().tournamentId
-        && incoming().divisionId == existing().divisionId
-        && incoming().matchdayId == existing().matchdayId
-        && incoming().createdAt == existing().createdAt;
+        && incoming().createdAt == existing().createdAt
+        && (!('divisionId' in incoming()) || incoming().divisionId == null || exists(/databases/$(database)/documents/divisions/$(incoming().divisionId)))
+        && (!('matchdayId' in incoming()) || incoming().matchdayId == null || exists(/databases/$(database)/documents/matchdays/$(incoming().matchdayId)));
       allow delete: if isValidId(photoId)
         && hasStaffPerm('manageScheduleAndMedia')
         && (hasStaffPerm('canEdit') || hasStaffPerm('canDelete'))

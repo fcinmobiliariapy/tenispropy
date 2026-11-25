@@ -251,7 +251,6 @@ export default function App() {
         false,
         5
       ),
-      subscribeCollection<MatchdayPhoto>('photos', setFsPhotos, true, 120),
     ];
 
     if (activeLiveTournamentId) {
@@ -262,6 +261,13 @@ export default function App() {
         subscribeTournamentCollection<Group>('groups', activeLiveTournamentId, setFsGroups, 100),
         subscribeTournamentCollection<Matchday>('matchdays', activeLiveTournamentId, setFsMatchdays, 100),
         subscribeTournamentCollection<Match>('matches', activeLiveTournamentId, setFsMatches, 450),
+        subscribeTournamentCollection<MatchdayPhoto>(
+          'photos',
+          activeLiveTournamentId,
+          setFsPhotos,
+          250,
+          [where('published', '==', true)]
+        ),
         subscribeTournamentCollection<NotificationAlert>('notifications', activeLiveTournamentId, setFsNotifications, 100),
         subscribeTournamentCollection<TournamentAd>('tournament_ads', activeLiveTournamentId, setFsTournamentAds, 50),
         subscribeTournamentCollection<TournamentTrophy>('tournament_trophies', activeLiveTournamentId, setFsTournamentTrophies, 80)

@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   Database,
   FileImage,
+  Images,
   LayoutTemplate,
   LogIn,
   LogOut,
@@ -119,12 +120,18 @@ const AdminFootballMatchSheetSection = lazy(() =>
     default: m.AdminFootballMatchSheetSection,
   }))
 );
+const AdminCompetitionGallerySection = lazy(() =>
+  import('./admin/AdminCompetitionGallerySection').then((m) => ({
+    default: m.AdminCompetitionGallerySection,
+  }))
+);
 
 type AdminTab =
   | 'torneos'
   | 'jugadores'
   | 'inscripciones'
   | 'jornadas'
+  | 'galeria'
   | 'marcadores'
   | 'diagnostico'
   | 'pagina_principal'
@@ -481,11 +488,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     },
     {
       id: 'jornadas',
-      label: 'Jornadas y fotos',
+      label: 'Jornadas y horarios',
       icon: <Calendar className="w-4 h-4" />,
       show:
         effectivePermissions.manageScheduleAndMedia &&
         Boolean(activeTournament && activeDivision),
+    },
+    {
+      id: 'galeria',
+      label: 'Galería de fotos',
+      icon: <Images className="w-4 h-4" />,
+      show: effectivePermissions.manageScheduleAndMedia && Boolean(activeTournament),
     },
     {
       id: 'marcadores',
@@ -979,6 +992,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     isSuperAdmin={isSuperAdmin}
                     permissions={effectivePermissions}
                     onOpenFlyerModal={() => setFlyerModalOpen(true)}
+                    onOpenGalleryTab={() => setActiveTab('galeria')}
+                  />
+                </Suspense>
+              </ErrorBoundary>
+            )}
+
+          {currentTab === 'galeria' &&
+            activeTournament &&
+            effectivePermissions.manageScheduleAndMedia && (
+              <ErrorBoundary scopeLabel="la galería de la competencia" inline>
+                <Suspense fallback={<AdminSectionSkeleton />}>
+                  <AdminCompetitionGallerySection
+                    tournament={activeTournament}
+                    divisions={tournamentDivisions}
+                    matchdays={tournamentMatchdays}
+                    matches={tournamentMatches}
+                    publishedPhotos={publishedPhotos}
+                    draftPhotos={draftPhotos}
+                    onDraftPhotosChange={setDraftPhotos}
+                    isSuperAdmin={isSuperAdmin}
+                    permissions={effectivePermissions}
                   />
                 </Suspense>
               </ErrorBoundary>

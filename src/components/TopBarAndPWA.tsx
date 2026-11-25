@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Bell, Calendar, Download, Home, Images, Trophy, Users, WifiOff, X } from 'lucide-react';
+import { Bell, Calendar, Camera, Download, Home, Images, Trophy, Users, WifiOff, X } from 'lucide-react';
 import { LiveToast, useOnlineStatus, usePWAInstall } from '../hooks/usePWA';
 import { OFFICIAL_PLAYPY_LOGO } from '../data/siteConfigDefaults';
 import { getOptimizedImageUrl } from '../utils/imageOptimizer';
 
-export type PublicTab = 'resumen' | 'fixture' | 'jornadas' | 'jugadores';
+export type PublicTab = 'resumen' | 'fixture' | 'jornadas' | 'galeria' | 'jugadores';
 export type AppView = 'landing' | 'portal' | 'admin';
 
 interface TopBarProps {
@@ -34,6 +34,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     { id: 'resumen', label: 'Competencia' },
     { id: 'fixture', label: 'Fixture' },
     { id: 'jornadas', label: 'Jornadas' },
+    { id: 'galeria', label: 'Galería' },
     { id: 'jugadores', label: 'Jugadores' },
   ];
 
@@ -63,7 +64,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         </button>
 
         {/* Zona 2: Enlaces concisos de una sola línea */}
-        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[#475569]">
+        <nav className="hidden md:flex items-center gap-5 text-sm font-medium text-[#475569]">
           <button
             onClick={onGoLanding}
             className={`whitespace-nowrap shrink-0 py-1 border-b-2 transition-colors ${
@@ -121,10 +122,11 @@ export const MobileBottomNav: React.FC<{
   onSelectTab: (tab: PublicTab) => void;
 }> = ({ view, activeTab, onGoLanding, onSelectTab }) => {
   const items: Array<{ id: PublicTab; label: string; icon: React.ReactNode }> = [
-    { id: 'resumen', label: 'Torneo', icon: <Trophy className="w-5 h-5" /> },
-    { id: 'fixture', label: 'Fixture', icon: <Calendar className="w-5 h-5" /> },
-    { id: 'jornadas', label: 'Jornadas', icon: <Images className="w-5 h-5" /> },
-    { id: 'jugadores', label: 'Jugadores', icon: <Users className="w-5 h-5" /> },
+    { id: 'resumen', label: 'Torneo', icon: <Trophy className="w-4.5 h-4.5" /> },
+    { id: 'fixture', label: 'Fixture', icon: <Calendar className="w-4.5 h-4.5" /> },
+    { id: 'jornadas', label: 'Jornadas', icon: <Images className="w-4.5 h-4.5" /> },
+    { id: 'galeria', label: 'Galería', icon: <Camera className="w-4.5 h-4.5" /> },
+    { id: 'jugadores', label: 'Plantel', icon: <Users className="w-4.5 h-4.5" /> },
   ];
 
   return (
@@ -132,7 +134,7 @@ export const MobileBottomNav: React.FC<{
       aria-label="Navegación móvil"
       className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-[#E2E8F0] pb-[env(safe-area-inset-bottom)]"
     >
-      <div className="grid grid-cols-5 h-15">
+      <div className="grid grid-cols-6 h-15">
         <button
           onClick={onGoLanding}
           className={`relative flex flex-col items-center justify-center min-h-[44px] transition-colors ${
@@ -140,9 +142,9 @@ export const MobileBottomNav: React.FC<{
           }`}
         >
           {view === 'landing' && (
-            <span className="absolute top-0 left-2 right-2 h-0.5 rounded-b bg-[#7C1FA2]" />
+            <span className="absolute top-0 left-1.5 right-1.5 h-0.5 rounded-b bg-[#7C1FA2]" />
           )}
-          <Home className="w-5 h-5" />
+          <Home className="w-4.5 h-4.5" />
           <span className="text-[10px] mt-0.5 whitespace-nowrap">Inicio</span>
         </button>
 
@@ -157,7 +159,7 @@ export const MobileBottomNav: React.FC<{
               }`}
             >
               {active && (
-                <span className="absolute top-0 left-2 right-2 h-0.5 rounded-b bg-[#7C1FA2]" />
+                <span className="absolute top-0 left-1.5 right-1.5 h-0.5 rounded-b bg-[#7C1FA2]" />
               )}
               {item.icon}
               <span className="text-[10px] mt-0.5 whitespace-nowrap">{item.label}</span>

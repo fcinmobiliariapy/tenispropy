@@ -145,7 +145,8 @@ export function subscribeTournamentCollection<T>(
   collectionName: string,
   tournamentId: string,
   onData: (items: T[]) => void,
-  maxLimit = DEFAULT_QUERY_LIMIT
+  maxLimit = DEFAULT_QUERY_LIMIT,
+  extraConstraints: QueryConstraint[] = []
 ): () => void {
   if (!tournamentId) {
     onData([]);
@@ -154,6 +155,7 @@ export function subscribeTournamentCollection<T>(
   const q = query(
     collection(db, collectionName),
     where('tournamentId', '==', tournamentId),
+    ...extraConstraints,
     limit(Math.min(maxLimit, DEFAULT_QUERY_LIMIT))
   );
   return subscribeWithResilience<T>(q, collectionName, onData);
@@ -217,12 +219,14 @@ export async function fetchPaginatedPlayersByTournament(params: {
 }
 
 export async function fetchPaginatedPublishedPhotos(params: {
+  tournamentId?: string;
   pageSize?: number;
   cursor?: QueryDocumentSnapshot<DocumentData> | null;
 }): Promise<PaginatedResult<MatchdayPhoto>> {
-  const { pageSize = 24, cursor = null } = params;
+  const { tournamentId, pageSize = 24, cursor = null } = params;
   const safeSize = Math.min(Math.max(1, pageSize), 100);
   const constraints: QueryConstraint[] = [where('published', '==', true)];
+  if (tournamentId) constraints.push(where('tournamentId', '==', tournamentId));
   if (cursor) constraints.push(startAfter(cursor));
   constraints.push(limit(safeSize + 1));
 

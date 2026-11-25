@@ -248,14 +248,17 @@
     },
     "MatchdayPhoto": {
       "title": "MatchdayPhoto",
-      "description": "Fotografía optimizada asociada a un torneo, división, jornada y opcionalmente a un partido.",
+      "description": "Fotografía optimizada en Cloudinary o Cloudflare Images asociada a una competencia, y opcionalmente a una categoría, jornada, álbum o partido.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "tournamentId": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "divisionId": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "matchdayId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "matchdayId": { "type": "string", "maxLength": 128 },
         "matchId": { "type": "string", "maxLength": 128 },
+        "album": { "type": "string", "maxLength": 80 },
+        "storageProvider": { "type": "string", "enum": ["cloudinary", "cloudflare_images", "cloudflare_r2", "local"] },
+        "assetId": { "type": "string", "maxLength": 240 },
         "thumbUrl": { "type": "string", "minLength": 1, "maxLength": 2000 },
         "fullUrl": { "type": "string", "minLength": 1, "maxLength": 2000 },
         "caption": { "type": "string", "maxLength": 240 },
@@ -265,7 +268,7 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "tournamentId", "divisionId", "matchdayId", "thumbUrl", "fullUrl", "order", "isCover", "published", "createdAt", "updatedAt"]
+      "required": ["id", "tournamentId", "thumbUrl", "fullUrl", "order", "isCover", "published", "createdAt", "updatedAt"]
     },
     "NotificationAlert": {
       "title": "NotificationAlert",

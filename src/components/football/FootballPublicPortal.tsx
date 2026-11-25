@@ -3,7 +3,10 @@ import {
   Award,
   BookOpen,
   Calendar,
+  Camera,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Crown,
   Images,
@@ -14,7 +17,10 @@ import {
   Shield,
   Trophy,
   Users,
+  X,
 } from 'lucide-react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import {
   Division,
   Group,
@@ -38,11 +44,13 @@ import {
   formatFootballScoreString,
 } from '../../utils/footballEngine';
 import { compareMatchesByRound, formatAsuncionDate } from '../../utils/tournamentEngine';
+import { fetchPaginatedPublishedPhotos } from '../../services/firestoreService';
 import { PublicTab } from '../TopBarAndPWA';
 import { TournamentAd as TournamentAdCard } from '../TournamentAd';
 import { OptimizedImage } from '../OptimizedImage';
 import { FootballMatchSheetModal } from './FootballMatchSheetModal';
 import { TournamentQrModal } from '../TournamentQrModal';
+import { CompetitionGalleryStrip, CompetitionGalleryView } from '../CompetitionGalleryView';
 
 interface FootballPublicPortalProps {
   tournaments: Tournament[];
@@ -109,6 +117,34 @@ export const FootballPublicPortal: React.FC<FootballPublicPortalProps> = ({
   const [selectedMatchForSheet, setSelectedMatchForSheet] = useState<Match | null>(null);
   const [showFifaRulesModal, setShowFifaRulesModal] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const [lightboxPhotos, setLightboxPhotos] = useState<MatchdayPhoto[]>([]);
+  const [lightboxIndex, setLightboxIndex] = useState<number>(0);
+
+  const paginatedPhotosQuery = useInfiniteQuery({
+    queryKey: ['photos_paginated', activeTournament?.id || 'none'],
+    initialPageParam: null as QueryDocumentSnapshot<DocumentData> | null,
+    queryFn: ({ pageParam }) =>
+      fetchPaginatedPublishedPhotos({
+        tournamentId: activeTournament?.id,
+        pageSize: 24,
+        cursor: pageParam,
+      }),
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
+    enabled: Boolean(
+      (activeTab === 'jornadas' || activeTab === 'galeria' || activeTab === 'resumen') &&
+        activeTournament?.id &&
+        !activeTournament?.isDemo
+    ),
+  });
+
+  const mergedPhotos = useMemo(() => {
+    const map = new Map<string, MatchdayPhoto>();
+    photos.forEach((ph) => map.set(ph.id, ph));
+    paginatedPhotosQuery.data?.pages.forEach((page) => {
+      page.items.forEach((ph) => map.set(ph.id, ph));
+    });
+    return Array.from(map.values());
+  }, [photos, paginatedPhotosQuery.data]);
 
   const divMatches = useMemo(
     () =>
@@ -267,8 +303,13 @@ export const FootballPublicPortal: React.FC<FootballPublicPortalProps> = ({
   );
 
   const divPhotos = useMemo(
-    () => photos.filter((ph) => ph.divisionId === activeDivision?.id && ph.published),
-    [photos, activeDivision?.id]
+    () => mergedPhotos.filter((ph) => ph.divisionId === activeDivision?.id && ph.published),
+    [mergedPhotos, activeDivision?.id]
+  );
+
+  const tournamentPublishedPhotos = useMemo(
+    () => mergedPhotos.filter((ph) => ph.tournamentId === activeTournament?.id && ph.published),
+    [mergedPhotos, activeTournament?.id]
   );
 
   const mainBannerAd = useMemo(
@@ -403,6 +444,7 @@ export const FootballPublicPortal: React.FC<FootballPublicPortalProps> = ({
                 { id: 'resumen', label: 'Competencia', icon: Trophy },
                 { id: 'fixture', label: 'Fixture y Planillas', icon: Calendar },
                 { id: 'jornadas', label: 'Jornadas', icon: Images },
+                { id: 'galeria', label: 'Galería', icon: Camera },
                 { id: 'jugadores', label: 'Jugadores', icon: Users },
               ] as const
             ).map((tab) => {
@@ -933,6 +975,15 @@ export const FootballPublicPortal: React.FC<FootballPublicPortalProps> = ({
               )}
             </div>
           )}
+
+          {activeTournament && tournamentPublishedPhotos.length > 0 && (
+            <CompetitionGalleryStrip
+              isFootball
+              tournamentName={activeTournament.name}
+              photos={tournamentPublishedPhotos}
+              onOpenFullGallery={() => onSelectTab('galeria')}
+            />
+          )}
         </div>
       )}
 
@@ -1117,17 +1168,30 @@ export const FootballPublicPortal: React.FC<FootballPublicPortalProps> = ({
 
                   {mdPhotos.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                      {mdPhotos.map((ph) => (
-                        <div key={ph.id} className="rounded-xl overflow-hidden border border-[#E2E8F0]">
+                      {mdPhotos.map((ph, idx) => (
+                        <button
+                          key={ph.id}
+                          type="button"
+                          onClick={() => {
+                            setLightboxPhotos(mdPhotos);
+                            setLightboxIndex(idx);
+                          }}
+                          className="group relative rounded-xl overflow-hidden border border-[#E2E8F0] text-left"
+                        >
                           <OptimizedImage
                             src={ph.thumbUrl || ph.fullUrl}
                             alt={ph.caption || md.name}
                             width={320}
                             height={220}
                             transformWidth={420}
-                            className="w-full aspect-[4/3] object-cover"
+                            className="w-full aspect-[4/3] object-cover group-hover:scale-105 transition-transform duration-200"
                           />
-                        </div>
+                          {ph.caption && (
+                            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/35 to-transparent">
+                              <p className="text-[11px] text-white line-clamp-1">{ph.caption}</p>
+                            </div>
+                          )}
+                        </button>
                       ))}
                     </div>
                   )}
@@ -1136,6 +1200,22 @@ export const FootballPublicPortal: React.FC<FootballPublicPortalProps> = ({
             })
           )}
         </div>
+      )}
+
+      {/* TAB: GALERÍA DE LA COMPETENCIA */}
+      {activeTab === 'galeria' && activeTournament && (
+        <CompetitionGalleryView
+          isFootball
+          tournament={activeTournament}
+          divisions={tournamentDivisions}
+          matchdays={matchdays.filter((md) => md.tournamentId === activeTournament.id)}
+          matches={matches.filter((m) => m.tournamentId === activeTournament.id && m.published)}
+          photos={mergedPhotos}
+          isLoading={paginatedPhotosQuery.isLoading}
+          hasNextPage={Boolean(paginatedPhotosQuery.hasNextPage)}
+          isFetchingNextPage={paginatedPhotosQuery.isFetchingNextPage}
+          onLoadMore={() => void paginatedPhotosQuery.fetchNextPage()}
+        />
       )}
 
       {/* TAB 4: LISTADO DE JUGADORES Y PLANTELES (Filtrable por categoría, equipo y posición) */}
@@ -1299,6 +1379,66 @@ export const FootballPublicPortal: React.FC<FootballPublicPortalProps> = ({
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Lightbox para fotos de Jornadas */}
+      {lightboxPhotos.length > 0 && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setLightboxPhotos([])}
+          className="fixed inset-0 z-50 bg-slate-950/95 flex flex-col justify-between p-4 sm:p-6"
+        >
+          <div className="flex items-center justify-between text-white" onClick={(e) => e.stopPropagation()}>
+            <p className="text-xs font-mono tabular-nums text-white/80">
+              {lightboxIndex + 1} / {lightboxPhotos.length}
+            </p>
+            <button
+              type="button"
+              onClick={() => setLightboxPhotos([])}
+              aria-label="Cerrar visor"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 flex items-center justify-center relative my-4" onClick={(e) => e.stopPropagation()}>
+            {lightboxPhotos.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setLightboxIndex((i) => (i - 1 + lightboxPhotos.length) % lightboxPhotos.length)}
+                aria-label="Foto anterior"
+                className="absolute left-2 min-h-[44px] min-w-[44px] rounded-full bg-black/55 text-white flex items-center justify-center hover:bg-black/80"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+            )}
+            <OptimizedImage
+              src={lightboxPhotos[lightboxIndex]?.fullUrl || lightboxPhotos[lightboxIndex]?.thumbUrl}
+              alt={lightboxPhotos[lightboxIndex]?.caption || 'Foto de jornada'}
+              width={1440}
+              height={960}
+              transformWidth={1440}
+              priority
+              className="max-h-[75vh] w-auto max-w-full object-contain rounded-xl"
+            />
+            {lightboxPhotos.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setLightboxIndex((i) => (i + 1) % lightboxPhotos.length)}
+                aria-label="Foto siguiente"
+                className="absolute right-2 min-h-[44px] min-w-[44px] rounded-full bg-black/55 text-white flex items-center justify-center hover:bg-black/80"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            )}
+          </div>
+          {lightboxPhotos[lightboxIndex]?.caption && (
+            <p className="text-center text-sm text-white pb-2" onClick={(e) => e.stopPropagation()}>
+              {lightboxPhotos[lightboxIndex].caption}
+            </p>
+          )}
         </div>
       )}
 

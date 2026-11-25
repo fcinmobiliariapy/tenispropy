@@ -6,20 +6,154 @@ const env = (import.meta as unknown as { env?: Record<string, string | undefined
 const CLOUDINARY_CLOUD_NAME = (env.VITE_CLOUDINARY_CLOUD_NAME || '').trim();
 const CLOUDINARY_UPLOAD_PRESET = (env.VITE_CLOUDINARY_UPLOAD_PRESET || '').trim();
 const CLOUDINARY_BASE_FOLDER = (env.VITE_CLOUDINARY_FOLDER || 'playpy').trim() || 'playpy';
+const CLOUDFLARE_FLEXIBLE_VARIANTS =
+  String(env.VITE_CLOUDFLARE_IMAGES_FLEXIBLE_VARIANTS || '').trim().toLowerCase() === 'true';
+const PREFERRED_MEDIA_PROVIDER = (env.VITE_MEDIA_PROVIDER || '').trim().toLowerCase();
 
-let cachedR2Configured: boolean | null = null;
+export type MediaStorageProvider = 'cloudinary' | 'cloudflare_images' | 'cloudflare_r2' | 'local';
+
+export interface UploadStorageStatus {
+  activeProvider: MediaStorageProvider;
+  cloudinaryUnsigned: boolean;
+  cloudinarySigned: boolean;
+  cloudflareImages: boolean;
+  cloudflareR2: boolean;
+  localFallback: boolean;
+  cloudinaryFolder: string;
+}
+
+export interface PhotoUploadContext {
+  tournamentId?: string;
+  album?: string;
+}
+
+export interface UploadedPhotoResult {
+  thumbUrl: string;
+  fullUrl: string;
+  storageProvider: MediaStorageProvider;
+  assetId?: string | null;
+}
+
+interface ServerStorageInfo {
+  cloudinarySignedConfigured: boolean;
+  cloudflareImagesConfigured: boolean;
+  r2Configured: boolean;
+  cloudinaryFolder?: string;
+}
+
+let cachedServerInfo: ServerStorageInfo | null = null;
+
+function sanitizeSegment(value: string | undefined, maxLen = 64): string {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, maxLen);
+}
+
+function buildCompetitionFolder(
+  baseFolder: string,
+  subFolder: 'photos' | 'avatars' | 'banners',
+  tournamentId?: string
+): string {
+  const safeTournament = sanitizeSegment(tournamentId, 80);
+  return safeTournament
+    ? `${baseFolder}/competitions/${safeTournament}/${subFolder}`
+    : `${baseFolder}/${subFolder}`;
+}
+
+async function fetchServerStorageInfo(forceRefresh = false): Promise<ServerStorageInfo> {
+  if (cachedServerInfo && !forceRefresh) return cachedServerInfo;
+  try {
+    const res = await fetch('/api/uploads/storage-info');
+    if (!res.ok) {
+      cachedServerInfo = {
+        cloudinarySignedConfigured: false,
+        cloudflareImagesConfigured: false,
+        r2Configured: false,
+      };
+      return cachedServerInfo;
+    }
+    const data = (await res.json()) as Partial<ServerStorageInfo>;
+    cachedServerInfo = {
+      cloudinarySignedConfigured: Boolean(data.cloudinarySignedConfigured),
+      cloudflareImagesConfigured: Boolean(data.cloudflareImagesConfigured),
+      r2Configured: Boolean(data.r2Configured),
+      cloudinaryFolder: data.cloudinaryFolder,
+    };
+    return cachedServerInfo;
+  } catch {
+    cachedServerInfo = {
+      cloudinarySignedConfigured: false,
+      cloudflareImagesConfigured: false,
+      r2Configured: false,
+    };
+    return cachedServerInfo;
+  }
+}
+
+export async function fetchUploadStorageStatus(forceRefresh = false): Promise<UploadStorageStatus> {
+  const serverInfo = await fetchServerStorageInfo(forceRefresh);
+  const cloudinaryUnsigned = Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET);
+  const cloudinarySigned = serverInfo.cloudinarySignedConfigured;
+  const cloudflareImages = serverInfo.cloudflareImagesConfigured;
+  const cloudflareR2 = serverInfo.r2Configured;
+
+  const activeProvider = resolveProviderOrder({
+    cloudinaryUnsigned,
+    cloudinarySigned,
+    cloudflareImages,
+    cloudflareR2,
+  })[0] || 'local';
+
+  return {
+    activeProvider,
+    cloudinaryUnsigned,
+    cloudinarySigned,
+    cloudflareImages,
+    cloudflareR2,
+    localFallback: activeProvider === 'local',
+    cloudinaryFolder: serverInfo.cloudinaryFolder || CLOUDINARY_BASE_FOLDER,
+  };
+}
+
+function resolveProviderOrder(flags: {
+  cloudinaryUnsigned: boolean;
+  cloudinarySigned: boolean;
+  cloudflareImages: boolean;
+  cloudflareR2: boolean;
+}): MediaStorageProvider[] {
+  const available: MediaStorageProvider[] = [];
+  if (flags.cloudinaryUnsigned || flags.cloudinarySigned) available.push('cloudinary');
+  if (flags.cloudflareImages) available.push('cloudflare_images');
+  if (flags.cloudflareR2) available.push('cloudflare_r2');
+
+  if (
+    PREFERRED_MEDIA_PROVIDER &&
+    available.includes(PREFERRED_MEDIA_PROVIDER as MediaStorageProvider)
+  ) {
+    const preferred = PREFERRED_MEDIA_PROVIDER as MediaStorageProvider;
+    return [preferred, ...available.filter((p) => p !== preferred)];
+  }
+  return available;
+}
 
 export function isCloudImageStorageConfigured(): boolean {
-  return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET) || cachedR2Configured === true;
+  return Boolean(
+    (CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET) ||
+      cachedServerInfo?.cloudinarySignedConfigured ||
+      cachedServerInfo?.cloudflareImagesConfigured ||
+      cachedServerInfo?.r2Configured
+  );
 }
 
 /**
  * Aplica transformaciones automáticas de Cloudinary (WebP/AVIF, calidad automática y recorte máximo)
- * sin tocar URLs locales, DataURLs ni rutas externas ajenas a Cloudinary.
+ * o Flexible Variants de Cloudflare Images cuando está habilitado, sin tocar URLs locales ni DataURLs.
  */
 export function getOptimizedImageUrl(url: string, width?: number): string {
   const cleaned = String(url || '').trim();
   if (!cleaned) return '';
+
   if (
     cleaned.startsWith('https://res.cloudinary.com/') &&
     cleaned.includes('/image/upload/') &&
@@ -30,6 +164,16 @@ export function getOptimizedImageUrl(url: string, width?: number): string {
       : 'f_auto,q_auto';
     return cleaned.replace('/image/upload/', `/image/upload/${transform}/`);
   }
+
+  if (
+    CLOUDFLARE_FLEXIBLE_VARIANTS &&
+    width &&
+    cleaned.startsWith('https://imagedelivery.net/') &&
+    cleaned.endsWith('/public')
+  ) {
+    return cleaned.replace(/\/public$/, `/w=${Math.round(width)},fit=scale-down,format=auto`);
+  }
+
   return cleaned;
 }
 
@@ -174,17 +318,18 @@ async function compressToWebpBlob(
   return dataUrlToBlob(fallbackDataUrl);
 }
 
-async function uploadToCloudinary(
+async function uploadToCloudinaryUnsigned(
   blob: Blob,
   folder: 'photos' | 'avatars' | 'banners',
   baseName: string,
-  thumbWidth: number
-): Promise<{ thumbUrl: string; fullUrl: string }> {
+  thumbWidth: number,
+  tournamentId?: string
+): Promise<UploadedPhotoResult> {
   const formData = new FormData();
   const safeName = `${baseName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'playpy'}.webp`;
   formData.append('file', blob, safeName);
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-  formData.append('folder', `${CLOUDINARY_BASE_FOLDER}/${folder}`);
+  formData.append('folder', buildCompetitionFolder(CLOUDINARY_BASE_FOLDER, folder, tournamentId));
 
   const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(
     CLOUDINARY_CLOUD_NAME
@@ -192,6 +337,7 @@ async function uploadToCloudinary(
   const res = await fetch(endpoint, { method: 'POST', body: formData });
   const data = (await res.json().catch(() => ({}))) as {
     secure_url?: string;
+    public_id?: string;
     error?: { message?: string };
   };
 
@@ -204,30 +350,138 @@ async function uploadToCloudinary(
   return {
     fullUrl: getOptimizedImageUrl(data.secure_url),
     thumbUrl: getOptimizedImageUrl(data.secure_url, thumbWidth),
+    storageProvider: 'cloudinary',
+    assetId: data.public_id || null,
   };
 }
 
-async function checkServerR2Configured(): Promise<boolean> {
-  if (cachedR2Configured !== null) return cachedR2Configured;
-  try {
-    const res = await fetch('/api/uploads/storage-info');
-    if (!res.ok) {
-      cachedR2Configured = false;
-      return false;
-    }
-    const data = (await res.json()) as { r2Configured?: boolean };
-    cachedR2Configured = Boolean(data.r2Configured);
-    return cachedR2Configured;
-  } catch {
-    cachedR2Configured = false;
-    return false;
+async function uploadToCloudinarySigned(
+  blob: Blob,
+  folder: 'photos' | 'avatars' | 'banners',
+  baseName: string,
+  thumbWidth: number,
+  tournamentId?: string
+): Promise<UploadedPhotoResult> {
+  const signRes = await fetch('/api/uploads/cloudinary-sign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folder, tournamentId }),
+  });
+  const signData = (await signRes.json().catch(() => ({}))) as {
+    cloudName?: string;
+    apiKey?: string;
+    timestamp?: number;
+    signature?: string;
+    folder?: string;
+    error?: string;
+  };
+
+  if (
+    !signRes.ok ||
+    !signData.cloudName ||
+    !signData.apiKey ||
+    !signData.timestamp ||
+    !signData.signature ||
+    !signData.folder
+  ) {
+    throw new Error(signData.error || 'No se pudo firmar la subida para Cloudinary.');
   }
+
+  const formData = new FormData();
+  const safeName = `${baseName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'playpy'}.webp`;
+  formData.append('file', blob, safeName);
+  formData.append('api_key', signData.apiKey);
+  formData.append('timestamp', String(signData.timestamp));
+  formData.append('signature', signData.signature);
+  formData.append('folder', signData.folder);
+
+  const endpoint = `https://api.cloudinary.com/v1_1/${encodeURIComponent(
+    signData.cloudName
+  )}/image/upload`;
+  const res = await fetch(endpoint, { method: 'POST', body: formData });
+  const data = (await res.json().catch(() => ({}))) as {
+    secure_url?: string;
+    public_id?: string;
+    error?: { message?: string };
+  };
+
+  if (!res.ok || !data.secure_url) {
+    throw new Error(
+      data.error?.message || `Cloudinary rechazó la subida firmada (${res.status}).`
+    );
+  }
+
+  return {
+    fullUrl: getOptimizedImageUrl(data.secure_url),
+    thumbUrl: getOptimizedImageUrl(data.secure_url, thumbWidth),
+    storageProvider: 'cloudinary',
+    assetId: data.public_id || null,
+  };
+}
+
+async function uploadToCloudflareImages(
+  blob: Blob,
+  folder: 'photos' | 'avatars' | 'banners',
+  baseName: string,
+  thumbWidth: number,
+  context?: PhotoUploadContext
+): Promise<UploadedPhotoResult> {
+  const directRes = await fetch('/api/uploads/cloudflare-images/direct-upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      folder,
+      tournamentId: context?.tournamentId,
+      album: context?.album,
+    }),
+  });
+
+  const directData = (await directRes.json().catch(() => ({}))) as {
+    uploadUrl?: string;
+    imageId?: string;
+    fullUrl?: string;
+    thumbUrl?: string;
+    error?: string;
+  };
+
+  if (
+    !directRes.ok ||
+    !directData.uploadUrl ||
+    !directData.imageId ||
+    !directData.fullUrl ||
+    !directData.thumbUrl
+  ) {
+    throw new Error(
+      directData.error || 'No se pudo obtener la URL de carga directa en Cloudflare Images.'
+    );
+  }
+
+  const formData = new FormData();
+  const safeName = `${baseName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'playpy'}.webp`;
+  formData.append('file', blob, safeName);
+
+  const uploadRes = await fetch(directData.uploadUrl, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!uploadRes.ok) {
+    throw new Error(`Cloudflare Images rechazó el archivo (${uploadRes.status}).`);
+  }
+
+  return {
+    fullUrl: directData.fullUrl,
+    thumbUrl: getOptimizedImageUrl(directData.thumbUrl, thumbWidth),
+    storageProvider: 'cloudflare_images',
+    assetId: directData.imageId,
+  };
 }
 
 async function uploadBlobToR2(
   blob: Blob,
   folder: 'photos' | 'avatars' | 'banners',
-  baseName: string
+  baseName: string,
+  tournamentId?: string
 ): Promise<string> {
   const contentType = blob.type || 'image/webp';
   const presignRes = await fetch('/api/uploads/presign-r2', {
@@ -235,6 +489,7 @@ async function uploadBlobToR2(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       folder,
+      tournamentId,
       filename: `${baseName}.webp`,
       contentType,
     }),
@@ -263,7 +518,7 @@ async function postUploadLocalFallback(payload: {
   baseName: string;
   thumbDataUrl: string;
   fullDataUrl: string;
-}): Promise<{ thumbUrl: string; fullUrl: string }> {
+}): Promise<UploadedPhotoResult> {
   const response = await fetch('/api/uploads', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -276,18 +531,27 @@ async function postUploadLocalFallback(payload: {
       const err = (await response.json().catch(() => ({}))) as { error?: string };
       throw new Error(err.error || `Error ${response.status} al subir la imagen.`);
     }
-    throw new Error(`El servidor respondió ${response.status} al subir la imagen.`);
+    throw new Error(
+      `No hay almacenamiento en la nube configurado (Cloudinary / Cloudflare Images) y el servidor local respondió ${response.status}.`
+    );
   }
 
   if (!contentType.includes('application/json')) {
-    throw new Error('El servidor no devolvió una respuesta válida al subir la imagen.');
+    throw new Error(
+      'Configurá Cloudinary o Cloudflare Images en tus variables de entorno para subir fotos en producción.'
+    );
   }
 
   const data = (await response.json()) as { thumbUrl?: string; fullUrl?: string };
   if (!data.thumbUrl || !data.fullUrl) {
     throw new Error('La respuesta de carga no incluyó la ruta de la imagen.');
   }
-  return { thumbUrl: data.thumbUrl, fullUrl: data.fullUrl };
+  return {
+    thumbUrl: data.thumbUrl,
+    fullUrl: data.fullUrl,
+    storageProvider: 'local',
+    assetId: null,
+  };
 }
 
 async function uploadOptimizedPair(params: {
@@ -297,24 +561,56 @@ async function uploadOptimizedPair(params: {
   thumbBlob: Blob;
   fullBlob: Blob;
   thumbWidth: number;
-}): Promise<{ thumbUrl: string; fullUrl: string }> {
-  const { folder, baseName, thumbBlob, fullBlob, thumbWidth } = params;
+  context?: PhotoUploadContext;
+}): Promise<UploadedPhotoResult> {
+  const { folder, baseName, thumbBlob, fullBlob, thumbWidth, context } = params;
+  const serverInfo = await fetchServerStorageInfo();
+  const cloudinaryUnsigned = Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET);
+  const cloudinarySigned = serverInfo.cloudinarySignedConfigured;
 
-  // 1. Cloudinary Free Tier directo desde cliente ($0 egress en Vercel / Firebase)
-  if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET) {
-    return uploadToCloudinary(fullBlob, folder, baseName, thumbWidth);
+  const order = resolveProviderOrder({
+    cloudinaryUnsigned,
+    cloudinarySigned,
+    cloudflareImages: serverInfo.cloudflareImagesConfigured,
+    cloudflareR2: serverInfo.r2Configured,
+  });
+
+  for (const provider of order) {
+    if (provider === 'cloudinary') {
+      if (cloudinaryUnsigned) {
+        return uploadToCloudinaryUnsigned(
+          fullBlob,
+          folder,
+          baseName,
+          thumbWidth,
+          context?.tournamentId
+        );
+      }
+      if (cloudinarySigned) {
+        return uploadToCloudinarySigned(
+          fullBlob,
+          folder,
+          baseName,
+          thumbWidth,
+          context?.tournamentId
+        );
+      }
+    }
+
+    if (provider === 'cloudflare_images') {
+      return uploadToCloudflareImages(fullBlob, folder, baseName, thumbWidth, context);
+    }
+
+    if (provider === 'cloudflare_r2') {
+      const [thumbUrl, fullUrl] = await Promise.all([
+        uploadBlobToR2(thumbBlob, folder, `${baseName}_thumb`, context?.tournamentId),
+        uploadBlobToR2(fullBlob, folder, `${baseName}_full`, context?.tournamentId),
+      ]);
+      return { thumbUrl, fullUrl, storageProvider: 'cloudflare_r2', assetId: null };
+    }
   }
 
-  // 2. Cloudflare R2 vía URL firmada S3v4 ($0 egress)
-  if (await checkServerR2Configured()) {
-    const [thumbUrl, fullUrl] = await Promise.all([
-      uploadBlobToR2(thumbBlob, folder, `${baseName}_thumb`),
-      uploadBlobToR2(fullBlob, folder, `${baseName}_full`),
-    ]);
-    return { thumbUrl, fullUrl };
-  }
-
-  // 3. Fallback local de desarrollo en Express (/api/uploads) con WebP comprimido
+  // Fallback local de desarrollo en Express (/api/uploads) con WebP comprimido
   const [thumbDataUrl, fullDataUrl] = await Promise.all([
     readFileAsDataUrl(thumbBlob, `${baseName}_thumb.webp`),
     readFileAsDataUrl(fullBlob, `${baseName}_full.webp`),
@@ -340,8 +636,9 @@ export async function compressImageDataUrl(dataUrl: string, maxChars = 220000): 
 }
 
 export async function optimizeAndUploadPhoto(
-  file: File
-): Promise<{ thumbUrl: string; fullUrl: string }> {
+  file: File,
+  context?: PhotoUploadContext
+): Promise<UploadedPhotoResult> {
   if (!isAcceptableImageFile(file)) {
     throw new Error(`Formato no admitido (${file.name}). Usá JPG, PNG, WebP o GIF.`);
   }
@@ -359,6 +656,7 @@ export async function optimizeAndUploadPhoto(
     thumbBlob,
     fullBlob,
     thumbWidth: 420,
+    context,
   });
 }
 
@@ -429,12 +727,11 @@ export async function optimizeAndUploadAdBanner(file: File): Promise<string> {
     });
     return data.fullUrl;
   } catch {
-    // Fallback resiliente si ningún endpoint de archivos está disponible (p.ej. preview estático)
     const img = await loadImageFromFile(file);
     const compact = fitDataUrlWithinLimit(img, 180000);
     if (compact.length > 260000) {
       throw new Error(
-        'No se pudo subir la imagen al almacenamiento y el archivo comprimido supera el límite. Configurá Cloudinary o pegá una URL.'
+        'No se pudo subir la imagen al almacenamiento y el archivo comprimido supera el límite. Configurá Cloudinary o Cloudflare Images.'
       );
     }
     return compact;

@@ -1114,12 +1114,148 @@ function createR2PresignedPutUrl(params: {
   return `https://${host}${canonicalUri}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
 }
 
+function getCloudinarySignedConfig() {
+  const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || process.env.VITE_CLOUDINARY_CLOUD_NAME || '').trim();
+  const apiKey = (process.env.CLOUDINARY_API_KEY || '').trim();
+  const apiSecret = (process.env.CLOUDINARY_API_SECRET || '').trim();
+  const baseFolder = (process.env.CLOUDINARY_FOLDER || process.env.VITE_CLOUDINARY_FOLDER || 'playpy').trim() || 'playpy';
+  const configured = Boolean(cloudName && apiKey && apiSecret);
+  return { configured, cloudName, apiKey, apiSecret, baseFolder };
+}
+
+function getCloudflareImagesConfig() {
+  const accountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+  const apiToken = (process.env.CLOUDFLARE_IMAGES_API_TOKEN || '').trim();
+  const accountHash = (process.env.CLOUDFLARE_IMAGES_ACCOUNT_HASH || '').trim();
+  const variantFull = (process.env.CLOUDFLARE_IMAGES_VARIANT_FULL || 'public').trim() || 'public';
+  const variantThumb = (process.env.CLOUDFLARE_IMAGES_VARIANT_THUMB || variantFull).trim() || variantFull;
+  const configured = Boolean(accountId && apiToken && accountHash);
+  return { configured, accountId, apiToken, accountHash, variantFull, variantThumb };
+}
+
+function sanitizeFolderSegment(value: string | undefined, maxLen = 64): string {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, maxLen);
+}
+
 app.get('/api/uploads/storage-info', (_req, res) => {
   const r2 = getR2Config();
+  const cloudinarySigned = getCloudinarySignedConfig();
+  const cfImages = getCloudflareImagesConfig();
   res.json({
+    cloudinarySignedConfigured: cloudinarySigned.configured,
+    cloudflareImagesConfigured: cfImages.configured,
     r2Configured: r2.configured,
+    cloudinaryFolder: cloudinarySigned.baseFolder,
+    cloudflareImagesAccountHash: cfImages.configured ? cfImages.accountHash : null,
     maxUploadBytes: 8 * 1024 * 1024,
   });
+});
+
+app.post('/api/uploads/cloudinary-sign', (req, res) => {
+  const cfg = getCloudinarySignedConfig();
+  if (!cfg.configured) {
+    res.status(503).json({
+      error: 'Cloudinary (modo firmado) no está configurado en el servidor.',
+    });
+    return;
+  }
+
+  const body = (req.body || {}) as { folder?: string; tournamentId?: string };
+  const allowedFolders = new Set(['photos', 'avatars', 'banners']);
+  const subFolder = body.folder && allowedFolders.has(body.folder) ? body.folder : 'photos';
+  const safeTournament = sanitizeFolderSegment(body.tournamentId, 80);
+  const folder = safeTournament
+    ? `${cfg.baseFolder}/competitions/${safeTournament}/${subFolder}`
+    : `${cfg.baseFolder}/${subFolder}`;
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const stringToSign = `folder=${folder}&timestamp=${timestamp}`;
+  const signature = crypto
+    .createHash('sha1')
+    .update(`${stringToSign}${cfg.apiSecret}`, 'utf8')
+    .digest('hex');
+
+  res.json({
+    cloudName: cfg.cloudName,
+    apiKey: cfg.apiKey,
+    timestamp,
+    signature,
+    folder,
+  });
+});
+
+app.post('/api/uploads/cloudflare-images/direct-upload', async (req, res) => {
+  const cfg = getCloudflareImagesConfig();
+  if (!cfg.configured) {
+    res.status(503).json({
+      error:
+        'Cloudflare Images no está configurado en las variables de entorno del servidor (CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_IMAGES_API_TOKEN, CLOUDFLARE_IMAGES_ACCOUNT_HASH).',
+    });
+    return;
+  }
+
+  const body = (req.body || {}) as {
+    tournamentId?: string;
+    album?: string;
+    folder?: string;
+  };
+  const safeTournament = sanitizeFolderSegment(body.tournamentId, 80);
+  const safeAlbum = String(body.album || '').trim().slice(0, 60);
+  const safeFolder = sanitizeFolderSegment(body.folder || 'photos', 32) || 'photos';
+
+  try {
+    const form = new FormData();
+    form.append('requireSignedURLs', 'false');
+    form.append(
+      'metadata',
+      JSON.stringify({
+        app: 'playpy',
+        folder: safeFolder,
+        ...(safeTournament ? { tournamentId: safeTournament } : {}),
+        ...(safeAlbum ? { album: safeAlbum } : {}),
+      })
+    );
+
+    const cfRes = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cfg.accountId)}/images/v2/direct_upload`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cfg.apiToken}`,
+        },
+        body: form,
+      }
+    );
+
+    const cfJson = (await cfRes.json().catch(() => ({}))) as {
+      success?: boolean;
+      result?: { id?: string; uploadURL?: string };
+      errors?: Array<{ message?: string }>;
+    };
+
+    if (!cfRes.ok || !cfJson.success || !cfJson.result?.uploadURL || !cfJson.result?.id) {
+      const cfErr = cfJson.errors?.[0]?.message || `Cloudflare Images respondió ${cfRes.status}.`;
+      res.status(502).json({ error: cfErr });
+      return;
+    }
+
+    const imageId = cfJson.result.id;
+    const baseDelivery = `https://imagedelivery.net/${cfg.accountHash}/${imageId}`;
+    res.json({
+      uploadUrl: cfJson.result.uploadURL,
+      imageId,
+      fullUrl: `${baseDelivery}/${cfg.variantFull}`,
+      thumbUrl: `${baseDelivery}/${cfg.variantThumb}`,
+    });
+  } catch (err) {
+    console.error('Error al solicitar Direct Upload a Cloudflare Images:', err);
+    res.status(500).json({
+      error: 'No se pudo conectar con la API de Cloudflare Images.',
+    });
+  }
 });
 
 app.post('/api/uploads/presign-r2', (req, res) => {
@@ -1131,9 +1267,15 @@ app.post('/api/uploads/presign-r2', (req, res) => {
     return;
   }
 
-  const body = req.body as { folder?: string; filename?: string; contentType?: string };
+  const body = req.body as {
+    folder?: string;
+    tournamentId?: string;
+    filename?: string;
+    contentType?: string;
+  };
   const allowedFolders = new Set(['photos', 'avatars', 'banners']);
   const folder = body.folder && allowedFolders.has(body.folder) ? body.folder : 'photos';
+  const safeTournament = sanitizeFolderSegment(body.tournamentId, 80);
 
   const mime = String(body.contentType || 'image/webp').toLowerCase();
   const extMap: Record<string, string> = {
@@ -1153,7 +1295,9 @@ app.post('/api/uploads/presign-r2', (req, res) => {
     .replace(/[^a-z0-9_-]/g, '_')
     .slice(0, 32) || 'imagen';
   const uid = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-  const key = `playpy/${folder}/${baseSlug}_${uid}.${ext}`;
+  const key = safeTournament
+    ? `playpy/competitions/${safeTournament}/${folder}/${baseSlug}_${uid}.${ext}`
+    : `playpy/${folder}/${baseSlug}_${uid}.${ext}`;
 
   const uploadUrl = createR2PresignedPutUrl({
     accountId: r2.accountId,

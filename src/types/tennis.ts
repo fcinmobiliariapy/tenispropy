@@ -460,9 +460,12 @@ export interface Match {
 export interface MatchdayPhoto {
   id: string;
   tournamentId: string;
-  divisionId: string;
-  matchdayId: string;
+  divisionId?: string | null;
+  matchdayId?: string | null;
   matchId?: string | null;
+  album?: string | null;
+  storageProvider?: 'cloudinary' | 'cloudflare_images' | 'cloudflare_r2' | 'local' | null;
+  assetId?: string | null;
   thumbUrl: string;
   fullUrl: string;
   caption?: string;

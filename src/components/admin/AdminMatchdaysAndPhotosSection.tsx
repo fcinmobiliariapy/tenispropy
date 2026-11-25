@@ -56,6 +56,7 @@ interface Props {
   isSuperAdmin: boolean;
   permissions?: StaffPermissions;
   onOpenFlyerModal?: () => void;
+  onOpenGalleryTab?: () => void;
 }
 
 export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
@@ -74,6 +75,7 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
   isSuperAdmin,
   permissions,
   onOpenFlyerModal,
+  onOpenGalleryTab,
 }) => {
   const canCreate = permissions ? permissions.canCreate : true;
   const canEdit = permissions ? permissions.canEdit : true;
@@ -362,7 +364,10 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
       const newDrafts: MatchdayPhoto[] = [];
 
       for (const file of files) {
-        const { thumbUrl, fullUrl } = await optimizeAndUploadPhoto(file);
+        const { thumbUrl, fullUrl, storageProvider, assetId } = await optimizeAndUploadPhoto(file, {
+          tournamentId: tournament.id,
+          album: activeMatchday.name,
+        });
         currentMaxOrder++;
         const photo: MatchdayPhoto = {
           id: makeId('ph'),
@@ -370,6 +375,9 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
           divisionId: division.id,
           matchdayId: activeMatchday.id,
           matchId: null,
+          album: activeMatchday.name,
+          storageProvider,
+          assetId: assetId || null,
           thumbUrl,
           fullUrl,
           caption: '',
@@ -487,6 +495,16 @@ export const AdminMatchdaysAndPhotosSection: React.FC<Props> = ({
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {onOpenGalleryTab && (
+            <button
+              type="button"
+              onClick={onOpenGalleryTab}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#E2E8F0] bg-white text-xs font-medium text-[#0A1633] hover:bg-slate-50"
+            >
+              <Images className="w-3.5 h-3.5 text-[#7C1FA2]" />
+              Galería general
+            </button>
+          )}
           {onOpenFlyerModal && (
             <button
               type="button"

@@ -62,6 +62,7 @@ import { WhatsAppShareButton } from './WhatsAppShareButton';
 import { OptimizedImage } from './OptimizedImage';
 import { isFootballTournament } from '../utils/footballEngine';
 import { AdminSectionSkeleton, GalleryGridSkeleton, ModalSkeleton, PlayersGridSkeleton } from './Skeletons';
+import { CompetitionGalleryStrip, CompetitionGalleryView } from './CompetitionGalleryView';
 
 const FootballPublicPortal = lazy(() =>
   import('./football/FootballPublicPortal').then((m) => ({ default: m.FootballPublicPortal }))
@@ -622,17 +623,22 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     ),
   });
 
-  // Paginación infinita basada en cursor para Fotos publicadas de jornadas
+  // Paginación infinita basada en cursor para Fotos publicadas de la competencia
   const paginatedPhotosQuery = useInfiniteQuery({
-    queryKey: ['photos_paginated'],
+    queryKey: ['photos_paginated', activeTournament?.id || 'none'],
     initialPageParam: null as QueryDocumentSnapshot<DocumentData> | null,
     queryFn: ({ pageParam }) =>
       fetchPaginatedPublishedPhotos({
+        tournamentId: activeTournament?.id,
         pageSize: 24,
         cursor: pageParam,
       }),
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.nextCursor : undefined),
-    enabled: activeTab === 'jornadas',
+    enabled: Boolean(
+      (activeTab === 'jornadas' || activeTab === 'galeria' || activeTab === 'resumen') &&
+        activeTournament?.id &&
+        !activeTournament?.isDemo
+    ),
   });
 
   const mergedPhotos = useMemo(() => {
@@ -1403,6 +1409,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                 { id: 'resumen', label: 'Torneos y Cuadro' },
                 { id: 'fixture', label: 'Fixture' },
                 { id: 'jornadas', label: 'Jornadas y Fotos' },
+                { id: 'galeria', label: 'Galería' },
                 { id: 'jugadores', label: 'Jugadores' },
               ] as Array<{ id: PublicTab; label: string }>
             ).map((tab) => (
@@ -1434,6 +1441,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               {activeTab === 'resumen' && 'Torneos y Cuadro'}
               {activeTab === 'fixture' && 'Fixture'}
               {activeTab === 'jornadas' && 'Jornadas y Fotos'}
+              {activeTab === 'galeria' && 'Galería'}
               {activeTab === 'jugadores' && 'Jugadores'}
             </p>
             <p className="text-[11px] text-[#475569] shrink-0">
@@ -2483,6 +2491,17 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
           </Suspense>
         )}
 
+        {/* Destacados de Galería de la Competencia en Resumen */}
+        {activeTab === 'resumen' && activeTournament && (
+          <div className="mt-6">
+            <CompetitionGalleryStrip
+              tournamentName={activeTournament.name}
+              photos={mergedPhotos.filter((p) => p.tournamentId === activeTournament.id)}
+              onOpenFullGallery={() => onSelectTab('galeria')}
+            />
+          </div>
+        )}
+
         {/* Publicidades personalizadas del torneo en portada (Resumen) */}
         {activeTab === 'resumen' && (principalAds.length > 0 || lateralAds.length > 0) && (
           <section className="mt-6 sm:mt-8 space-y-4">
@@ -3165,6 +3184,21 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               </div>
             )}
           </div>
+        )}
+
+        {/* TAB 4: GALERÍA COMPLETA DE LA COMPETENCIA */}
+        {activeTab === 'galeria' && activeTournament && (
+          <CompetitionGalleryView
+            tournament={activeTournament}
+            divisions={tournamentDivisions}
+            matchdays={matchdays.filter((md) => md.tournamentId === activeTournament.id)}
+            matches={matches.filter((m) => m.tournamentId === activeTournament.id && m.published)}
+            photos={mergedPhotos}
+            isLoading={paginatedPhotosQuery.isLoading}
+            hasNextPage={Boolean(paginatedPhotosQuery.hasNextPage)}
+            isFetchingNextPage={paginatedPhotosQuery.isFetchingNextPage}
+            onLoadMore={() => void paginatedPhotosQuery.fetchNextPage()}
+          />
         )}
 
         {/* TAB 5: JUGADORES, PERFILES Y ESTADÍSTICAS */}
